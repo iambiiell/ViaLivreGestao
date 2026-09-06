@@ -417,7 +417,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <>
-    <div className={`fixed top-0 left-0 w-full h-12 sm:h-14 shadow-sm z-40 flex items-center justify-between px-2 sm:px-10 border-b transition-all duration-300 ${
+    <div className={`w-full h-12 sm:h-14 shadow-sm z-40 flex items-center justify-between px-2 sm:px-10 border-b transition-all duration-300 ${
       systemSettings?.glass_effect !== false 
         ? 'glass-panel !border-b !border-white/80 dark:!border-white/10 shadow-[0_4px_25px_rgba(0,0,0,0.06)]' 
         : 'bg-white dark:bg-zinc-950 border-slate-200 dark:border-zinc-800'

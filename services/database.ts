@@ -154,10 +154,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   }
   
   if (table === 'bus_stations') {
-    delete cleaned.address;
     delete cleaned.created_by;
-    delete cleaned.is_active;
-    delete cleaned.system_id;
   }
   
   if (table === 'time_tracking' as any) {
