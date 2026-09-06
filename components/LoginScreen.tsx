@@ -254,11 +254,11 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
 
             // Initialize Subscription
             let expiresAt = new Date();
-            if (validKey.duration_type === 'DAYS') {
-                const durationDays = validKey.duration_days || 30;
+            if (validKey.duration_type === 'DAYS' || (validKey.duration_days && validKey.duration_days > 0 && validKey.duration_type !== 'MONTHS')) {
+                const durationDays = Number(validKey.duration_days) || 30;
                 expiresAt.setDate(expiresAt.getDate() + durationDays);
             } else {
-                const durationMonths = validKey.duration_months || 1;
+                const durationMonths = Number(validKey.duration_months) || (validKey.plan_type === 'ANNUAL' ? 12 : validKey.plan_type === 'QUARTERLY' ? 3 : validKey.plan_type === 'SEMI_ANNUAL' ? 6 : validKey.plan_type === 'LIFETIME' ? 999 : 1);
                 if (durationMonths === 999) {
                     expiresAt = new Date(2099, 11, 31, 23, 59, 59);
                 } else {

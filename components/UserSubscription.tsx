@@ -73,11 +73,11 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
         expiresAt = new Date(subscription.expires_at);
       }
 
-      if (key.duration_type === 'DAYS') {
-        const durationDays = key.duration_days || 30;
+      if (key.duration_type === 'DAYS' || (key.duration_days && key.duration_days > 0 && key.duration_type !== 'MONTHS')) {
+        const durationDays = Number(key.duration_days) || 30;
         expiresAt.setDate(expiresAt.getDate() + durationDays);
       } else {
-        const durationMonths = key.duration_months || 1;
+        const durationMonths = Number(key.duration_months) || (key.plan_type === 'ANNUAL' ? 12 : key.plan_type === 'QUARTERLY' ? 3 : key.plan_type === 'SEMI_ANNUAL' ? 6 : key.plan_type === 'LIFETIME' ? 999 : 1);
         if (durationMonths === 999) {
           expiresAt = new Date(2099, 11, 31, 23, 59, 59);
         } else {
