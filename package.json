@@ -1,0 +1,63 @@
+{
+  "name": "consimp---controle-de-frotas",
+  "private": true,
+  "version": "1.5.0",
+  "main": "main.cjs",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "electron:start": "electron .",
+    "electron:build": "vite build && electron-builder",
+    "electron:package": "electron-forge package",
+    "electron:make": "electron-forge make"
+  },
+  "build": {
+    "appId": "com.vialivre.app",
+    "productName": "ViaLivre",
+    "directories": {
+      "output": "dist_electron"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ViaLivre",
+      "installerHeaderColor": "#EAB308",
+      "artifactName": "ViaLivre_Setup_v1.5.0.exe"
+    }
+  },
+  "dependencies": {
+    "@google/genai": "^1.37.0",
+    "@supabase/supabase-js": "^2.45.0",
+    "@tailwindcss/vite": "^4.3.0",
+    "date-fns": "^4.1.0",
+    "driver.js": "^1.8.0",
+    "framer-motion": "^12.34.3",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.0",
+    "lucide-react": "^0.562.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "recharts": "^3.6.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@vitejs/plugin-react": "^5.1.4",
+    "autoprefixer": "^10.4.24",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.3.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

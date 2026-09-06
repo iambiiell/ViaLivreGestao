@@ -1,0 +1,71 @@
+
+<!DOCTYPE html>
+<html lang="pt-BR" class="light">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>ViaLivre Gestão - Gestão de Transportes</title>
+    <link rel="icon" type="image/png" href="https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png">
+    <meta name="theme-color" content="#facc15">
+    
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=DotGothic16&family=JetBrains+Mono:wght@400;800&display=swap" rel="stylesheet">
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script>
+      (function() {
+        try {
+          var theme = localStorage.getItem('fluxo_theme');
+          var root = document.documentElement;
+          if (theme === 'dark' || (!theme && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+            root.classList.add('dark');
+            root.classList.remove('light');
+            root.style.colorScheme = 'dark';
+          } else {
+            root.classList.remove('dark');
+            root.classList.add('light');
+            root.style.colorScheme = 'light';
+          }
+          var settings = localStorage.getItem('vialivre_system_settings');
+          if (settings) {
+            var parsed = JSON.parse(settings);
+            if (parsed && parsed.theme_color) {
+              var colorMap = {
+                yellow: { p: '#facc15', d: '#eab308', c50: '#fefce8', c100: '#fef9c3', c200: '#fef08a', c300: '#fde047', c600: '#ca8a04', c700: '#a16207', c800: '#854d0e', c900: '#713f12' },
+                blue: { p: '#3b82f6', d: '#2563eb', c50: '#eff6ff', c100: '#dbeafe', c200: '#bfdbfe', c300: '#93c5fd', c600: '#1d4ed8', c700: '#1e40af', c800: '#1e3a8a', c900: '#172554' },
+                indigo: { p: '#6366f1', d: '#4f46e5', c50: '#eef2ff', c100: '#e0e7ff', c200: '#c7d2fe', c300: '#a5b4fc', c600: '#4338ca', c700: '#3730a3', c800: '#312e81', c900: '#1e1b4b' },
+                emerald: { p: '#10b981', d: '#059669', c50: '#ecfdf5', c100: '#d1fae5', c200: '#a7f3d0', c300: '#6ee7b7', c600: '#047857', c700: '#065f46', c800: '#064e3b', c900: '#022c22' },
+                rose: { p: '#ec4899', d: '#db2777', c50: '#fff1f2', c100: '#ffe4e6', c200: '#fecdd3', c300: '#fda4af', c600: '#be185d', c700: '#9d174d', c800: '#831843', c900: '#500724' },
+                purple: { p: '#a855f7', d: '#9333ea', c50: '#faf5ff', c100: '#f3e8ff', c200: '#e9d5ff', c300: '#d8b4fe', c600: '#7e22ce', c700: '#6b21a8', c800: '#581c87', c900: '#3b0764' },
+                orange: { p: '#f97316', d: '#ea580c', c50: '#fff7ed', c100: '#ffedd5', c200: '#fed7aa', c300: '#fdba74', c600: '#c2410c', c700: '#9a3412', c800: '#7c2d12', c900: '#431407' },
+                cyan: { p: '#06b6d4', d: '#0891b2', c50: '#ecfeff', c100: '#cffafe', c200: '#a5f3fc', c300: '#67e8f9', c600: '#0e7490', c700: '#155e75', c800: '#164e63', c900: '#083344' },
+                red: { p: '#ef4444', d: '#dc2626', c50: '#fef2f2', c100: '#fee2e2', c200: '#fecaca', c300: '#fca5a5', c600: '#b91c1c', c700: '#991b1b', c800: '#7f1d1d', c900: '#450a0a' }
+              };
+              var c = colorMap[parsed.theme_color.toLowerCase()] || { p: parsed.theme_color, d: parsed.theme_color, c50: '#fefce8', c100: '#fef9c3', c200: '#fef08a', c300: '#fde047', c600: '#ca8a04', c700: '#a16207', c800: '#854d0e', c900: '#713f12' };
+              root.style.setProperty('--primary-color', c.p);
+              root.style.setProperty('--primary-color-dark', c.d);
+              root.style.setProperty('--primary-color-50', c.c50);
+              root.style.setProperty('--primary-color-100', c.c100);
+              root.style.setProperty('--primary-color-200', c.c200);
+              root.style.setProperty('--primary-color-300', c.c300);
+              root.style.setProperty('--primary-color-600', c.c600);
+              root.style.setProperty('--primary-color-700', c.c700);
+              root.style.setProperty('--primary-color-800', c.c800);
+              root.style.setProperty('--primary-color-900', c.c900);
+            }
+            if (parsed && parsed.high_contrast) {
+              root.classList.add('high-contrast');
+            }
+          }
+        } catch(e) {}
+      })();
+    </script>
+</head>
+<body class="bg-white dark:bg-zinc-950 text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors duration-300">
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+</body>
+</html>

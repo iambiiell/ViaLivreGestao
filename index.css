@@ -1,0 +1,828 @@
+@import url('https://fonts.googleapis.com/css2?family=VT323&family=Silkscreen&display=swap');
+@import "tailwindcss";
+
+@variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-pixel: "VT323", "Silkscreen", monospace;
+  --color-yellow-50: var(--primary-color-50, #fefce8);
+  --color-yellow-100: var(--primary-color-100, #fef9c3);
+  --color-yellow-200: var(--primary-color-200, #fef08a);
+  --color-yellow-300: var(--primary-color-300, #fde047);
+  --color-yellow-400: var(--primary-color, #facc15);
+  --color-yellow-500: var(--primary-color-dark, #eab308);
+  --color-yellow-600: var(--primary-color-600, #ca8a04);
+  --color-yellow-700: var(--primary-color-700, #a16207);
+  --color-yellow-800: var(--primary-color-800, #854d0e);
+  --color-yellow-900: var(--primary-color-900, #713f12);
+}
+
+@layer base {
+  html {
+    font-size: 19.2px; /* 1.2rem base */
+  }
+  body { 
+    font-family: var(--font-sans);
+    @apply antialiased bg-white dark:bg-zinc-950 text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors duration-500;
+  }
+
+  /* High Contrast mode overrides */
+  html.high-contrast {
+    filter: contrast(1.25) !important;
+  }
+  
+  html.high-contrast body {
+    background-color: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  html.high-contrast.dark body,
+  html.high-contrast .dark body {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+  }
+  
+  html.high-contrast select, 
+  html.high-contrast input {
+    border-color: #000000 !important;
+    border-width: 3px !important;
+    color: #000000 !important;
+    background-color: #ffffff !important;
+  }
+  
+  html.high-contrast.dark select,
+  html.high-contrast.dark input,
+  html.high-contrast .dark select,
+  html.high-contrast .dark input {
+    border-color: #ffffff !important;
+    border-width: 3px !important;
+    color: #ffffff !important;
+    background-color: #000000 !important;
+  }
+
+  html.high-contrast .bg-yellow-400,
+  html.high-contrast .bg-yellow-500 {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+    border: 3px solid #000000 !important;
+  }
+
+  html.high-contrast.dark .bg-yellow-400,
+  html.high-contrast.dark .bg-yellow-500,
+  html.high-contrast .dark .bg-yellow-400,
+  html.high-contrast .dark .bg-yellow-500 {
+    background-color: #facc15 !important;
+    color: #000000 !important;
+    border: 3px solid #ffffff !important;
+  }
+
+  html.high-contrast button {
+    border: 3px solid #000000 !important;
+    font-weight: 900 !important;
+  }
+
+  html.high-contrast.dark button,
+  html.high-contrast .dark button {
+    border: 3px solid #ffffff !important;
+    font-weight: 900 !important;
+  }
+  
+  input, select, textarea {
+    @apply transition-all duration-300 border-2 border-yellow-400 outline-none rounded-xl px-4 py-3 bg-white dark:bg-zinc-900 text-slate-900 dark:text-slate-100;
+  }
+
+  input:focus, select:focus, textarea:focus {
+    @apply border-indigo-600;
+  }
+
+  button {
+    @apply transition-all duration-300 active:scale-95 cursor-pointer disabled:cursor-not-allowed hover:brightness-110;
+  }
+
+  .border-red-500 {
+    border-color: #ef4444 !important;
+  }
+}
+
+@layer components {
+  /* Glassmorphism Glass Panel & Overlap System */
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.80);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(226, 232, 240, 0.8);
+    box-shadow: 0 10px 30px 0 rgba(0, 0, 0, 0.05);
+  }
+
+  .dark .glass-panel,
+  html.dark .glass-panel {
+    background: rgba(18, 18, 24, 0.82);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    box-shadow: 0 14px 40px 0 rgba(0, 0, 0, 0.50);
+  }
+
+  /* When Glass Effect is DISABLED globally */
+  html.glass-disabled .glass-panel,
+  :root.glass-disabled .glass-panel {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05) !important;
+  }
+
+  html.dark.glass-disabled .glass-panel,
+  :root.dark.glass-disabled .glass-panel {
+    background: #18181b !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #27272a !important;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.4) !important;
+  }
+
+  /* When Glass Effect is ACTIVE globally (Default or Enabled) */
+  :root:not(.glass-disabled) body,
+  html.glass-enabled:not(.glass-disabled) body {
+    background-color: #f1f5f9;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(250, 204, 21, 0.12) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(14, 165, 233, 0.08) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  :root.dark:not(.glass-disabled) body,
+  html.dark:not(.glass-disabled) body,
+  html.glass-enabled.dark:not(.glass-disabled) body {
+    background-color: #09090b;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(250, 204, 21, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 0%, rgba(99, 102, 241, 0.10) 0px, transparent 50%),
+      radial-gradient(at 50% 100%, rgba(14, 165, 233, 0.05) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+
+  /* When Glass is DISABLED, plain solid canvas */
+  html.glass-disabled body {
+    background-image: none !important;
+    background-color: #f8fafc !important;
+  }
+
+  html.dark.glass-disabled body {
+    background-image: none !important;
+    background-color: #09090b !important;
+  }
+
+  /* SYSTEM-WIDE TRANSLUCENT SURFACES (Cards, Menus, Cadastros, Tables, Forms) */
+  :root:not(.glass-disabled):not(.dark) .bg-white:not(button):not(input):not(select):not(.no-glass),
+  html.glass-enabled:not(.glass-disabled):not(.dark) .bg-white:not(button):not(input):not(select):not(.no-glass) {
+    background: rgba(255, 255, 255, 0.82) !important;
+    border-color: rgba(226, 232, 240, 0.85) !important;
+    box-shadow: 0 10px 30px -6px rgba(0, 0, 0, 0.05) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  :root.dark:not(.glass-disabled) .bg-zinc-900:not(button):not(input):not(select):not(.no-glass),
+  :root.dark:not(.glass-disabled) .bg-zinc-950:not(button):not(input):not(select):not(.no-glass),
+  html.dark:not(.glass-disabled) .bg-zinc-900:not(button):not(input):not(select):not(.no-glass),
+  html.dark:not(.glass-disabled) .bg-zinc-950:not(button):not(input):not(select):not(.no-glass),
+  html.glass-enabled.dark:not(.glass-disabled) .bg-zinc-900:not(button):not(input):not(select):not(.no-glass),
+  html.glass-enabled.dark:not(.glass-disabled) .bg-zinc-950:not(button):not(input):not(select):not(.no-glass) {
+    background: rgba(18, 18, 24, 0.84) !important;
+    border-color: rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 14px 40px -8px rgba(0, 0, 0, 0.50) !important;
+    backdrop-filter: blur(16px) saturate(180%);
+    -webkit-backdrop-filter: blur(16px) saturate(180%);
+  }
+
+  /* Inner sub-containers, table headers and stat boxes */
+  :root:not(.glass-disabled) .bg-slate-50:not(button):not(input),
+  :root:not(.glass-disabled) .bg-slate-50\/50:not(button):not(input),
+  html.glass-enabled .bg-slate-50:not(button):not(input),
+  html.glass-enabled .bg-slate-50\/50:not(button):not(input) {
+    background: rgba(241, 245, 249, 0.70) !important;
+  }
+
+  :root:not(.glass-disabled) .dark .bg-zinc-800:not(button):not(input),
+  :root:not(.glass-disabled) .dark .bg-zinc-800\/50:not(button):not(input),
+  :root:not(.glass-disabled) .dark .bg-zinc-900\/30:not(button):not(input),
+  html.glass-enabled.dark .bg-zinc-800:not(button):not(input),
+  html.glass-enabled.dark .bg-zinc-800\/50:not(button):not(input) {
+    background: rgba(39, 39, 42, 0.65) !important;
+  }
+
+  /* Modal Backdrop & Center Alignment Anchor */
+  .fixed.inset-0:not(.sidebar-drawer-el) {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* SYSTEM-WIDE GLASS POP-UPS & MODALS (Consistent translucent backdrop-filter across all popups) */
+  .modal-glass,
+  .glass-modal,
+  .modal-card,
+  .modal-container,
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 > div:not(.sidebar-drawer-el):not(.absolute),
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 > motion.div:not(.absolute),
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 [class*="max-w-"],
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"],
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 [class*="rounded-[2.5rem]"],
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"],
+  html:not(.dark):not(.glass-disabled) .fixed.inset-0 [role="dialog"],
+  html:not(.dark):not(.glass-disabled) div[class*="fixed"][class*="inset-0"] > div:not(.sidebar-drawer-el):not(.absolute),
+  html:not(.dark):not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"],
+  html:not(.dark):not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [role="dialog"] {
+    background: rgba(255, 255, 255, 0.88) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(226, 232, 240, 0.85) !important;
+    box-shadow: 0 20px 50px -10px rgba(0, 0, 0, 0.18) !important;
+  }
+
+  html.dark:not(.glass-disabled) .modal-glass,
+  html.dark:not(.glass-disabled) .glass-modal,
+  html.dark:not(.glass-disabled) .modal-card,
+  html.dark:not(.glass-disabled) .modal-container,
+  html.dark:not(.glass-disabled) .fixed.inset-0 > div:not(.sidebar-drawer-el):not(.absolute),
+  html.dark:not(.glass-disabled) .fixed.inset-0 > motion.div:not(.absolute),
+  html.dark:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"],
+  html.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"],
+  html.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[2.5rem]"],
+  html.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"],
+  html.dark:not(.glass-disabled) .fixed.inset-0 [role="dialog"],
+  html.dark:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] > div:not(.sidebar-drawer-el):not(.absolute),
+  html.dark:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"],
+  html.dark:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [role="dialog"] {
+    background: rgba(18, 18, 24, 0.90) !important;
+    backdrop-filter: blur(20px) saturate(180%) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%) !important;
+    border: 1px solid rgba(255, 255, 255, 0.12) !important;
+    box-shadow: 0 25px 60px -10px rgba(0, 0, 0, 0.65) !important;
+  }
+
+  /* When Glass is disabled on modals */
+  html.glass-disabled .modal-glass,
+  html.glass-disabled .glass-modal,
+  html.glass-disabled .modal-card,
+  html.glass-disabled .modal-container {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  html.dark.glass-disabled .modal-glass,
+  html.dark.glass-disabled .glass-modal,
+  html.dark.glass-disabled .modal-card,
+  html.dark.glass-disabled .modal-container {
+    background: #18181b !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
+
+  /* Inner Form, Body and Scroll Areas inside Modals MUST BE TRANSPARENT to preserve the Glass Window effect */
+  :root:not(.glass-disabled) .fixed.inset-0 form,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] form,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] .overflow-y-auto,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] .custom-scrollbar,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] > div.flex-1,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] form,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] .overflow-y-auto,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] form,
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] .overflow-y-auto,
+  :root:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] form,
+  :root:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"] form,
+  :root:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"] .overflow-y-auto,
+  :root:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"] .custom-scrollbar,
+  :root:not(.glass-disabled) div[class*="fixed"][class*="inset-0"] [class*="max-w-"] > div.flex-1,
+  html.glass-enabled .fixed.inset-0 form,
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] form,
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] .overflow-y-auto,
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] .custom-scrollbar,
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] > div.flex-1,
+  html.glass-enabled .fixed.inset-0 [class*="rounded-[3rem]"] form,
+  html.glass-enabled .fixed.inset-0 [class*="rounded-[3rem]"] .overflow-y-auto,
+  html.glass-enabled .fixed.inset-0 [class*="rounded-3xl"] form,
+  html.glass-enabled .fixed.inset-0 [class*="rounded-3xl"] .overflow-y-auto,
+  html.glass-enabled div[class*="fixed"][class*="inset-0"] form,
+  html.glass-enabled div[class*="fixed"][class*="inset-0"] [class*="max-w-"] form,
+  html.glass-enabled div[class*="fixed"][class*="inset-0"] [class*="max-w-"] .overflow-y-auto,
+  html.glass-enabled div[class*="fixed"][class*="inset-0"] [class*="max-w-"] .custom-scrollbar,
+  html.glass-enabled div[class*="fixed"][class*="inset-0"] [class*="max-w-"] > div.flex-1 {
+    background: transparent !important;
+  }
+
+  /* Modal Headers & Footers Translucency within Glass Popups */
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500) {
+    background: transparent !important;
+    border-color: rgba(226, 232, 240, 0.6) !important;
+  }
+
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500) {
+    background: transparent !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+  }
+
+  /* Prevent text, titles, modal header divs and logo containers from getting unwanted rectangle background boxes */
+  :root:not(.glass-disabled) h1,
+  :root:not(.glass-disabled) h2,
+  :root:not(.glass-disabled) h3,
+  :root:not(.glass-disabled) h4,
+  :root:not(.glass-disabled) p:not([class*="bg-"]),
+  :root:not(.glass-disabled) span:not(.badge):not(.tag):not([class*="bg-"]):not([class*="rounded-md"]):not([class*="rounded-lg"]),
+  :root:not(.glass-disabled) label,
+  :root:not(.glass-disabled) .logo-sistema,
+  :root:not(.glass-disabled) .fixed.inset-0 .border-b,
+  :root:not(.glass-disabled) .fixed.inset-0 .border-b > div,
+  :root:not(.glass-disabled) .fixed.inset-0 header,
+  :root:not(.glass-disabled) .fixed.inset-0 h2,
+  :root:not(.glass-disabled) .fixed.inset-0 h3,
+  :root:not(.glass-disabled) .fixed.inset-0 label,
+  html.glass-enabled h1,
+  html.glass-enabled h2,
+  html.glass-enabled h3,
+  html.glass-enabled h4,
+  html.glass-enabled p:not([class*="bg-"]),
+  html.glass-enabled span:not(.badge):not(.tag):not([class*="bg-"]):not([class*="rounded-md"]):not([class*="rounded-lg"]),
+  html.glass-enabled label,
+  html.glass-enabled .logo-sistema,
+  html.glass-enabled .fixed.inset-0 .border-b,
+  html.glass-enabled .fixed.inset-0 .border-b > div,
+  html.glass-enabled .fixed.inset-0 header,
+  html.glass-enabled .fixed.inset-0 h2,
+  html.glass-enabled .fixed.inset-0 h3,
+  html.glass-enabled .fixed.inset-0 label {
+    background: transparent !important;
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
+
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900) {
+    background: rgba(248, 250, 252, 0.35) !important;
+    border-color: rgba(226, 232, 240, 0.6) !important;
+  }
+
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900) {
+    background: rgba(24, 24, 27, 0.35) !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+  }
+
+  /* Secondary Sub-cards & Stat containers inside Popups */
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] .bg-slate-50:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] .bg-slate-50:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] .bg-slate-50:not(button):not(input):not(select),
+  html.glass-enabled .fixed.inset-0 [class*="max-w-"] .bg-slate-50:not(button):not(input):not(select),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-[3rem]"] .bg-slate-50:not(button):not(input):not(select),
+  html.glass-enabled .fixed.inset-0 [class*="rounded-3xl"] .bg-slate-50:not(button):not(input):not(select) {
+    background: rgba(241, 245, 249, 0.40) !important;
+    border-color: rgba(226, 232, 240, 0.6) !important;
+  }
+
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-900:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-800:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-900:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-800:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-900:not(button):not(input):not(select),
+  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-800:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-900:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-800:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-900:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-800:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-900:not(button):not(input):not(select),
+  html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-800:not(button):not(input):not(select) {
+    background: rgba(39, 39, 42, 0.40) !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+  }
+
+  /* HIGH-CONTRAST & CRYSTAL-CLEAR TYPOGRAPHY ON TRANSLUCENT SURFACES */
+  :root:not(.glass-disabled):not(.dark) .text-slate-900,
+  :root:not(.glass-disabled):not(.dark) .text-slate-800,
+  html.glass-enabled:not(.dark) .text-slate-900,
+  html.glass-enabled:not(.dark) .text-slate-800 {
+    color: #020617 !important;
+  }
+
+  :root:not(.glass-disabled):not(.dark) .text-slate-400,
+  :root:not(.glass-disabled):not(.dark) .text-slate-500,
+  :root:not(.glass-disabled):not(.dark) .text-slate-600,
+  html.glass-enabled:not(.dark) .text-slate-400,
+  html.glass-enabled:not(.dark) .text-slate-500,
+  html.glass-enabled:not(.dark) .text-slate-600 {
+    color: #475569 !important;
+  }
+
+  /* HIGH CONTRAST LIGHT FONTS FOR DARK MODE (INCLUDING TRANSLUCENT/GLASS EFFECT) */
+  .dark .text-slate-400,
+  .dark .text-slate-500,
+  .dark .text-slate-600,
+  .dark .text-zinc-400,
+  .dark .text-zinc-500,
+  .dark .text-zinc-600,
+  .dark .text-gray-400,
+  .dark .text-gray-500,
+  html.dark .text-slate-400,
+  html.dark .text-slate-500,
+  html.dark .text-slate-600,
+  html.dark .text-zinc-400,
+  html.dark .text-zinc-500,
+  html.dark .text-zinc-600,
+  :root.dark .text-slate-400,
+  :root.dark .text-slate-500,
+  :root.dark .text-zinc-400,
+  :root.dark .text-zinc-500,
+  :root:not(.glass-disabled) .dark .text-zinc-400,
+  :root:not(.glass-disabled) .dark .text-zinc-500,
+  :root:not(.glass-disabled) .dark .text-slate-400,
+  :root:not(.glass-disabled) .dark .text-slate-500,
+  html.glass-enabled.dark .text-zinc-400,
+  html.glass-enabled.dark .text-zinc-500,
+  html.glass-enabled.dark .text-slate-400,
+  html.glass-enabled.dark .text-slate-500 {
+    color: #cbd5e1 !important;
+  }
+
+  .dark .text-slate-300,
+  .dark .text-zinc-300,
+  .dark .text-gray-300,
+  html.dark .text-slate-300,
+  html.dark .text-zinc-300,
+  :root.dark .text-slate-300,
+  :root.dark .text-zinc-300,
+  :root:not(.glass-disabled) .dark .text-zinc-300,
+  :root:not(.glass-disabled) .dark .text-slate-300,
+  html.glass-enabled.dark .text-zinc-300,
+  html.glass-enabled.dark .text-slate-300 {
+    color: #f1f5f9 !important;
+  }
+
+  .dark .text-slate-200,
+  .dark .text-zinc-200,
+  .dark .text-gray-200,
+  .dark .text-slate-100,
+  .dark .text-zinc-100,
+  .dark .text-white,
+  html.dark .text-slate-100,
+  html.dark .text-zinc-100,
+  html.dark .text-white {
+    color: #ffffff !important;
+  }
+
+  /* Form Inputs and Selects within Glass Surfaces for maximum legibility */
+  :root:not(.glass-disabled) input,
+  :root:not(.glass-disabled) select,
+  :root:not(.glass-disabled) textarea,
+  html.glass-enabled input,
+  html.glass-enabled select,
+  html.glass-enabled textarea {
+    background: rgba(255, 255, 255, 0.90) !important;
+    color: #020617 !important;
+    font-weight: 700 !important;
+  }
+
+  :root:not(.glass-disabled) .dark input,
+  :root:not(.glass-disabled) .dark select,
+  :root:not(.glass-disabled) .dark textarea,
+  html.glass-enabled.dark input,
+  html.glass-enabled.dark select,
+  html.glass-enabled.dark textarea {
+    background: rgba(24, 24, 27, 0.85) !important;
+    color: #ffffff !important;
+    font-weight: 700 !important;
+  }
+
+  :root:not(.glass-disabled) input::placeholder,
+  :root:not(.glass-disabled) textarea::placeholder,
+  html.glass-enabled input::placeholder,
+  html.glass-enabled textarea::placeholder {
+    color: #64748b !important;
+    font-weight: 600 !important;
+  }
+
+  :root:not(.glass-disabled) .dark input::placeholder,
+  :root:not(.glass-disabled) .dark textarea::placeholder,
+  html.glass-enabled.dark input::placeholder,
+  html.glass-enabled.dark textarea::placeholder {
+    color: #94a3b8 !important;
+    font-weight: 600 !important;
+  }
+
+  /* When Glass Effect is ACTIVE globally (Default or Enabled) */
+  :root:not(.glass-disabled) .glass-overlay-box,
+  html.glass-enabled .glass-overlay-box {
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: 0 16px 45px -10px rgba(0, 0, 0, 0.15), 0 0 0 1.5px rgba(255, 255, 255, 0.8);
+  }
+
+  :root:not(.glass-disabled) .dark .glass-overlay-box,
+  html.glass-enabled.dark .glass-overlay-box {
+    box-shadow: 0 20px 55px -10px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(255, 255, 255, 0.16);
+  }
+
+  /* When glass effect is deactivated in preferences */
+  .glass-disabled .glass-panel,
+  .glass-disabled.glass-panel,
+  html.glass-disabled .glass-panel,
+  html.glass-disabled .glass-overlay-box {
+    background: #ffffff !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #e2e8f0 !important;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.05) !important;
+  }
+
+  .dark.glass-disabled .glass-panel,
+  html.dark.glass-disabled .glass-panel,
+  .dark .glass-disabled.glass-panel,
+  html.dark.glass-disabled .glass-overlay-box {
+    background: #18181b !important;
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    border: 1px solid #27272a !important;
+    box-shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.35) !important;
+  }
+
+  /* Modal body scroll lock and overscroll containment */
+  .modal-open-locked {
+    overflow: hidden !important;
+    touch-action: none;
+  }
+
+  .modal-scroll-container {
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+  .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+  .custom-scrollbar::-webkit-scrollbar-thumb { 
+    @apply bg-slate-200 rounded-full;
+  }
+  .dark .custom-scrollbar::-webkit-scrollbar-thumb { 
+    @apply bg-zinc-800;
+  }
+  .custom-scrollbar::-webkit-scrollbar-thumb:hover { 
+    @apply bg-[#facc15];
+  }
+
+  .no-scrollbar::-webkit-scrollbar { display: none; }
+  .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+  .barcode-strip {
+    background: repeating-linear-gradient(
+        90deg,
+        #000,
+        #000 2px,
+        #fff 2px,
+        #fff 4px,
+        #000 4px,
+        #000 5px,
+        #fff 5px,
+        #fff 8px
+    );
+  }
+
+  .vertical-text {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    transform: rotate(180deg);
+  }
+
+  /* Leaflet Dark Mode Fix */
+  .dark .leaflet-tile {
+    filter: brightness(0.6) invert(1) contrast(3) hue-rotate(200deg) saturate(0.3) brightness(0.7);
+  }
+  .dark .leaflet-container {
+    background: #09090b;
+  }
+
+  .preserve-3d { transform-style: preserve-3d; }
+  .backface-hidden { backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+  .rotate-y-180 { transform: rotateY(180deg); }
+  
+  .logo-sistema {
+    @apply h-[65px] w-auto transition-all duration-300 object-contain;
+  }
+
+  @keyframes marquee-led {
+    0% { transform: translateX(100%); }
+    100% { transform: translateX(-100%); }
+  }
+
+  @keyframes marquee-led-reverse {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+  }
+
+  .animate-marquee-led {
+    animation: marquee-led linear infinite;
+  }
+
+  .animate-marquee-led-reverse {
+    animation: marquee-led-reverse linear infinite;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 0;
+  }
+  body { 
+    visibility: hidden !important; 
+    background: white !important;
+    -webkit-print-color-adjust: exact !important; 
+    print-color-adjust: exact !important;
+  }
+  #payslip-a4, #payslip-a4 * {
+    visibility: visible !important;
+  }
+  #payslip-a4 {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 210mm !important;
+    height: 297mm !important;
+    display: block !important;
+    padding: 15mm !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    background: white !important;
+  }
+  .no-print { display: none !important; }
+}
+
+* {
+  -webkit-print-color-adjust: exact !important;
+  print-color-adjust: exact !important;
+}
+
+.notification-item-fadeout {
+  opacity: 0;
+  transition: opacity 0.5s ease-out;
+}
+
+/* =========================================================================
+   ESTILOS DO TOUR GUIADO (DRIVER.JS OVERLAY & POPOVER)
+   ========================================================================= */
+.driver-popover.vialivre-tour-popover,
+.driver-popover {
+  background: #09090b !important;
+  color: #f8fafc !important;
+  border: 2px solid #facc15 !important;
+  border-radius: 1.5rem !important;
+  padding: 1.5rem !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(250, 204, 21, 0.25) !important;
+  max-width: 380px !important;
+  font-family: var(--font-sans) !important;
+  animation: tour-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
+}
+
+@keyframes tour-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.driver-popover .driver-popover-title {
+  font-size: 0.95rem !important;
+  font-weight: 900 !important;
+  color: #facc15 !important;
+  text-transform: uppercase !important;
+  letter-spacing: -0.02em !important;
+  margin-bottom: 0.6rem !important;
+}
+
+.driver-popover .driver-popover-description {
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  color: #e2e8f0 !important;
+  line-height: 1.6 !important;
+  margin-bottom: 1.25rem !important;
+}
+
+.driver-popover .driver-popover-footer {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 0.5rem !important;
+  border-top: 1px solid rgba(255, 255, 255, 0.1) !important;
+  padding-top: 1rem !important;
+  margin-top: 0.5rem !important;
+}
+
+.driver-popover .driver-popover-progress-text {
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+  color: #a1a1aa !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.05em !important;
+}
+
+.driver-popover .driver-popover-navigation-btns {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.4rem !important;
+}
+
+.driver-popover .driver-popover-prev-btn {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #cbd5e1 !important;
+  border: 1px solid rgba(255, 255, 255, 0.15) !important;
+  border-radius: 0.75rem !important;
+  padding: 0.45rem 0.85rem !important;
+  font-size: 0.7rem !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover .driver-popover-prev-btn:hover {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+}
+
+.driver-popover .driver-popover-next-btn {
+  background: #facc15 !important;
+  color: #09090b !important;
+  border: 2px solid #09090b !important;
+  border-radius: 0.75rem !important;
+  padding: 0.45rem 1rem !important;
+  font-size: 0.7rem !important;
+  font-weight: 900 !important;
+  text-transform: uppercase !important;
+  cursor: pointer !important;
+  box-shadow: 0 4px 12px rgba(250, 204, 21, 0.3) !important;
+  transition: all 0.2s ease !important;
+}
+
+.driver-popover .driver-popover-next-btn:hover {
+  background: #fde047 !important;
+  transform: translateY(-1px) !important;
+}
+
+.driver-popover .driver-popover-close-btn {
+  color: #94a3b8 !important;
+  transition: color 0.2s ease !important;
+}
+
+.driver-popover .driver-popover-close-btn:hover {
+  color: #facc15 !important;
+}
+
+.driver-popover .driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: #facc15 !important;
+}
+.driver-popover .driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: #facc15 !important;
+}
+.driver-popover .driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: #facc15 !important;
+}
+.driver-popover .driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: #facc15 !important;
+}
+
+.driver-active-element {
+  outline: 3px solid #facc15 !important;
+  outline-offset: 3px !important;
+  box-shadow: 0 0 0 6px rgba(250, 204, 21, 0.3), 0 0 35px rgba(250, 204, 21, 0.4) !important;
+  border-radius: 1rem !important;
+  transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
+}
+
+
