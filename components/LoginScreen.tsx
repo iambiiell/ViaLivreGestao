@@ -239,7 +239,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
             // Initialize System Settings
             await db.create('system_settings', {
                 system_id: systemId,
-                system_name: regUnidade,
+                system_name: 'ViaLivre Gestão',
                 company_name: regUnidade,
                 registration_pattern: 'FLX-000'
             });
@@ -318,29 +318,29 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                   />
                 </div>
                 <h1 className="text-2xl font-black uppercase italic tracking-tighter transition-colors text-slate-900">
-                  {systemSettings?.system_name ? (
-                    (systemSettings.system_name.includes('Viação Nicolau S/A') || 
-                     systemSettings.system_name.includes('Grupo D\'Rio') || 
-                     systemSettings.system_name.toLowerCase().includes('vialivre')) ? (
-                      <>Via<span className="text-slate-900 underline decoration-slate-950 decoration-4">Livre</span> Gestão</>
-                    ) : (
-                      systemSettings.system_name
-                    )
-                  ) : (
-                    <>Via<span className="text-slate-900 underline decoration-slate-950 decoration-4">Livre</span> Gestão</>
-                  )}
+                  {(() => {
+                    const sysName = systemSettings?.system_name || 'ViaLivre Gestão';
+                    const compName = (systemSettings?.company_name || '').toLowerCase();
+                    const lower = sysName.toLowerCase();
+                    if (
+                      !systemSettings?.system_name ||
+                      (compName && lower === compName) ||
+                      lower.includes('nicolau') ||
+                      lower.includes('viação') ||
+                      lower.includes('viacao') ||
+                      lower.includes('transportes') ||
+                      lower.includes("d'rio") ||
+                      lower.includes('consorcio imperial') ||
+                      lower.includes('vialivre')
+                    ) {
+                      return <>Via<span className="text-slate-900 underline decoration-slate-950 decoration-4">Livre</span> Gestão</>;
+                    }
+                    return sysName;
+                  })()}
                 </h1>
             </div>
             <h2 className="text-2xl lg:text-3xl font-black leading-tight tracking-tight uppercase italic transition-colors text-slate-900">
-              {systemSettings?.system_name 
-                ? `Gestão simplificada e automatizada para ${
-                    (systemSettings.system_name.includes('Viação Nicolau S/A') || 
-                     systemSettings.system_name.includes('Grupo D\'Rio') || 
-                     systemSettings.system_name.toLowerCase().includes('vialivre')) 
-                    ? 'ViaLivre Gestão' 
-                    : systemSettings.system_name
-                  }` 
-                : 'Gestão simplificada e automatizada para sua empresa'}
+              Gestão simplificada e automatizada para sua empresa
             </h2>
           </div>
           <div className="pt-6">

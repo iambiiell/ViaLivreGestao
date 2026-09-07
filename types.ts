@@ -404,6 +404,8 @@ export interface Vehicle {
   capacity?: number;
   skin_id?: string;
   current_turnstile_count?: number;
+  route_id?: string;
+  default_route_id?: string;
 }
 
 export interface DriverGuide {

@@ -684,7 +684,28 @@ const App: React.FC = () => {
   const [systemSettings, setSystemSettings] = useState<SystemSettings>(() => {
     try {
       const saved = localStorage.getItem('vialivre_system_settings');
-      if (saved) return JSON.parse(saved);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        const compLower = (parsed.company_name || '').trim().toLowerCase();
+        const sysLower = (parsed.system_name || '').trim().toLowerCase();
+        if (
+          !parsed.system_name ||
+          (compLower && sysLower === compLower) ||
+          sysLower.includes('viação') ||
+          sysLower.includes('viacao') ||
+          sysLower.includes('nicolau') ||
+          sysLower.includes("d'rio") ||
+          sysLower.includes('consorcio imperial') ||
+          sysLower.includes('consórcio imperial') ||
+          sysLower.includes('transportes')
+        ) {
+          parsed.system_name = 'ViaLivre Gestão';
+          try {
+            localStorage.setItem('vialivre_system_settings', JSON.stringify(parsed));
+          } catch {}
+        }
+        return parsed;
+      }
     } catch (e) {}
     return {
       id: 'sys-set-001',
@@ -1011,9 +1032,24 @@ const App: React.FC = () => {
         }
       }
       if (settings.status === 'fulfilled' && settings.value && settings.value.length > 0) {
-        const s = settings.value[0];
+        const s = { ...settings.value[0] };
         if (s.system_logo) {
           s.system_logo = `${s.system_logo.split('?')[0]}?t=${Date.now()}`;
+        }
+        const compLower = (s.company_name || '').trim().toLowerCase();
+        const sysLower = (s.system_name || '').trim().toLowerCase();
+        if (
+          !s.system_name ||
+          (compLower && sysLower === compLower) ||
+          sysLower.includes('viação') ||
+          sysLower.includes('viacao') ||
+          sysLower.includes('nicolau') ||
+          sysLower.includes("d'rio") ||
+          sysLower.includes('consorcio imperial') ||
+          sysLower.includes('consórcio imperial') ||
+          sysLower.includes('transportes')
+        ) {
+          s.system_name = 'ViaLivre Gestão';
         }
         setSystemSettings(s);
       }

@@ -35,6 +35,30 @@ interface SidebarProps {
   onEditProfile?: (user: User) => void;
 }
 
+const getDisplaySystemName = (settings?: SystemSettings | null): string => {
+  if (!settings?.system_name) return 'ViaLivre Gestão';
+  const name = settings.system_name.trim();
+  const lower = name.toLowerCase();
+  const comp = (settings.company_name || '').trim().toLowerCase();
+
+  // O nome do sistema deve ser padrão "ViaLivre Gestão", e não o nome da empresa cadastrada (ex: Viação Nicolau Transportes S/A)
+  if (
+    (comp && lower === comp) ||
+    lower.includes('viação') ||
+    lower.includes('viacao') ||
+    lower.includes('nicolau') ||
+    lower.includes("d'rio") ||
+    lower.includes('consorcio imperial') ||
+    lower.includes('consórcio imperial') ||
+    lower.includes('transportes') ||
+    lower.includes('vialivre')
+  ) {
+    return 'ViaLivre Gestão';
+  }
+
+  return name;
+};
+
 const Sidebar: React.FC<SidebarProps> = ({ 
   currentView, 
   onChangeView, 
@@ -434,16 +458,10 @@ const Sidebar: React.FC<SidebarProps> = ({
                 />
             </div>
             <h1 className="text-lg sm:text-xl font-black tracking-tighter text-slate-950 dark:text-white uppercase italic leading-none transition-colors">
-              {systemSettings?.system_name ? (
-                (systemSettings.system_name.includes('Viação Nicolau S/A') || 
-                 systemSettings.system_name.includes('Grupo D\'Rio') || 
-                 systemSettings.system_name.toLowerCase().includes('vialivre')) ? (
-                  <>Via<span className="text-yellow-500">Livre</span> Gestão</>
-                ) : (
-                  systemSettings.system_name
-                )
-              ) : (
+              {getDisplaySystemName(systemSettings) === 'ViaLivre Gestão' ? (
                 <>Via<span className="text-yellow-500">Livre</span> Gestão</>
+              ) : (
+                getDisplaySystemName(systemSettings)
               )}
             </h1>
         </div>
@@ -821,7 +839,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           if (parent) {
                             const span = document.createElement('span');
                             span.className = 'text-[9px] font-black uppercase italic text-slate-900 dark:text-white';
-                            span.innerText = systemSettings?.system_name?.[0] || 'V';
+                            span.innerText = getDisplaySystemName(systemSettings)?.[0] || 'V';
                             parent.appendChild(span);
                           }
                         }}
@@ -832,7 +850,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                   <div className="min-w-0">
                     <span className="block font-black text-[12px] tracking-tight uppercase text-slate-950 dark:text-white italic truncate leading-tight">
-                      {(systemSettings?.system_name?.includes('Viação Nicolau S/A') || systemSettings?.system_name?.includes('Grupo D\'Rio') || systemSettings?.system_name?.includes('ViaLivre')) ? 'ViaLivre Gestão' : (systemSettings?.system_name || 'ViaLivre Gestão')}
+                      {getDisplaySystemName(systemSettings) === 'ViaLivre Gestão' ? (
+                        <>Via<span className="text-yellow-500">Livre</span> Gestão</>
+                      ) : (
+                        getDisplaySystemName(systemSettings)
+                      )}
                     </span>
                     <span className="text-[9px] font-bold text-slate-400 dark:text-zinc-500 uppercase tracking-widest block truncate">
                       Menu Principal
@@ -952,7 +974,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <button 
                     onClick={() => {
                       const phone = systemSettings?.support_phone?.replace(/\D/g, '') || '5524978358199';
-                      const name = systemSettings?.system_name || 'ViaLivre Gestão';
+                      const name = getDisplaySystemName(systemSettings);
                       window.open(`https://wa.me/${phone}?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20${encodeURIComponent(name)}`, '_blank');
                     }}
                     className="flex items-center justify-center gap-1.5 py-3 bg-slate-900 dark:bg-zinc-800 hover:bg-black dark:hover:bg-zinc-700 text-white rounded-xl font-black uppercase text-[9px] tracking-wider shadow-sm transition-all active:scale-95"

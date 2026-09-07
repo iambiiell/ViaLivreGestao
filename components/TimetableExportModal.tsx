@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { toPng } from 'html-to-image';
+import jsPDF from 'jspdf';
 import { BusRoute, Company, SystemSettings } from '../types';
 import { 
   X, 
@@ -30,7 +31,8 @@ import {
   Square,
   Eye,
   ListChecks,
-  Pencil
+  Pencil,
+  FileText
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -206,7 +208,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
 
   const [activeDrawerTab, setActiveDrawerTab] = useState<'weekdays' | 'saturday' | 'sunday'>('weekdays');
   const [showConfigDrawer, setShowConfigDrawer] = useState(false);
-  const [zoomLevel, setZoomLevel] = useState(0.85);
+  const [zoomLevel, setZoomLevel] = useState(0.75);
 
   // Legendas e outras direções da rota (ex: passa pelo centro, não passa pelo centro)
   const [timeLegends, setTimeLegends] = useState<TimeLegendEntry[]>(() => {
@@ -714,7 +716,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
     handleToggleSimultaneous(true);
   };
 
-  // High-Resolution Export via html-to-image (pixelRatio: 3)
+  // High-Resolution Export via html-to-image (pixelRatio: 3) ajustado para Folha A4
   const handleDownloadPNG = async () => {
     if (!posterRef.current) return;
     setIsExporting(true);
@@ -733,23 +735,68 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
 
       const link = document.createElement('a');
       // Padrão solicitado: "Código da Linha": "Ponto de Origem" x "Ponto de Destino"
-      // Exemplo: L-01: Areal - Rua de Cima x Centro.png
       const lineCode = (route.prefixo_linha || route.code || '').trim();
       const origin = (route.origin || 'Origem').trim();
       const destination = (route.destination || 'Destino').trim();
 
       const exportFilename = lineCode 
-        ? `${lineCode}: ${origin} x ${destination}.png`
-        : `${origin} x ${destination}.png`;
+        ? `${lineCode}: ${origin} x ${destination} (A4).png`
+        : `${origin} x ${destination} (A4).png`;
 
       link.download = exportFilename;
       link.href = dataUrl;
       link.click();
 
-      addToast?.("Grade de horários exportada com sucesso em alta resolução (3x PNG)!", "success");
+      addToast?.("Grade de horários exportada com sucesso em alta resolução (PNG A4)!", "success");
     } catch (error) {
       console.error("Erro ao gerar PNG do quadro de horários:", error);
       addToast?.("Não foi possível gerar a imagem PNG. Tente novamente.", "error");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  // Exportação em PDF diretamente formatada para Folha de Tamanho A4 (210mm x 297mm)
+  const handleDownloadPDF = async () => {
+    if (!posterRef.current) return;
+    setIsExporting(true);
+
+    try {
+      await new Promise(resolve => setTimeout(resolve, 250));
+
+      const dataUrl = await toPng(posterRef.current, {
+        pixelRatio: 3,
+        cacheBust: true,
+        backgroundColor: '#ffffff',
+        filter: (node: HTMLElement) => {
+          return !node.classList?.contains('no-export');
+        }
+      });
+
+      // Criação do documento PDF em padrão internacional Folha A4
+      const pdf = new jsPDF({
+        orientation: 'portrait',
+        unit: 'mm',
+        format: 'a4'
+      });
+
+      // Folha A4 tem exatamente 210 x 297 milímetros
+      pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'FAST');
+
+      const lineCode = (route.prefixo_linha || route.code || '').trim();
+      const origin = (route.origin || 'Origem').trim();
+      const destination = (route.destination || 'Destino').trim();
+
+      const exportFilename = lineCode 
+        ? `${lineCode}: ${origin} x ${destination} (A4).pdf`
+        : `${origin} x ${destination} (A4).pdf`;
+
+      pdf.save(exportFilename);
+
+      addToast?.("Grade de horários exportada com sucesso em PDF (Folha A4)!", "success");
+    } catch (error) {
+      console.error("Erro ao gerar PDF do quadro de horários:", error);
+      addToast?.("Não foi possível gerar o arquivo PDF. Tente novamente.", "error");
     } finally {
       setIsExporting(false);
     }
@@ -852,19 +899,30 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
             </button>
 
             <button
+              onClick={handleDownloadPDF}
+              disabled={isExporting}
+              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-black uppercase flex items-center gap-1.5 shadow-md active:scale-95 transition-all border border-slate-700 disabled:opacity-50"
+              title="Exportar grade em documento PDF formatado para folha A4"
+            >
+              <FileText size={15} className="text-rose-400" />
+              <span className="hidden sm:inline">PDF (A4)</span>
+            </button>
+
+            <button
               onClick={handleDownloadPNG}
               disabled={isExporting}
               className="px-4 py-2 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-lg active:scale-95 transition-all border border-orange-400 disabled:opacity-50"
+              title="Baixar imagem em alta resolução ajustada em folha A4 (300 DPI)"
             >
               {isExporting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Gerando PNG (3x)...</span>
+                  <span>Gerando...</span>
                 </>
               ) : (
                 <>
                   <Download size={16} />
-                  <span>Baixar Grade (PNG)</span>
+                  <span>PNG (A4)</span>
                 </>
               )}
             </button>
@@ -1002,6 +1060,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
               />
             </div>
 
+            {/* Folha A4 Badge */}
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-950/40 text-[#08456c] dark:text-blue-300 rounded-xl border border-blue-200 dark:border-blue-800 text-[11px] font-black uppercase tracking-wider shadow-xs">
+              <span>Folha A4</span>
+              <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400 font-mono">(210 × 297 mm)</span>
+            </div>
+
             {/* Zoom Controls */}
             <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 p-1 rounded-xl border border-slate-300 dark:border-zinc-700 shadow-sm">
               <button
@@ -1022,9 +1086,9 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                 <ZoomIn size={13} />
               </button>
               <button
-                onClick={() => setZoomLevel(0.82)}
+                onClick={() => setZoomLevel(0.75)}
                 className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-zinc-200"
-                title="Redefinir Zoom"
+                title="Redefinir Zoom (100% A4)"
               >
                 <RotateCcw size={12} />
               </button>
@@ -1518,26 +1582,26 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
             className="shrink-0"
           >
             {/* ========================================================================= */}
-            {/* O CARTAZ DE EXPORTAÇÃO (Alta Resolução com Colunas de Ida e Volta)       */}
+            {/* O CARTAZ DE EXPORTAÇÃO (Formato Folha A4: 794x1123px / 210x297mm)         */}
             {/* ========================================================================= */}
             <div
               ref={posterRef}
               id="timetable-poster-element"
-              className="bg-white text-slate-900 w-[820px] min-h-[960px] flex flex-row border-[6px] border-[#08456c] shadow-2xl relative select-text"
+              className="bg-white text-slate-900 w-[794px] min-h-[1123px] flex flex-row border-[6px] border-[#08456c] shadow-2xl relative select-text"
               style={{
                 fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
                 boxSizing: 'border-box'
               }}
             >
-              {/* Coluna Principal (Conteúdo do Cartaz) */}
+              {/* Coluna Principal (Conteúdo do Cartaz A4) */}
               <div className="flex-1 flex flex-col justify-between bg-white">
                 
                 {/* 1. CABEÇALHO SUPERIOR: Fundo Laranja (#ff6a00) */}
-                <div className="bg-[#ff6a00] p-6 sm:p-7 text-white flex items-center justify-between border-b-4 border-orange-700 shadow-md">
-                  <div className="flex items-center gap-5">
+                <div className="bg-[#ff6a00] p-5 sm:p-6 text-white flex items-center justify-between border-b-4 border-orange-700 shadow-md">
+                  <div className="flex items-center gap-4 sm:gap-5">
                     {/* Logo da Empresa cadastrada ou Iniciais */}
                     {company?.logo_url ? (
-                      <div className="w-20 h-20 bg-white rounded-2xl p-1.5 flex items-center justify-center shadow-xl border-4 border-white/90 shrink-0 overflow-hidden">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl p-1.5 flex items-center justify-center shadow-xl border-4 border-white/90 shrink-0 overflow-hidden">
                         <img 
                           src={company.logo_url} 
                           alt={companyName} 
@@ -1547,8 +1611,8 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         />
                       </div>
                     ) : (
-                      <div className="w-20 h-20 bg-white rounded-full flex flex-col items-center justify-center text-[#ff6a00] shadow-xl border-4 border-white/90 shrink-0">
-                        <Bus size={32} className="text-[#ff6a00]" />
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-full flex flex-col items-center justify-center text-[#ff6a00] shadow-xl border-4 border-white/90 shrink-0">
+                        <Bus size={30} className="text-[#ff6a00]" />
                         <span className="text-[10px] font-black uppercase tracking-tighter leading-none mt-0.5 text-slate-900">
                           {companyName.slice(0, 8)}
                         </span>
@@ -1564,6 +1628,13 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         {companyName}
                       </p>
                     </div>
+                  </div>
+
+                  {/* Identificador Padrão A4 */}
+                  <div className="hidden sm:flex flex-col items-end opacity-90">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-100 bg-orange-700/60 px-2.5 py-1 rounded-md border border-orange-400/40">
+                      PADRÃO A4
+                    </span>
                   </div>
                 </div>
 
@@ -1856,31 +1927,46 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
         </div>
 
         {/* Modal Bottom Footer Actions */}
-        <div className="p-4 sm:px-6 bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex justify-between items-center shrink-0">
-          <p className="text-xs text-slate-500 dark:text-zinc-400 font-medium">
-            Grade organizada por colunas de <strong>Ida ({route.origin})</strong> e <strong>Volta ({route.destination})</strong> em resolução <strong>3x (300 DPI)</strong>.
-          </p>
-          <div className="flex items-center gap-3">
+        <div className="p-4 sm:px-6 bg-white dark:bg-zinc-900 border-t border-slate-200 dark:border-zinc-800 flex flex-col sm:flex-row justify-between items-center gap-3 shrink-0">
+          <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-zinc-400 font-medium">
+            <span className="px-2 py-0.5 bg-blue-100 dark:bg-blue-900/60 text-[#08456c] dark:text-blue-200 font-black rounded text-[10px] uppercase font-mono">
+              Folha A4 • 210x297mm
+            </span>
+            <span className="hidden md:inline">
+              Ajustado perfeitamente para impressão e exportação em folha A4 (proporção 1:√2 em 300 DPI).
+            </span>
+          </div>
+          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
             <button
               onClick={onClose}
-              className="px-5 py-2.5 rounded-xl text-xs font-black uppercase border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+              className="px-4 py-2.5 rounded-xl text-xs font-black uppercase border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
             >
               Fechar
             </button>
             <button
+              onClick={handleDownloadPDF}
+              disabled={isExporting}
+              className="px-4 sm:px-5 py-2.5 bg-slate-900 hover:bg-black text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-md active:scale-95 transition-all border border-slate-700 disabled:opacity-50"
+              title="Salvar grade em arquivo PDF de página única formato A4"
+            >
+              <FileText size={16} className="text-rose-400" />
+              <span>Baixar PDF (A4)</span>
+            </button>
+            <button
               onClick={handleDownloadPNG}
               disabled={isExporting}
-              className="px-6 py-2.5 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-xl active:scale-95 transition-all border border-orange-400 disabled:opacity-50"
+              className="px-5 sm:px-6 py-2.5 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-xs font-black uppercase flex items-center gap-2 shadow-xl active:scale-95 transition-all border border-orange-400 disabled:opacity-50"
+              title="Baixar imagem PNG de alta resolução ajustada para folha A4"
             >
               {isExporting ? (
                 <>
                   <Loader2 size={16} className="animate-spin" />
-                  <span>Gerando PNG...</span>
+                  <span>Gerando...</span>
                 </>
               ) : (
                 <>
                   <Download size={16} />
-                  <span>Baixar Grade (PNG)</span>
+                  <span>Baixar PNG (A4)</span>
                 </>
               )}
             </button>

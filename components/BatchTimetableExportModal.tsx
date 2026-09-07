@@ -684,19 +684,19 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
         {renderingRoute && (
           <div
             ref={hiddenPosterRef}
-            className="bg-white text-slate-900 w-[820px] min-h-[960px] flex flex-row border-[6px] border-[#08456c] shadow-2xl relative select-text"
+            className="bg-white text-slate-900 w-[794px] min-h-[1123px] flex flex-row border-[6px] border-[#08456c] shadow-2xl relative select-text"
             style={{
               fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
               boxSizing: 'border-box'
             }}
           >
-            {/* Coluna Principal */}
+            {/* Coluna Principal (Formato Folha A4) */}
             <div className="flex-1 flex flex-col justify-between bg-white">
               {/* 1. CABEÇALHO SUPERIOR */}
-              <div className="bg-[#ff6a00] p-6 sm:p-7 text-white flex items-center justify-between border-b-4 border-orange-700 shadow-md">
-                <div className="flex items-center gap-5">
+              <div className="bg-[#ff6a00] p-5 sm:p-6 text-white flex items-center justify-between border-b-4 border-orange-700 shadow-md">
+                <div className="flex items-center gap-4 sm:gap-5">
                   {renderingRoute.company?.logo_url ? (
-                    <div className="w-20 h-20 bg-white rounded-2xl p-1.5 flex items-center justify-center shadow-xl border-4 border-white/90 shrink-0 overflow-hidden">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-2xl p-1.5 flex items-center justify-center shadow-xl border-4 border-white/90 shrink-0 overflow-hidden">
                       <img 
                         src={renderingRoute.company.logo_url} 
                         alt={renderingRoute.companyName} 
@@ -706,8 +706,8 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                       />
                     </div>
                   ) : (
-                    <div className="w-20 h-20 bg-white rounded-full flex flex-col items-center justify-center text-[#ff6a00] shadow-xl border-4 border-white/90 shrink-0">
-                      <Bus size={32} className="text-[#ff6a00]" />
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 bg-white rounded-full flex flex-col items-center justify-center text-[#ff6a00] shadow-xl border-4 border-white/90 shrink-0">
+                      <Bus size={30} className="text-[#ff6a00]" />
                       <span className="text-[10px] font-black uppercase tracking-tighter leading-none mt-0.5 text-slate-900">
                         {renderingRoute.companyName.slice(0, 8)}
                       </span>
@@ -723,10 +723,16 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                     </p>
                   </div>
                 </div>
+
+                <div className="hidden sm:flex flex-col items-end opacity-90">
+                  <span className="text-[10px] font-black uppercase tracking-widest text-orange-100 bg-orange-700/60 px-2.5 py-1 rounded-md border border-orange-400/40">
+                    PADRÃO A4
+                  </span>
+                </div>
               </div>
 
               {/* 2. LINHA / TRAJETO */}
-              <div className="py-5 px-6 bg-slate-50 border-b-4 border-slate-200 text-center shadow-inner">
+              <div className="py-3.5 px-6 bg-slate-50 border-b-4 border-slate-200 text-center shadow-inner">
                 <h2 className="text-2xl sm:text-3xl font-black uppercase italic tracking-tight text-slate-900 leading-tight flex items-center justify-center flex-wrap gap-2.5">
                   {renderingRoute.lineCode && (
                     <span className="not-italic font-mono font-black text-lg sm:text-xl px-3 py-1 bg-slate-900 text-yellow-400 rounded-xl shadow-md border border-slate-700 inline-flex items-center shrink-0">
@@ -746,7 +752,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
               </div>
 
               {/* 3. SEÇÕES DE HORÁRIOS */}
-              <div className="p-6 space-y-4 flex-1 flex flex-col justify-start">
+              <div className="p-4 sm:p-5 space-y-3.5 flex-1 flex flex-col justify-start">
                 {[
                   { key: 'weekdays' as const, label: 'Segunda a Sexta-feira' },
                   { key: 'saturday' as const, label: 'Sábados' },
@@ -790,9 +796,9 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                   };
 
                   return (
-                    <div key={day.key} className="rounded-2xl overflow-hidden border-2 border-[#0b5c8f] shadow-md bg-[#0b5c8f]">
-                      <div className="bg-[#08456c] py-2.5 px-5 text-white flex items-center justify-between border-b-2 border-blue-900">
-                        <h3 className="font-black text-base uppercase tracking-widest">{day.label}</h3>
+                    <div key={day.key} className="rounded-xl overflow-hidden border-2 border-[#0b5c8f] shadow-md bg-[#0b5c8f]">
+                      <div className="bg-[#08456c] py-2 px-4 text-white flex items-center justify-between border-b-2 border-blue-900">
+                        <h3 className="font-black text-sm sm:text-base uppercase tracking-widest">{day.label}</h3>
                         <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
                           {simultaneousDepartures 
                             ? `${dayTimes.ida.length} horários • Saídas Simultâneas`
@@ -802,7 +808,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
 
                       {simultaneousDepartures ? (
                         <div className="flex flex-col bg-[#0b5c8f]">
-                          <div className="bg-[#073959] py-2.5 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
+                          <div className="bg-[#073959] py-2 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
                             <span className="px-2.5 py-0.5 bg-yellow-400 text-slate-950 font-black text-xs uppercase rounded font-mono shadow-sm">
                               SIMULTÂNEAS
                             </span>
@@ -810,7 +816,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                               Saídas Simultâneas
                             </span>
                           </div>
-                          <div className="p-5 flex-1 flex flex-col justify-center">
+                          <div className="p-4 flex-1 flex flex-col justify-center">
                             {renderTimeList(dayTimes.ida, 'ida')}
                           </div>
                         </div>
@@ -818,7 +824,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                         <div className="grid grid-cols-2 divide-x-2 divide-[#08456c]">
                           {/* Coluna 1: IDA */}
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-2 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
+                            <div className="bg-[#073959] py-1.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
                               <span className="px-2 py-0.5 bg-yellow-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
                                 IDA
                               </span>
@@ -826,14 +832,14 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                                 Saída: {renderingRoute.route.origin}
                               </span>
                             </div>
-                            <div className="p-4 flex-1 flex flex-col justify-center">
+                            <div className="p-3.5 flex-1 flex flex-col justify-center">
                               {renderTimeList(dayTimes.ida, 'ida')}
                             </div>
                           </div>
 
                           {/* Coluna 2: VOLTA */}
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-2 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
+                            <div className="bg-[#073959] py-1.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
                               <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
                                 VOLTA
                               </span>
@@ -841,7 +847,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                                 Saída: {renderingRoute.route.destination}
                               </span>
                             </div>
-                            <div className="p-4 flex-1 flex flex-col justify-center">
+                            <div className="p-3.5 flex-1 flex flex-col justify-center">
                               {renderTimeList(dayTimes.volta, 'volta')}
                             </div>
                           </div>
@@ -854,7 +860,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
 
               {/* 3.5 LEGENDAS (SE EXISTIREM) */}
               {renderingRoute.legends.length > 0 && (
-                <div className="bg-slate-100 border-t-4 border-slate-300 px-6 py-3.5 text-slate-900 shadow-inner">
+                <div className="bg-slate-100 border-t-4 border-slate-300 px-5 py-3 text-slate-900 shadow-inner">
                   <div className="flex items-center gap-2 mb-2 pb-1.5 border-b border-slate-200">
                     <span className="px-2.5 py-0.5 bg-[#08456c] text-yellow-300 font-black text-[11px] uppercase rounded font-mono shadow-xs">
                       LEGENDA
@@ -865,11 +871,11 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                   </div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
                     {renderingRoute.legends.map((item) => (
-                      <div key={item.id} className="flex items-start gap-2.5 p-2.5 bg-white rounded-xl border border-slate-200 shadow-xs">
+                      <div key={item.id} className="flex items-start gap-2.5 p-2 bg-white rounded-xl border border-slate-200 shadow-xs">
                         <span className="font-mono font-black text-slate-950 bg-yellow-400 px-2.5 py-0.5 rounded text-xs shrink-0 shadow-xs border border-yellow-500">
                           {item.symbol}
                         </span>
-                        <span className="font-black text-slate-900 text-xs sm:text-sm uppercase leading-snug">
+                        <span className="font-black text-slate-900 text-xs uppercase leading-snug">
                           {item.text}
                         </span>
                       </div>
@@ -879,15 +885,15 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
               )}
 
               {/* 4. TARIFA */}
-              <div className="bg-[#ff6a00] py-3.5 px-6 text-white text-center border-t-4 border-orange-700 shadow-md">
+              <div className="bg-[#ff6a00] py-3 px-6 text-white text-center border-t-4 border-orange-700 shadow-md">
                 <p className="text-xl sm:text-2xl font-black uppercase tracking-wider text-white drop-shadow-sm">
                   Tarifa: R$ {renderingRoute.tariff}
                 </p>
               </div>
 
               {/* 5. RODAPÉ DE ATENDIMENTO */}
-              <div className="bg-[#08456c] text-white py-4 sm:py-5 px-6 border-t-4 border-slate-900">
-                <div className="flex flex-col items-center justify-center text-center space-y-2">
+              <div className="bg-[#08456c] text-white py-3.5 px-6 border-t-4 border-slate-900">
+                <div className="flex flex-col items-center justify-center text-center space-y-1.5">
                   <h4 className="text-xs sm:text-sm font-black uppercase tracking-[0.25em] text-yellow-300">
                     SERVIÇO DE ATENDIMENTO AO CLIENTE
                   </h4>
@@ -906,7 +912,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
             </div>
 
             {/* DATA DE ATUALIZAÇÃO: Tarja Vertical */}
-            <div className="w-14 bg-[#08456c] text-white border-l-4 border-slate-900 flex flex-col items-center justify-center py-6 px-1 select-none shrink-0">
+            <div className="w-12 sm:w-14 bg-[#08456c] text-white border-l-4 border-slate-900 flex flex-col items-center justify-center py-6 px-1 select-none shrink-0">
               <div 
                 className="font-black text-xs sm:text-sm uppercase tracking-[0.3em] whitespace-nowrap text-yellow-300"
                 style={{
