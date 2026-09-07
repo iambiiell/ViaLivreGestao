@@ -443,7 +443,7 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
               <p className="text-xs font-bold text-slate-400 uppercase mb-6 relative z-10">Em caso de acidentes graves ou falha total de comunicação, acione o suporte central imediatamente.</p>
               <button 
                 onClick={() => {
-                    window.open('https://wa.me/5521995421447?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20Viação%20Nicolau%20Transportes%20S/A', '_blank');
+                    window.open('https://wa.me/5521995421447?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20ViaLivre%20Gestão', '_blank');
                 }}
                 className="w-full py-4 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-black uppercase text-xs shadow-xl transition-all relative z-10 flex items-center justify-center gap-2"
               >

@@ -2104,7 +2104,7 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                                 id: 'sys-set-001',
                                 system_id: 'sys-vialivre-default',
                                 system_name: 'ViaLivre Gestão',
-                                company_name: 'Viação Nicolau S/A',
+                                company_name: 'ViaLivre Gestão',
                                 registration_pattern: 'FLX-000',
                                 theme_color: 'yellow',
                                 glass_effect: true,

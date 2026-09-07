@@ -111,9 +111,9 @@ export interface BusRoute {
   sections?: RouteSection[];
   stops: string[];
   schedule: {
-    weekdays: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string }[];
-    saturday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string }[];
-    sunday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string }[];
+    weekdays: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
+    saturday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
+    sunday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
   };
   letreiro_principal: string;
   letreiro_principal_modo: 'FIXO' | 'ROLANTE';
@@ -299,6 +299,12 @@ export interface Subscription {
   expires_at: string;
   status: 'ACTIVE' | 'EXPIRED' | 'CANCELED';
   created_at: string;
+  key_code?: string;
+  key_id?: string;
+  activated_by_name?: string;
+  activated_by_user_id?: string;
+  owner_email?: string;
+  company_name?: string;
 }
 
 export interface Notice {
@@ -344,6 +350,7 @@ export interface Company {
   active: boolean;
   contact_email: string;
   contact_phone: string;
+  logo_url?: string;
   cep?: string;
   address_street?: string;
   address_number?: string;

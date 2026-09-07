@@ -1,6 +1,6 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Company, User, TicketBooth } from '../types';
-import { Plus, Pencil, Trash2, X, Building2, Phone, Mail, Loader2, MapPin, Save, Search, Ticket, UserCheck, ShieldCheck } from 'lucide-react';
+import { Plus, Pencil, Trash2, X, Building2, Phone, Mail, Loader2, MapPin, Save, Search, Ticket, UserCheck, ShieldCheck, Upload, Image as ImageIcon } from 'lucide-react';
 import { fetchAddress } from '../services/cep';
 import { cnpjMask, phoneMask, cepMask, ieMask } from '../utils/masks';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -38,9 +38,10 @@ const CompanyManager: React.FC<CompanyManagerProps> = ({
   const [isLoadingCep, setIsLoadingCep] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [errors, setErrors] = useState<Set<string>>(new Set());
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
   
   const [formData, setFormData] = useState<Partial<Company>>({ 
-    active: true, name: '', razao_social: '', nome_fantasia: '', cnpj: '', ie: '', cep: '', contact_email: '', contact_phone: ''
+    active: true, name: '', razao_social: '', nome_fantasia: '', cnpj: '', ie: '', cep: '', contact_email: '', contact_phone: '', logo_url: ''
   });
 
   const [boothData, setBoothData] = useState<Partial<TicketBooth>>({
@@ -70,19 +71,44 @@ const CompanyManager: React.FC<CompanyManagerProps> = ({
         .sort((a, b) => a.name.localeCompare(b.name));
   }, [ticketBooths, searchTerm]);
 
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      addToast("Por favor, selecione um arquivo de imagem válido (PNG, JPG, SVG ou WebP).", "error");
+      return;
+    }
+
+    if (file.size > 3 * 1024 * 1024) {
+      addToast("A logo deve ter tamanho máximo de 3MB.", "warning");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      if (base64) {
+        setFormData(prev => ({ ...prev, logo_url: base64 }));
+        addToast("Logo carregada com sucesso!", "success");
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleOpenModal = (item?: Company | TicketBooth) => {
     setErrors(new Set());
     if (activeTab === 'COMPANIES') {
         if (item) {
             setEditingId(item.id);
-            setFormData({ ...item as Company });
+            setFormData({ ...item as Company, logo_url: (item as Company).logo_url || '' });
         } else {
             setEditingId(null);
             setFormData({ 
                 active: true, name: '', razao_social: '', nome_fantasia: '', cnpj: '', ie: '', cep: '', 
                 address_street: '', address_number: '', address_neighborhood: '', 
                 address_city: '', address_state: '', address_complement: '',
-                contact_email: '', contact_phone: ''
+                contact_email: '', contact_phone: '', logo_url: ''
             });
         }
     } else {
@@ -225,6 +251,89 @@ const CompanyManager: React.FC<CompanyManagerProps> = ({
               <form onSubmit={handleSubmit} className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-zinc-950 transition-colors">
                 {activeTab === 'COMPANIES' ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Logo da Empresa */}
+                    <div className="col-span-full bg-slate-50 dark:bg-zinc-900/60 p-5 rounded-3xl border-2 border-dashed border-slate-200 dark:border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <ImageIcon size={18} className="text-amber-500" />
+                          <div>
+                            <label className="block text-[11px] font-black uppercase text-slate-800 dark:text-zinc-200">
+                              Logo da Empresa
+                            </label>
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              Será exibida no cartaz e na exportação da grade horária
+                            </span>
+                          </div>
+                        </div>
+                        {formData.logo_url && (
+                          <button
+                            type="button"
+                            onClick={() => setFormData(prev => ({ ...prev, logo_url: '' }))}
+                            className="text-[10px] font-black uppercase text-red-500 hover:text-red-700 flex items-center gap-1 hover:underline"
+                          >
+                            <Trash2 size={13} />
+                            Remover Logo
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row items-center gap-4">
+                        {formData.logo_url ? (
+                          <div className="w-24 h-24 bg-white rounded-2xl p-2 border-2 border-slate-200 dark:border-zinc-700 shadow-sm flex items-center justify-center shrink-0 overflow-hidden relative group">
+                            <img
+                              src={formData.logo_url}
+                              alt="Prévia da Logo"
+                              className="w-full h-full object-contain"
+                              referrerPolicy="no-referrer"
+                            />
+                            <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity rounded-xl">
+                              <button
+                                type="button"
+                                onClick={() => logoFileInputRef.current?.click()}
+                                className="text-[9px] font-black uppercase text-white bg-amber-500 px-2 py-1 rounded shadow"
+                              >
+                                Trocar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div
+                            onClick={() => logoFileInputRef.current?.click()}
+                            className="w-24 h-24 rounded-2xl bg-white dark:bg-zinc-900 border-2 border-dashed border-slate-300 dark:border-zinc-700 flex flex-col items-center justify-center text-slate-400 hover:border-amber-400 hover:text-amber-500 cursor-pointer transition-all shrink-0 p-2 text-center group"
+                            title="Clique para carregar imagem"
+                          >
+                            <Upload size={22} className="group-hover:scale-110 transition-transform mb-1 text-slate-400 group-hover:text-amber-500" />
+                            <span className="text-[9px] font-black uppercase leading-tight">Carregar Logo</span>
+                          </div>
+                        )}
+
+                        <div className="flex-1 w-full space-y-2">
+                          <input
+                            ref={logoFileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handleLogoUpload}
+                            className="hidden"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => logoFileInputRef.current?.click()}
+                            className="px-4 py-2 bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase flex items-center gap-2 border border-slate-700 transition-all shadow-sm"
+                          >
+                            <Upload size={14} className="text-amber-400" />
+                            Selecionar Arquivo (PNG, JPG, SVG)
+                          </button>
+                          <input
+                            type="url"
+                            placeholder="Ou cole a URL da imagem (https://...)"
+                            value={formData.logo_url?.startsWith('data:') ? '' : (formData.logo_url || '')}
+                            onChange={(e) => setFormData(prev => ({ ...prev, logo_url: e.target.value }))}
+                            className="w-full px-4 py-2 text-xs rounded-xl border border-slate-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-slate-800 dark:text-zinc-200 outline-none focus:border-amber-400"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="col-span-full">
                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-2">Razão Social *</label>
                         <input className={inputClass('razao_social')} value={formData.razao_social || ''} onChange={e => setFormData({...formData, razao_social: e.target.value})} />
@@ -375,7 +484,18 @@ const CompanyManager: React.FC<CompanyManagerProps> = ({
 const CompanyCard = ({ company, onEdit, onDelete, isDeleting, setDeletingId }: any) => (
     <div className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm relative overflow-hidden flex flex-col h-full group hover:shadow-xl transition-all">
         <div className="flex items-center gap-4 mb-6">
-            <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl flex items-center justify-center text-indigo-600 transition-colors"><Building2 size={28} /></div>
+            <div className="w-14 h-14 bg-indigo-50 dark:bg-indigo-900/10 rounded-2xl flex items-center justify-center text-indigo-600 transition-colors overflow-hidden border border-slate-200 dark:border-zinc-800 p-1">
+                {company.logo_url ? (
+                    <img
+                        src={company.logo_url}
+                        alt={company.nome_fantasia || company.name}
+                        className="w-full h-full object-contain"
+                        referrerPolicy="no-referrer"
+                    />
+                ) : (
+                    <Building2 size={28} />
+                )}
+            </div>
             <div>
                 <h3 className="font-black text-slate-800 dark:text-zinc-100 uppercase text-xs truncate max-w-[150px] transition-colors">{company.nome_fantasia || company.name}</h3>
                 <p className="text-[8px] font-mono text-slate-400 truncate max-w-[150px]">CNPJ: {company.cnpj}</p>

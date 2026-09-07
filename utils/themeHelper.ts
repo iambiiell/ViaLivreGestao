@@ -19,7 +19,7 @@ export interface ThemeColorPalette {
 export const PRESET_THEME_COLORS: ThemeColorPalette[] = [
   {
     id: 'yellow',
-    name: 'Amarelo Nicolau (Padrão)',
+    name: 'Amarelo ViaLivre (Padrão)',
     primary: '#facc15',
     dark: '#eab308',
     bgClass: 'bg-[#facc15]',

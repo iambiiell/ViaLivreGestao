@@ -5,7 +5,7 @@ import { BusFront, Download } from 'lucide-react';
 
 const AboutSection: React.FC<{ systemName?: string }> = ({ systemName }) => {
   const whatsappNumber = "5521995421447";
-  const whatsappMsg = encodeURIComponent("Olá! Estou entrando em contato através do sistema Viação Nicolau Transportes S/A.");
+  const whatsappMsg = encodeURIComponent("Olá! Estou entrando em contato através do sistema ViaLivre Gestão.");
   const setupUrl = "https://github.com/vianicolausa/ViaLivre-Gestao/releases/download/v2.0/ViaLivre.Gestao-v2.0.Setup.exe";
 
   return (
@@ -49,7 +49,7 @@ const AboutSection: React.FC<{ systemName?: string }> = ({ systemName }) => {
 
         <div className="space-y-1">
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">
-            Desenvolvedor por Viação Nicolau Transportes S/A • Suporte: <a href="mailto:via.nicolau.sa@gmail.com" className="text-yellow-600 hover:underline">via.nicolau.sa@gmail.com</a>
+            Desenvolvido por ViaLivre Gestão • Suporte: <a href="mailto:via.nicolau.sa@gmail.com" className="text-yellow-600 hover:underline">via.nicolau.sa@gmail.com</a>
           </p>
           <p className="text-[8px] font-black text-slate-400 uppercase tracking-[0.2em]">
             Central de Atendimento: <a href={`tel:${whatsappNumber}`} className="text-yellow-600 hover:underline">(21) 9 9542-1447</a>

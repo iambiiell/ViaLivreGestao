@@ -952,7 +952,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   <button 
                     onClick={() => {
                       const phone = systemSettings?.support_phone?.replace(/\D/g, '') || '5524978358199';
-                      const name = (systemSettings?.system_name?.includes('Viação Nicolau S/A') || systemSettings?.system_name?.includes('Grupo D\'Rio') || systemSettings?.system_name?.includes('ViaLivre')) ? 'Viação Nicolau S/A' : (systemSettings?.system_name || 'Viação Nicolau S/A');
+                      const name = systemSettings?.system_name || 'ViaLivre Gestão';
                       window.open(`https://wa.me/${phone}?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20${encodeURIComponent(name)}`, '_blank');
                     }}
                     className="flex items-center justify-center gap-1.5 py-3 bg-slate-900 dark:bg-zinc-800 hover:bg-black dark:hover:bg-zinc-700 text-white rounded-xl font-black uppercase text-[9px] tracking-wider shadow-sm transition-all active:scale-95"
@@ -1052,7 +1052,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                         id: 'sys-set-001',
                         system_id: 'sys-vialivre-default',
                         system_name: 'ViaLivre Gestão',
-                        company_name: 'Viação Nicolau S/A',
+                        company_name: 'ViaLivre Gestão',
                         registration_pattern: 'FLX-000',
                         theme_color: 'yellow',
                         glass_effect: true,
@@ -1142,7 +1142,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               id: 'sys-set-001',
                               system_id: db.getSystemId() || 'sys-vialivre-default',
                               system_name: 'ViaLivre Gestão',
-                              company_name: 'Viação Nicolau S/A',
+                              company_name: 'ViaLivre Gestão',
                               registration_pattern: 'FLX-000',
                               theme_color: 'yellow',
                               glass_effect: true,
@@ -1179,7 +1179,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               id: 'sys-set-001',
                               system_id: db.getSystemId() || 'sys-vialivre-default',
                               system_name: 'ViaLivre Gestão',
-                              company_name: 'Viação Nicolau S/A',
+                              company_name: 'ViaLivre Gestão',
                               registration_pattern: 'FLX-000',
                               theme_color: 'yellow',
                               glass_effect: true,
@@ -1212,7 +1212,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                               id: 'sys-set-001',
                               system_id: db.getSystemId() || 'sys-vialivre-default',
                               system_name: 'ViaLivre Gestão',
-                              company_name: 'Viação Nicolau S/A',
+                              company_name: 'ViaLivre Gestão',
                               registration_pattern: 'FLX-000',
                               theme_color: 'yellow',
                               glass_effect: true,

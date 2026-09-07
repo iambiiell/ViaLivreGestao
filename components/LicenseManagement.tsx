@@ -12,12 +12,14 @@ import {
   RefreshCw,
   ExternalLink,
   UserCircle,
-  Trash2
+  Trash2,
+  History
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ActivationKey, User } from '../types';
+import { ActivationKey, User, Subscription } from '../types';
 import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
+import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
 
 interface LicenseManagementProps {
   currentUser: User | null;
@@ -26,9 +28,12 @@ interface LicenseManagementProps {
 
 const LicenseManagement: React.FC<LicenseManagementProps> = ({ currentUser, addToast }) => {
   const [keys, setKeys] = useState<ActivationKey[]>([]);
+  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  const [selectedKeyForHistory, setSelectedKeyForHistory] = useState<ActivationKey | null>(null);
 
   useEffect(() => {
     fetchKeys();
@@ -37,8 +42,14 @@ const LicenseManagement: React.FC<LicenseManagementProps> = ({ currentUser, addT
   const fetchKeys = async () => {
     setIsLoading(true);
     try {
-      const data = await db.getActivationKeys();
-      setKeys(data || []);
+      const [keysData, subsData, usersData] = await Promise.all([
+        db.getActivationKeys(),
+        db.getSubscriptions(),
+        db.getUsers()
+      ]);
+      setKeys(keysData || []);
+      setSubscriptions(subsData || []);
+      setUsers(usersData || []);
     } catch (error) {
       console.error('Error fetching keys:', error);
       addToast('Erro ao carregar gestão de licenças', 'error');
@@ -180,18 +191,27 @@ const LicenseManagement: React.FC<LicenseManagementProps> = ({ currentUser, addT
                       </div>
                     </td>
                     <td className="px-8 py-6">
-                      <button 
-                        onClick={() => handleDeleteKey(key.id)}
-                        disabled={isDeleting === key.id}
-                        className="p-2 text-slate-400 hover:text-red-500 transition-all active:scale-95 disabled:opacity-50"
-                        title="Excluir Chave"
-                      >
-                        {isDeleting === key.id ? (
-                          <RefreshCw size={16} className="animate-spin text-red-500" />
-                        ) : (
-                          <Trash2 size={16} />
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button 
+                          onClick={() => setSelectedKeyForHistory(key)}
+                          className="p-2 text-slate-400 hover:text-yellow-500 transition-all active:scale-95"
+                          title="Ver Histórico de Ativações e Registro Inicial"
+                        >
+                          <History size={16} />
+                        </button>
+                        <button 
+                          onClick={() => handleDeleteKey(key.id)}
+                          disabled={isDeleting === key.id}
+                          className="p-2 text-slate-400 hover:text-red-500 transition-all active:scale-95 disabled:opacity-50"
+                          title="Excluir Chave"
+                        >
+                          {isDeleting === key.id ? (
+                            <RefreshCw size={16} className="animate-spin text-red-500" />
+                          ) : (
+                            <Trash2 size={16} />
+                          )}
+                        </button>
+                      </div>
                     </td>
                   </motion.tr>
                 ))}
@@ -207,6 +227,22 @@ const LicenseManagement: React.FC<LicenseManagementProps> = ({ currentUser, addT
           )}
         </div>
       </div>
+
+      {/* Modal Detalhado de Histórico de Ativações */}
+      {selectedKeyForHistory && (
+        <KeyActivationHistoryModal
+          isOpen={!!selectedKeyForHistory}
+          onClose={() => setSelectedKeyForHistory(null)}
+          currentKey={selectedKeyForHistory}
+          subscription={subscriptions.find(s => s.system_id === (selectedKeyForHistory.activated_by_system_id || selectedKeyForHistory.system_id)) || subscriptions[0] || null}
+          allSystemKeys={keys.filter(k => 
+            (k.activated_by_system_id && k.activated_by_system_id === selectedKeyForHistory.activated_by_system_id) ||
+            (k.system_id && k.system_id === selectedKeyForHistory.system_id) ||
+            k.id === selectedKeyForHistory.id
+          )}
+          initialAdmin={users.find(u => u.id === selectedKeyForHistory.activated_by_user_id) || users.find(u => u.role === 'ADMIN' || u.is_full_admin) || currentUser}
+        />
+      )}
     </div>
   );
 };

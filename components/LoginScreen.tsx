@@ -344,7 +344,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
             </h2>
           </div>
           <div className="pt-6">
-            <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-900 opacity-60 transition-colors">Infraestrutura {(systemSettings?.system_name?.includes('Viação Nicolau S/A') || systemSettings?.system_name?.includes('Grupo D\'Rio') || systemSettings?.system_name?.includes('ViaLivre')) ? 'ViaLivre Gestão' : (systemSettings?.system_name || 'ViaLivre Gestão')} Transportes 2026</p>
+            <p className="text-[8px] font-black uppercase tracking-[0.4em] text-slate-900 opacity-60 transition-colors">Infraestrutura ViaLivre Gestão Transportes 2026</p>
           </div>
         </div>
 

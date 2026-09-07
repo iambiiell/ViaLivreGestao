@@ -78,20 +78,7 @@ const SubscriptionExpired: React.FC<SubscriptionExpiredProps> = ({
         owner_email: currentUser?.email
       });
 
-      // Cleanup system's old keys (optional)
-      try {
-        const allKeys = await db.getActivationKeys();
-        const oldKeys = allKeys.filter(k => 
-          k.id !== key.id && 
-          k.is_used && 
-          k.activated_by_system_id === db.getSystemId()
-        );
-        for (const oldKey of oldKeys) {
-          await db.delete('activation_keys', oldKey.id);
-        }
-      } catch (e) {
-        console.error('Error cleaning up old keys:', e);
-      }
+      // Do not delete old keys, keep them for activation history audit trail
 
       let updatedSub: Subscription;
       if (subscription) {
@@ -161,7 +148,7 @@ const SubscriptionExpired: React.FC<SubscriptionExpiredProps> = ({
             </button>
 
             <button
-              onClick={() => window.open('https://wa.me/5521995421447?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20Viação%20Nicolau%20Transportes%20S/A', '_blank')}
+              onClick={() => window.open('https://wa.me/5521995421447?text=Olá,%20preciso%20de%20suporte%20no%20sistema%20ViaLivre%20Gestão', '_blank')}
               className="w-full flex items-center justify-center gap-2 bg-slate-900 text-white py-4 rounded-2xl font-black uppercase text-[10px] tracking-wider hover:bg-slate-800 transition-all shadow-md active:scale-95"
             >
               <PhoneCall className="w-5 h-5" />

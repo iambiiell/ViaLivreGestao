@@ -269,7 +269,7 @@ const ViewContent: React.FC<{
                 </div>
                 <div className="bg-slate-50 dark:bg-zinc-800 p-6 rounded-3xl border border-slate-100 dark:border-zinc-700">
                   <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Desenvolvedor</p>
-                  <p className="text-lg font-black text-slate-900 dark:text-zinc-100">Viação Nicolau Transportes S/A</p>
+                  <p className="text-lg font-black text-slate-900 dark:text-zinc-100">ViaLivre Gestão</p>
                 </div>
                 <div className="bg-slate-50 dark:bg-zinc-800 p-6 rounded-3xl border border-slate-100 dark:border-zinc-700 md:col-span-2">
                   <p className="text-[9px] font-black text-slate-400 uppercase mb-1">Suporte Técnico</p>
@@ -277,7 +277,7 @@ const ViewContent: React.FC<{
                     <a href={`mailto:${systemSettings?.support_email || 'via.nicolau.sa@gmail.com'}`} className="text-lg font-black text-slate-900 dark:text-zinc-100 hover:text-yellow-600 transition-colors uppercase">
                       {systemSettings?.support_email || 'via.nicolau.sa@gmail.com'}
                     </a>
-                    <a href="https://wa.me/5521995421447?text=Ol%C3%A1%2C%20preciso%20de%20suporte%20no%20sistema%20Viação%20Nicolau%20Transportes%20S/A" target="_blank" rel="noopener noreferrer" className="text-sm font-black text-yellow-600 hover:underline">
+                    <a href="https://wa.me/5521995421447?text=Ol%C3%A1%2C%20preciso%20de%20suporte%20no%20sistema%20ViaLivre%20Gest%C3%A3o" target="_blank" rel="noopener noreferrer" className="text-sm font-black text-yellow-600 hover:underline">
                       (21) 9 9542-1447
                     </a>
                   </div>
@@ -690,7 +690,7 @@ const App: React.FC = () => {
       id: 'sys-set-001',
       system_id: 'sys-vialivre-default',
       system_name: 'ViaLivre Gestão',
-      company_name: 'Viação Nicolau Transportes S/A',
+      company_name: 'ViaLivre Gestão',
       registration_pattern: 'FLX-000',
       theme_color: 'yellow',
       glass_effect: true,
@@ -1598,7 +1598,7 @@ const App: React.FC = () => {
         id: prev?.id || 'sys-set-001',
         system_id: prev?.system_id || db.getSystemId() || 'sys-vialivre-default',
         system_name: prev?.system_name || 'ViaLivre Gestão',
-        company_name: prev?.company_name || 'Viação Nicolau Transportes S/A',
+        company_name: prev?.company_name || 'ViaLivre Gestão',
         registration_pattern: prev?.registration_pattern || 'FLX-000',
         theme_color: prev?.theme_color || 'yellow',
         glass_effect: prev?.glass_effect !== false,
@@ -1636,7 +1636,7 @@ const App: React.FC = () => {
           id: 'sys-set-001',
           system_id: db.getSystemId() || 'sys-vialivre-default',
           system_name: 'ViaLivre Gestão',
-          company_name: 'Viação Nicolau Transportes S/A',
+          company_name: 'ViaLivre Gestão',
           registration_pattern: 'FLX-000',
           theme_color: 'yellow',
           glass_effect: true,

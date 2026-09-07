@@ -944,7 +944,7 @@ const ReportManager: React.FC<ReportManagerProps> = ({ trips = [], routes = [], 
                                     </div>
 
                                     <div className="pt-10 border-t-2 border-slate-100 text-center">
-                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">Viação Nicolau S/A • Versão v2.0 • Relatório de Auditoria Consolidada</p>
+                                        <p className="text-[10px] font-black text-slate-300 uppercase tracking-widest">ViaLivre Gestão • Versão v2.0 • Relatório de Auditoria Consolidada</p>
                                     </div>
                                 </>
                             )}

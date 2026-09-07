@@ -1,9 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Save, Loader2, CheckCircle2, AlertTriangle, Settings2, Users, Key, Calendar, CreditCard, RefreshCw, Palette, Pipette, Check } from 'lucide-react';
-import { RoleConfig, Subscription, SystemSettings } from '../types';
+import { ShieldCheck, Save, Loader2, CheckCircle2, AlertTriangle, Settings2, Users, Key, Calendar, CreditCard, RefreshCw, Palette, Pipette, Check, History, KeyRound } from 'lucide-react';
+import { RoleConfig, Subscription, SystemSettings, ActivationKey, User } from '../types';
 import { db } from '../services/database';
 import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor, applyThemeVariables } from '../utils/themeHelper';
+import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
 
 interface SystemConfigManagerProps {
   addToast: (msg: string, type?: 'success' | 'error' | 'warning') => void;
@@ -14,6 +15,10 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [currentKey, setCurrentKey] = useState<ActivationKey | null>(null);
+  const [allSystemKeys, setAllSystemKeys] = useState<ActivationKey[]>([]);
+  const [initialAdmin, setInitialAdmin] = useState<User | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [activationKey, setActivationKey] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
@@ -31,7 +36,7 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
         setSystemSettings(data[0]);
       } else {
         const defaultSettings: Partial<SystemSettings> = {
-          system_name: 'CONSIMP Controle de Frotas',
+          system_name: 'ViaLivre Gestão',
           registration_pattern: 'FLX-000',
           system_url: window.location.origin
         };
@@ -74,9 +79,36 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
 
   const loadSubscription = async () => {
     try {
-      const subs = await db.getSubscriptions();
+      const [subs, keys, users] = await Promise.all([
+        db.getSubscriptions(),
+        db.getActivationKeys(),
+        db.getUsers()
+      ]);
+      
+      let activeSub: Subscription | null = null;
       if (subs && subs.length > 0) {
-        setSubscription(subs[0]);
+        activeSub = subs[0];
+        setSubscription(activeSub);
+      }
+
+      const systemId = db.getSystemId();
+      const relevantKeys = (keys || []).filter(k => 
+        k.activated_by_system_id === systemId || 
+        k.system_id === systemId ||
+        (k.is_used && (!k.activated_by_system_id || k.activated_by_system_id === systemId))
+      ).sort((a, b) => new Date(b.activated_at || b.created_at).getTime() - new Date(a.activated_at || a.created_at).getTime());
+      
+      setAllSystemKeys(relevantKeys);
+
+      const foundCurrentKey = relevantKeys.find(k => k.is_used) || relevantKeys[0] || null;
+      setCurrentKey(foundCurrentKey);
+
+      if (users && users.length > 0) {
+        const foundAdmin = users.find(u => u.id === foundCurrentKey?.activated_by_user_id) ||
+          users.find(u => u.id === activeSub?.activated_by_user_id) ||
+          users.find(u => u.role === 'ADMIN' || u.is_full_admin) ||
+          users[0];
+        setInitialAdmin(foundAdmin || null);
       }
     } catch (error) {
       console.error('Error loading subscription:', error);
@@ -88,19 +120,17 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
     setIsActivating(true);
     try {
       const keys = await db.getActivationKeys();
-      const key = keys.find(k => k.key_code === activationKey && !k.is_used);
+      const key = keys.find(k => k.key_code === activationKey.trim().toUpperCase() && !k.is_used);
       
       if (!key) {
         addToast('Chave inválida ou já utilizada.', 'error');
         return;
       }
 
-      await db.update('activation_keys', {
-        ...key,
-        is_used: true,
-        activated_at: new Date().toISOString(),
-        activated_by_system_id: db.getSystemId()
-      });
+      const activatedAtISO = new Date().toISOString();
+      const users = await db.getUsers();
+      const currentAdmin = users.find(u => u.role === 'ADMIN' || u.is_full_admin) || users[0];
+      const adminName = currentAdmin?.full_name || currentAdmin?.name || 'Administrador';
 
       let expiresAt = new Date();
       if (key.duration_type === 'DAYS' || (key.duration_days && key.duration_days > 0 && key.duration_type !== 'MONTHS')) {
@@ -114,14 +144,31 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
           expiresAt.setMonth(expiresAt.getMonth() + durationMonths);
         }
       }
+      const expiresAtISO = expiresAt.toISOString();
+
+      await db.update('activation_keys', {
+        ...key,
+        is_used: true,
+        activated_at: activatedAtISO,
+        expires_at: expiresAtISO,
+        activated_by_system_id: db.getSystemId(),
+        activated_by_user_id: currentAdmin?.id,
+        activated_by_name: adminName,
+        owner_email: currentAdmin?.email
+      });
 
       const newSub: Partial<Subscription> = {
         system_id: db.getSystemId()!,
         plan_type: key.plan_type,
-        activated_at: new Date().toISOString(),
-        expires_at: expiresAt.toISOString(),
+        activated_at: activatedAtISO,
+        expires_at: expiresAtISO,
         status: 'ACTIVE',
-        created_at: new Date().toISOString()
+        created_at: activatedAtISO,
+        key_code: key.key_code,
+        key_id: key.id,
+        activated_by_name: adminName,
+        activated_by_user_id: currentAdmin?.id,
+        owner_email: currentAdmin?.email
       };
 
       if (subscription) {
@@ -518,11 +565,29 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
                 </div>
               </div>
               {subscription && (
-                <div className="flex items-center gap-4 text-slate-500">
-                  <div className="flex items-center gap-2">
-                    <Calendar size={14} />
-                    <span className="text-[10px] font-bold uppercase">Expira em: {new Date(subscription.expires_at).toLocaleDateString('pt-BR')}</span>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-4 text-slate-500">
+                    <div className="flex items-center gap-2">
+                      <Calendar size={14} />
+                      <span className="text-[10px] font-bold uppercase">Expira em: {new Date(subscription.expires_at).toLocaleDateString('pt-BR')}</span>
+                    </div>
                   </div>
+
+                  {(currentKey?.key_code || subscription.key_code) && (
+                    <div className="flex items-center gap-2 text-slate-500">
+                      <KeyRound size={14} className="text-yellow-500 shrink-0" />
+                      <span className="text-[10px] font-mono font-bold">Chave: {currentKey?.key_code || subscription.key_code}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setShowHistoryModal(true)}
+                    className="w-full py-2.5 px-3 bg-slate-100 dark:bg-zinc-800 hover:bg-yellow-400 hover:text-slate-950 dark:hover:bg-yellow-400 dark:hover:text-slate-950 text-slate-700 dark:text-zinc-200 rounded-xl font-black uppercase text-[9px] tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95 border border-slate-200 dark:border-zinc-700"
+                  >
+                    <History size={14} />
+                    <span>Histórico de Ativações da Chave</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -644,6 +709,15 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
           </div>
         </div>
       </div>
+
+      <KeyActivationHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        currentKey={currentKey}
+        subscription={subscription}
+        allSystemKeys={allSystemKeys}
+        initialAdmin={initialAdmin}
+      />
     </div>
   );
 };

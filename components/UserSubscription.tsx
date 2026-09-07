@@ -12,12 +12,16 @@ import {
   CreditCard,
   Zap,
   ArrowRight,
-  DollarSign
+  DollarSign,
+  History,
+  KeyRound,
+  UserCheck
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { Subscription, User, ActivationKey } from '../types';
 import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
+import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
 
 interface UserSubscriptionProps {
   currentUser: User | null;
@@ -26,6 +30,10 @@ interface UserSubscriptionProps {
 
 const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToast }) => {
   const [subscription, setSubscription] = useState<Subscription | null>(null);
+  const [currentKey, setCurrentKey] = useState<ActivationKey | null>(null);
+  const [allSystemKeys, setAllSystemKeys] = useState<ActivationKey[]>([]);
+  const [initialAdmin, setInitialAdmin] = useState<User | null>(null);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activationKey, setActivationKey] = useState('');
   const [isActivating, setIsActivating] = useState(false);
@@ -38,12 +46,44 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
   const loadSubscription = async () => {
     setIsLoading(true);
     try {
-      const subs = await db.getSubscriptions();
+      const [subs, keys, users] = await Promise.all([
+        db.getSubscriptions(),
+        db.getActivationKeys(),
+        db.getUsers()
+      ]);
+
+      let activeSub: Subscription | null = null;
       if (subs && subs.length > 0) {
-        setSubscription(subs[0]);
+        activeSub = subs[0];
+        setSubscription(activeSub);
+      }
+
+      // Filter all keys used or assigned to this system
+      const systemId = db.getSystemId();
+      const relevantKeys = (keys || []).filter(k => 
+        k.activated_by_system_id === systemId || 
+        k.system_id === systemId ||
+        (k.is_used && (!k.activated_by_system_id || k.activated_by_system_id === systemId))
+      ).sort((a, b) => new Date(b.activated_at || b.created_at).getTime() - new Date(a.activated_at || a.created_at).getTime());
+      
+      setAllSystemKeys(relevantKeys);
+
+      // Current active key
+      const foundCurrentKey = relevantKeys.find(k => k.is_used) || relevantKeys[0] || null;
+      setCurrentKey(foundCurrentKey);
+
+      // Initial admin finder
+      if (users && users.length > 0) {
+        const foundAdmin = users.find(u => u.id === foundCurrentKey?.activated_by_user_id) ||
+          users.find(u => u.id === activeSub?.activated_by_user_id) ||
+          users.find(u => u.role === 'ADMIN' || u.is_full_admin) ||
+          currentUser;
+        setInitialAdmin(foundAdmin || currentUser);
+      } else {
+        setInitialAdmin(currentUser);
       }
     } catch (error) {
-      console.error('Error loading subscription:', error);
+      console.error('Error loading subscription and keys:', error);
     } finally {
       setIsLoading(false);
     }
@@ -86,50 +126,51 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
       }
 
       const expiresAtISO = expiresAt.toISOString();
+      const activatedAtISO = new Date().toISOString();
+      const adminName = currentUser?.full_name || currentUser?.name || 'Administrador';
 
-      // Update Key
-      await db.update('activation_keys', {
+      // Update Key with activation details
+      const updatedKey: ActivationKey = {
         ...key,
         is_used: true,
-        activated_at: new Date().toISOString(),
+        activated_at: activatedAtISO,
         expires_at: expiresAtISO,
         activated_by_system_id: db.getSystemId(),
         activated_by_user_id: currentUser?.id,
-        activated_by_name: currentUser?.full_name || currentUser?.name,
+        activated_by_name: adminName,
         owner_email: currentUser?.email
-      });
+      };
+      await db.update('activation_keys', updatedKey);
+      setCurrentKey(updatedKey);
 
-      // Delete old keys for this system
-      try {
-        const allKeys = await db.getActivationKeys();
-        const oldKeys = allKeys.filter(k => 
-          k.id !== key.id && 
-          k.is_used && 
-          k.activated_by_system_id === db.getSystemId()
-        );
-        
-        for (const oldKey of oldKeys) {
-          await db.delete('activation_keys', oldKey.id);
-        }
-      } catch (e) {
-        console.error('Error cleaning up old keys:', e);
-      }
+      // Do NOT delete old keys so that historical activation logs remain accessible
 
       if (subscription) {
         await db.update('subscriptions', {
           ...subscription,
           plan_type: key.plan_type,
+          activated_at: activatedAtISO,
           expires_at: expiresAtISO,
-          status: 'ACTIVE'
+          status: 'ACTIVE',
+          key_code: key.key_code,
+          key_id: key.id,
+          activated_by_name: adminName,
+          activated_by_user_id: currentUser?.id,
+          owner_email: currentUser?.email
         });
       } else {
         await db.create('subscriptions', {
           system_id: db.getSystemId()!,
           plan_type: key.plan_type,
-          activated_at: new Date().toISOString(),
+          activated_at: activatedAtISO,
           expires_at: expiresAtISO,
           status: 'ACTIVE',
-          created_at: new Date().toISOString()
+          created_at: activatedAtISO,
+          key_code: key.key_code,
+          key_id: key.id,
+          activated_by_name: adminName,
+          activated_by_user_id: currentUser?.id,
+          owner_email: currentUser?.email
         });
       }
 
@@ -273,6 +314,38 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
                 </p>
               </div>
             </div>
+
+            {/* Chave e Administrador Ativador */}
+            <div className="pt-4 border-t border-slate-50 dark:border-zinc-800 space-y-3">
+              <div className="flex items-center justify-between p-3 bg-slate-50 dark:bg-zinc-800/60 rounded-2xl border border-slate-100 dark:border-zinc-700/60">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <KeyRound size={16} className="text-yellow-500 shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Chave Ativada</p>
+                    <p className="text-xs font-mono font-bold text-slate-800 dark:text-zinc-200 truncate">
+                      {currentKey?.key_code || subscription?.key_code || 'Chave do Sistema'}
+                    </p>
+                  </div>
+                </div>
+                {(currentKey?.activated_by_name || subscription?.activated_by_name || initialAdmin) && (
+                  <div className="text-right shrink-0">
+                    <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Responsável</p>
+                    <p className="text-xs font-bold text-slate-700 dark:text-zinc-300">
+                      {currentKey?.activated_by_name || subscription?.activated_by_name || initialAdmin?.full_name || initialAdmin?.name || 'Administrador'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(true)}
+                className="w-full py-3 px-4 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-2xl font-black uppercase text-[10px] tracking-wider flex items-center justify-center gap-2 transition-all shadow-sm active:scale-95"
+              >
+                <History size={16} />
+                <span>Histórico de Ativações da Chave</span>
+              </button>
+            </div>
           </div>
         </div>
 
@@ -332,6 +405,16 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
           </p>
         </div>
       </div>
+
+      {/* Modal Detalhado de Histórico de Ativações */}
+      <KeyActivationHistoryModal
+        isOpen={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        currentKey={currentKey}
+        subscription={subscription}
+        allSystemKeys={allSystemKeys}
+        initialAdmin={initialAdmin}
+      />
     </div>
   );
 };

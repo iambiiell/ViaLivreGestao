@@ -1,9 +1,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
-import { BusRoute, RouteStatus, Company, City, User, LedColor, RouteSection, TicketingConfig, Trip, TicketSale, BusStation } from '../types';
-import { Plus, Navigation, Trash2, X, Pencil, Save, Clock, ListChecks, Type, Search, LayoutGrid, Palette, Zap, Binary, Hash, ArrowRight, BarChart3, Users, DollarSign, Activity, FileSpreadsheet, Crosshair, Minimize2, MapPin, Bus } from 'lucide-react';
+import { BusRoute, RouteStatus, Company, City, User, LedColor, RouteSection, TicketingConfig, Trip, TicketSale, BusStation, SystemSettings } from '../types';
+import { Plus, Navigation, Trash2, X, Pencil, Save, Clock, ListChecks, Type, Search, LayoutGrid, Palette, Zap, Binary, Hash, ArrowRight, BarChart3, Users, DollarSign, Activity, FileSpreadsheet, Crosshair, Minimize2, MapPin, Bus, Download, FolderArchive, Tag, Sparkles } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../services/database';
+import { supabase } from '../services/supabaseClient';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
+import TimetableExportModal from './TimetableExportModal';
+import BatchTimetableExportModal from './BatchTimetableExportModal';
+import LegendSymbolSelectorModal from './LegendSymbolSelectorModal';
 
 interface RouteManagerProps {
   routes: BusRoute[];
@@ -13,6 +17,7 @@ interface RouteManagerProps {
   currentUser: User | null;
   ticketingConfig: TicketingConfig | null;
   busStations?: BusStation[];
+  systemSettings?: SystemSettings;
   onAddRoute: (route: BusRoute) => void;
   onUpdateRoute: (route: BusRoute) => void;
   onDeleteRoute: (id: string) => void;
@@ -59,6 +64,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
   ticketingConfig,
   trips = [],
   busStations = [],
+  systemSettings,
   onAddRoute, 
   onUpdateRoute, 
   onDeleteRoute, 
@@ -78,6 +84,169 @@ const RouteManager: React.FC<RouteManagerProps> = ({
   const [bulkInput, setBulkInput] = useState({ weekdays: '', saturday: '', sunday: '' });
   const [showBulk, setShowBulk] = useState({ weekdays: false, saturday: false, sunday: false });
   const [focusedRouteId, setFocusedRouteId] = useState<string | null>(null);
+
+  // Timetable PNG Export State
+  const [exportModalRoute, setExportModalRoute] = useState<BusRoute | null>(null);
+  const [exportModalTimes, setExportModalTimes] = useState<{
+    weekdays: { ida: string[]; volta: string[] };
+    saturday: { ida: string[]; volta: string[] };
+    sunday: { ida: string[]; volta: string[] };
+  }>({
+    weekdays: { ida: [], volta: [] },
+    saturday: { ida: [], volta: [] },
+    sunday: { ida: [], volta: [] }
+  });
+  const [isFetchingTimetable, setIsFetchingTimetable] = useState(false);
+
+  // Batch export modal state (Exportação em Lote ZIP)
+  const [isBatchExportOpen, setIsBatchExportOpen] = useState(false);
+
+  // Legend modal state for route schedule registration
+  const [legendModalOpen, setLegendModalOpen] = useState(false);
+  const [activeLegendTimeContext, setActiveLegendTimeContext] = useState<{
+    day: 'weekdays' | 'saturday' | 'sunday';
+    time: string;
+    direction: 'IDA' | 'VOLTA';
+    section_name?: string;
+    currentSymbol?: string;
+    currentText?: string;
+  } | null>(null);
+
+  // Stored route legends
+  const [routeLegends, setRouteLegends] = useState<Array<{
+    id: string;
+    symbol: string;
+    text: string;
+  }>>([]);
+
+  const handleOpenExportModal = async (route: BusRoute) => {
+    setIsFetchingTimetable(true);
+    let weekdaysIda: string[] = [];
+    let weekdaysVolta: string[] = [];
+    let saturdayIda: string[] = [];
+    let saturdayVolta: string[] = [];
+    let sundayIda: string[] = [];
+    let sundayVolta: string[] = [];
+
+    try {
+      // 1. Busca os horários da tabela 'timetables' do Supabase para a rota selecionada
+      const { data, error } = await supabase
+        .from('timetables')
+        .select('*')
+        .or(`route_id.eq.${route.id},route_id.eq.${route.prefixo_linha}`);
+
+      if (!error && Array.isArray(data) && data.length > 0) {
+        data.forEach((row: any) => {
+          if (row.schedule && typeof row.schedule === 'object') {
+            const extractItems = (arr: any[], targetIda: string[], targetVolta: string[]) => {
+              if (Array.isArray(arr)) {
+                arr.forEach((x: any) => {
+                  const t = typeof x === 'string' ? x : x?.time;
+                  if (!t) return;
+                  const dir = typeof x === 'object' && x?.direction ? x.direction : 'IDA';
+                  if (dir === 'VOLTA') targetVolta.push(t);
+                  else targetIda.push(t);
+                });
+              }
+            };
+            extractItems(row.schedule.weekdays, weekdaysIda, weekdaysVolta);
+            extractItems(row.schedule.saturday, saturdayIda, saturdayVolta);
+            extractItems(row.schedule.sunday, sundayIda, sundayVolta);
+          }
+
+          const rawDay = (row.day_type || row.day_of_week || row.tipo_dia || row.category || '').toString().toLowerCase();
+          const rawTime = row.time || row.departure_time || row.horario;
+          const rowDir = (row.direction || row.sentido || '').toString().toUpperCase() === 'VOLTA' ? 'VOLTA' : 'IDA';
+
+          if (rawTime) {
+            const timeStr = String(rawTime).slice(0, 5);
+            if (rawDay.includes('week') || rawDay.includes('util') || rawDay.includes('segunda') || rawDay.includes('sexta')) {
+              if (rowDir === 'VOLTA') weekdaysVolta.push(timeStr);
+              else weekdaysIda.push(timeStr);
+            } else if (rawDay.includes('sat') || rawDay.includes('sab') || rawDay.includes('sábado')) {
+              if (rowDir === 'VOLTA') saturdayVolta.push(timeStr);
+              else saturdayIda.push(timeStr);
+            } else if (rawDay.includes('sun') || rawDay.includes('dom') || rawDay.includes('domingo')) {
+              if (rowDir === 'VOLTA') sundayVolta.push(timeStr);
+              else sundayIda.push(timeStr);
+            }
+          }
+        });
+      }
+    } catch (err) {
+      console.warn("Consulta à tabela timetables do Supabase:", err);
+    }
+
+    // 2. Se a tabela 'timetables' não tiver horários, busca no schedule da própria rota
+    const appendFromRouteSchedule = (arr: any[] | undefined, targetIda: string[], targetVolta: string[]) => {
+      if (Array.isArray(arr)) {
+        arr.forEach((item: any) => {
+          const t = typeof item === 'string' ? item : item?.time;
+          if (!t) return;
+          const dir = typeof item === 'object' && item?.direction ? item.direction : 'IDA';
+          if (dir === 'VOLTA') targetVolta.push(t);
+          else targetIda.push(t);
+        });
+      }
+    };
+
+    if (weekdaysIda.length === 0 && weekdaysVolta.length === 0) {
+      appendFromRouteSchedule(route.schedule?.weekdays, weekdaysIda, weekdaysVolta);
+    }
+    if (saturdayIda.length === 0 && saturdayVolta.length === 0) {
+      appendFromRouteSchedule(route.schedule?.saturday, saturdayIda, saturdayVolta);
+    }
+    if (sundayIda.length === 0 && sundayVolta.length === 0) {
+      appendFromRouteSchedule(route.schedule?.sunday, sundayIda, sundayVolta);
+    }
+
+    // 3. Fallback com viagens da tabela trips caso ainda esteja vazio
+    const routeTrips = trips.filter(t => t.route_id === route.id && t.departure_time);
+    const hasAnySchedule = weekdaysIda.length > 0 || weekdaysVolta.length > 0 ||
+      saturdayIda.length > 0 || saturdayVolta.length > 0 ||
+      sundayIda.length > 0 || sundayVolta.length > 0;
+
+    if (!hasAnySchedule && routeTrips.length > 0) {
+      routeTrips.forEach(t => {
+        const d = new Date(t.trip_date);
+        const day = d.getDay();
+        const time = String(t.departure_time).slice(0, 5);
+        const dir = t.direction || 'IDA';
+        if (day === 0) {
+          if (dir === 'VOLTA') sundayVolta.push(time);
+          else sundayIda.push(time);
+        } else if (day === 6) {
+          if (dir === 'VOLTA') saturdayVolta.push(time);
+          else saturdayIda.push(time);
+        } else {
+          if (dir === 'VOLTA') weekdaysVolta.push(time);
+          else weekdaysIda.push(time);
+        }
+      });
+    }
+
+    const sortAndDedupe = (arr: string[]) => {
+      return Array.from(new Set(arr.map(t => t.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+    };
+
+    setExportModalTimes({
+      weekdays: {
+        ida: sortAndDedupe(weekdaysIda),
+        volta: sortAndDedupe(weekdaysVolta)
+      },
+      saturday: {
+        ida: sortAndDedupe(saturdayIda),
+        volta: sortAndDedupe(saturdayVolta)
+      },
+      sunday: {
+        ida: sortAndDedupe(sundayIda),
+        volta: sortAndDedupe(sundayVolta)
+      }
+    });
+
+    setExportModalRoute(route);
+    setIsFetchingTimetable(false);
+  };
 
   const { isOpen: isConfirmOpen, options: confirmOptions, confirm, handleClose: handleConfirmClose } = useConfirmDialog();
 
@@ -317,12 +486,115 @@ const RouteManager: React.FC<RouteManagerProps> = ({
         setEditingId(route.id);
         const data = { ...initialForm, ...route };
         setFormData(data);
+
+        // Carrega legendas vinculadas
+        try {
+          const saved = localStorage.getItem(`consimp_route_legends_${route.id}`);
+          if (saved) {
+            setRouteLegends(JSON.parse(saved));
+          } else {
+            const recovered: Array<{ id: string; symbol: string; text: string }> = [];
+            ['weekdays', 'saturday', 'sunday'].forEach(day => {
+              (route.schedule?.[day as keyof typeof route.schedule] || []).forEach((item: any) => {
+                if (item.legend_symbol && !recovered.some(r => r.symbol === item.legend_symbol)) {
+                  recovered.push({
+                    id: `leg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+                    symbol: item.legend_symbol,
+                    text: item.legend_text || ''
+                  });
+                }
+              });
+            });
+            setRouteLegends(recovered);
+          }
+        } catch {
+          setRouteLegends([]);
+        }
     } else {
         setEditingId(null);
         setFormData(initialForm);
+        setRouteLegends([]);
     }
     setActiveTab('geral');
     setIsModalOpen(true);
+  };
+
+  const handleSaveLegendForTime = (
+    dayType: 'weekdays' | 'saturday' | 'sunday',
+    time: string,
+    direction: 'IDA' | 'VOLTA',
+    section_name: string | undefined,
+    symbol: string,
+    text: string
+  ) => {
+    const currentSchedule = [...(formData.schedule?.[dayType] || [])];
+    const updated = currentSchedule.map(item => {
+      if (item.time === time && item.direction === direction && (item.section_name || undefined) === section_name) {
+        return {
+          ...item,
+          legend_symbol: symbol,
+          legend_text: text
+        };
+      }
+      return item;
+    });
+
+    setFormData(prev => ({
+      ...prev,
+      schedule: {
+        ...prev.schedule!,
+        [dayType]: updated
+      }
+    }));
+
+    setRouteLegends(prev => {
+      const existingIdx = prev.findIndex(l => l.symbol.trim().toLowerCase() === symbol.trim().toLowerCase());
+      let nextList;
+      if (existingIdx >= 0) {
+        nextList = [...prev];
+        nextList[existingIdx] = { ...nextList[existingIdx], text };
+      } else {
+        nextList = [...prev, { id: `leg_${Date.now()}`, symbol, text }];
+      }
+      if (formData.id) {
+        try {
+          localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(nextList));
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      return nextList;
+    });
+
+    addToast(`Legenda [${symbol}] aplicada ao horário ${time}!`, 'success');
+  };
+
+  const handleRemoveLegendFromTime = (
+    dayType: 'weekdays' | 'saturday' | 'sunday',
+    time: string,
+    direction: 'IDA' | 'VOLTA',
+    section_name: string | undefined
+  ) => {
+    const currentSchedule = [...(formData.schedule?.[dayType] || [])];
+    const updated = currentSchedule.map(item => {
+      if (item.time === time && item.direction === direction && (item.section_name || undefined) === section_name) {
+        const copy = { ...item };
+        delete copy.legend_symbol;
+        delete copy.legend_text;
+        return copy;
+      }
+      return item;
+    });
+
+    setFormData(prev => ({
+      ...prev,
+      schedule: {
+        ...prev.schedule!,
+        [dayType]: updated
+      }
+    }));
+
+    addToast(`Legenda removida do horário ${time}.`, 'warning');
   };
 
   const handleSave = () => {
@@ -360,12 +632,21 @@ const RouteManager: React.FC<RouteManagerProps> = ({
               />
             </div>
         </div>
-        <button 
-          onClick={() => handleOpenModal()} 
-          className="bg-yellow-400 text-slate-900 px-8 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl border-2 border-slate-900 active:scale-95 transition-all flex items-center gap-2"
-        >
-          <Plus size={18}/> Novo Itinerário
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsBatchExportOpen(true)} 
+            className="bg-slate-900 text-yellow-400 hover:bg-black px-6 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl border-2 border-slate-800 active:scale-95 transition-all flex items-center gap-2 shrink-0"
+            title="Exportar várias rotas em arquivo compactado (ZIP)"
+          >
+            <FolderArchive size={18}/> Exportação em Lote (ZIP)
+          </button>
+          <button 
+            onClick={() => handleOpenModal()} 
+            className="bg-yellow-400 text-slate-900 px-8 py-4 rounded-2xl font-black uppercase text-[10px] shadow-xl border-2 border-slate-900 active:scale-95 transition-all flex items-center gap-2 shrink-0"
+          >
+            <Plus size={18}/> Novo Itinerário
+          </button>
+        </div>
       </div>
 
       {focusedRouteId ? (() => {
@@ -454,9 +735,19 @@ const RouteManager: React.FC<RouteManagerProps> = ({
               </div>
 
               <div className="bg-slate-50 dark:bg-zinc-950 p-6 rounded-3xl border-2 border-slate-100 dark:border-zinc-800 space-y-4">
-                <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
-                  <Clock size={16} className="text-yellow-500"/> Horários Cadastrados
-                </h4>
+                <div className="flex justify-between items-center flex-wrap gap-2">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center gap-2">
+                    <Clock size={16} className="text-yellow-500"/> Horários Cadastrados
+                  </h4>
+                  <button
+                    onClick={() => handleOpenExportModal(route)}
+                    disabled={isFetchingTimetable}
+                    className="px-3.5 py-1.5 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md active:scale-95 transition-all border border-orange-400/40"
+                    title="Exportar Grade de Horários em Alta Resolução"
+                  >
+                    <Download size={13} /> Exportar Grade (PNG)
+                  </button>
+                </div>
                 <div className="space-y-3 max-h-48 overflow-y-auto custom-scrollbar text-xs font-bold">
                   <div>
                     <span className="text-[10px] text-slate-400 uppercase">Dias Úteis:</span>
@@ -471,6 +762,14 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                     <div className="flex flex-wrap gap-1 mt-1">
                       {route.schedule?.saturday?.map((s, idx) => (
                         <span key={idx} className="px-2 py-1 bg-blue-400/20 text-blue-600 dark:text-blue-400 rounded-md text-[10px] font-mono">{s.time} ({s.direction})</span>
+                      )) || <span className="text-slate-400 italic text-[10px]">Nenhum horário</span>}
+                    </div>
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-slate-400 uppercase">Domingos:</span>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {route.schedule?.sunday?.map((s, idx) => (
+                        <span key={idx} className="px-2 py-1 bg-purple-400/20 text-purple-600 dark:text-purple-400 rounded-md text-[10px] font-mono">{s.time} ({s.direction})</span>
                       )) || <span className="text-slate-400 italic text-[10px]">Nenhum horário</span>}
                     </div>
                   </div>
@@ -501,12 +800,22 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                       <span className="text-emerald-600 font-black">R$ {((route.price || 0) + (route.toll || 0) + (route.fees || 0)).toFixed(2)}</span>
                   </div>
                   <div className="flex gap-1 items-center">
+                      <button onClick={() => handleOpenExportModal(route)} className="p-2 text-[#ff6a00] hover:bg-orange-50 dark:hover:bg-orange-950/30 rounded-xl transition-all" title="Exportar Grade (PNG)"><Download size={18} /></button>
                       <button onClick={() => setFocusedRouteId(route.id)} className="p-2 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/10 rounded-xl transition-all" title="Modo de Foco"><Crosshair size={18} /></button>
                       <button onClick={() => { setStatsRoute(route); setShowStatsModal(true); }} className="p-2 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/10 rounded-xl transition-all" title="Estatísticas"><BarChart3 size={18} /></button>
                       <button onClick={() => handleOpenModal(route)} className="p-2 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 rounded-xl transition-all" title="Editar"><Pencil size={18} /></button>
                       <button onClick={() => handleDeleteRouteClick(route)} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/10 rounded-xl transition-all" title="Excluir"><Trash2 size={18} /></button>
                   </div>
               </div>
+
+              {/* Botão de Destaque para Exportar Grade (PNG) */}
+              <button
+                onClick={() => handleOpenExportModal(route)}
+                disabled={isFetchingTimetable}
+                className="w-full mt-3 py-2.5 px-4 bg-gradient-to-r from-[#ff6a00] to-[#e65f00] hover:from-[#e65f00] hover:to-[#cc5400] text-white rounded-2xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-2 shadow-sm hover:shadow-md active:scale-98 transition-all border border-orange-400/40"
+              >
+                <Download size={14} /> Exportar Grade (PNG)
+              </button>
             </div>
           ))}
         </div>
@@ -791,10 +1100,25 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                         {/* Seletor de Escopo do Horário */}
                         <div className="bg-amber-50 dark:bg-zinc-900/50 p-6 rounded-[2rem] border-2 border-yellow-400 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
                             <div>
-                                <h4 className="text-sm font-black uppercase text-slate-800 dark:text-zinc-100">Escopo da Grade Horária</h4>
+                                <h4 className="text-sm font-black uppercase text-slate-800 dark:text-zinc-100 flex items-center gap-2">
+                                  <span>Escopo da Grade Horária</span>
+                                </h4>
                                 <p className="text-[10px] text-slate-400 font-bold uppercase mt-1">Selecione se o horário adicionado refere-se à Rota Integral ou a uma Seção cadastrada</p>
                             </div>
                             <div className="flex items-center gap-3 w-full md:w-auto flex-wrap">
+                                {formData.id && (
+                                  <button 
+                                    type="button"
+                                    onClick={() => {
+                                      const currentR = routes.find(r => r.id === formData.id) || (formData as BusRoute);
+                                      handleOpenExportModal(currentR);
+                                    }}
+                                    className="px-4 py-3 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-2xl font-black text-xs uppercase flex items-center gap-2 shadow-md transition-all border border-orange-400/40"
+                                    title="Exportar Grade em Alta Resolução (PNG)"
+                                  >
+                                    <Download size={15} /> Exportar Grade (PNG)
+                                  </button>
+                                )}
                                 <select 
                                     className="px-6 py-4 bg-white dark:bg-zinc-800 border-2 border-yellow-400 rounded-2xl font-black text-xs uppercase text-slate-900 dark:text-white shadow-md outline-none cursor-pointer flex-1 md:flex-none min-w-[260px]"
                                     value={selectedScope}
@@ -909,16 +1233,89 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                     {(formData.schedule?.[dayId as keyof typeof formData.schedule] || [])
                                       .filter(t => t.direction === selectedDirection && (t.section_name || '') === (selectedScope || ''))
                                       .map((item, idx) => (
-                                        <div key={idx} className="px-5 py-3 bg-white dark:bg-zinc-800 rounded-xl border-2 shadow-sm flex flex-col min-w-[120px] justify-between transition-all hover:border-yellow-400">
-                                            <div className="flex items-center justify-between gap-3">
-                                                <span className="text-xl font-black font-mono dark:text-zinc-100">{item.time}</span>
-                                                <button onClick={() => removeTime(dayId as any, item.time, item.direction, item.section_name)} className="text-red-400 hover:text-red-600"><Trash2 size={14}/></button>
+                                        <div key={idx} className="px-4 py-3 bg-white dark:bg-zinc-800 rounded-2xl border-2 shadow-sm flex flex-col min-w-[140px] justify-between transition-all hover:border-yellow-400">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <div className="flex items-center gap-2">
+                                                  <span className="text-xl font-black font-mono dark:text-zinc-100">{item.time}</span>
+                                                  {/* Prévia visual instantânea (mini-card) do símbolo da legenda */}
+                                                  {item.legend_symbol ? (
+                                                    <button 
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setActiveLegendTimeContext({
+                                                          day: dayId as any,
+                                                          time: item.time,
+                                                          direction: item.direction,
+                                                          section_name: item.section_name,
+                                                          currentSymbol: item.legend_symbol,
+                                                          currentText: item.legend_text || ''
+                                                        });
+                                                        setLegendModalOpen(true);
+                                                      }}
+                                                      className="px-2 py-0.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 font-black text-xs font-mono rounded-lg border border-yellow-500 shadow-xs inline-flex items-center gap-1 cursor-pointer transition-transform active:scale-95"
+                                                      title={`Legenda: ${item.legend_symbol} (${item.legend_text || ''}) - Clique para editar`}
+                                                    >
+                                                      <span>{item.legend_symbol}</span>
+                                                    </button>
+                                                  ) : (
+                                                    <button 
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setActiveLegendTimeContext({
+                                                          day: dayId as any,
+                                                          time: item.time,
+                                                          direction: item.direction,
+                                                          section_name: item.section_name,
+                                                          currentSymbol: '*',
+                                                          currentText: ''
+                                                        });
+                                                        setLegendModalOpen(true);
+                                                      }}
+                                                      className="p-1 text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
+                                                      title="Adicionar símbolo / legenda a este horário"
+                                                    >
+                                                      <Tag size={14}/>
+                                                    </button>
+                                                  )}
+                                                </div>
+                                                <div className="flex items-center gap-0.5">
+                                                  {item.legend_symbol && (
+                                                    <button 
+                                                      type="button"
+                                                      onClick={() => {
+                                                        setActiveLegendTimeContext({
+                                                          day: dayId as any,
+                                                          time: item.time,
+                                                          direction: item.direction,
+                                                          section_name: item.section_name,
+                                                          currentSymbol: item.legend_symbol,
+                                                          currentText: item.legend_text || ''
+                                                        });
+                                                        setLegendModalOpen(true);
+                                                      }}
+                                                      className="text-amber-500 hover:text-amber-600 p-1 rounded hover:bg-amber-50 dark:hover:bg-amber-950/30"
+                                                      title="Editar legenda deste horário"
+                                                    >
+                                                      <Pencil size={12} />
+                                                    </button>
+                                                  )}
+                                                  <button onClick={() => removeTime(dayId as any, item.time, item.direction, item.section_name)} className="text-red-400 hover:text-red-600 p-1" title="Excluir Horário"><Trash2 size={14}/></button>
+                                                </div>
                                             </div>
+
+                                            {/* Detalhe da legenda abaixo do horário */}
+                                            {item.legend_text && (
+                                              <div className="mt-1 px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 rounded-lg border border-amber-200/80 dark:border-amber-900/60 flex items-center gap-1 max-w-full">
+                                                <span className="font-mono text-[9px] font-black text-amber-700 dark:text-amber-300 shrink-0">{item.legend_symbol}</span>
+                                                <span className="text-[9px] font-bold text-amber-800 dark:text-amber-200 truncate">{item.legend_text}</span>
+                                              </div>
+                                            )}
+
                                             <span className={`text-[8px] font-black uppercase mt-1 ${item.section_name ? 'text-indigo-500' : 'text-slate-400'}`}>
                                                 {item.section_name ? `Seção: ${item.section_name}` : 'Rota Integral'}
                                             </span>
                                         </div>
-                                    ))}
+                                      ))}
                                     {(formData.schedule?.[dayId as keyof typeof formData.schedule] || [])
                                       .filter(t => t.direction === selectedDirection && (t.section_name || '') === (selectedScope || '')).length === 0 && (
                                         <p className="text-[10px] font-black text-slate-400 uppercase italic py-2">Nenhum horário cadastrado para {selectedScope ? `seção "${selectedScope}"` : 'rota integral'} nesta direção.</p>
@@ -926,6 +1323,100 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                 </div>
                             </div>
                         ))}
+
+                        {/* GERENCIADOR VISUAL DE LEGENDAS DA ROTA */}
+                        <div className="bg-slate-900 text-white p-6 md:p-8 rounded-[2.5rem] border-4 border-yellow-400 shadow-xl space-y-4">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 border-b border-white/10 pb-4">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-2xl bg-yellow-400 text-slate-950 flex items-center justify-center font-black shadow-md">
+                                        <Tag size={20} />
+                                    </div>
+                                    <div>
+                                        <h4 className="text-base font-black uppercase tracking-wider text-yellow-400">
+                                            Gerenciador Visual de Legendas do Itinerário
+                                        </h4>
+                                        <p className="text-[10px] text-slate-300 font-bold uppercase">
+                                            Símbolos e variações de itinerário (Ex: Passa pelo Centro, Via Expressa, etc.)
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setActiveLegendTimeContext({
+                                            day: 'weekdays',
+                                            time: (formData.schedule?.weekdays?.[0]?.time || '06:00'),
+                                            direction: 'IDA',
+                                            currentSymbol: '*',
+                                            currentText: ''
+                                        });
+                                        setLegendModalOpen(true);
+                                    }}
+                                    className="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-xl font-black uppercase text-[10px] flex items-center gap-2 shadow-md transition-all active:scale-95 shrink-0"
+                                >
+                                    <Plus size={15} /> Nova Legenda com Seletor Visual
+                                </button>
+                            </div>
+
+                            {/* Lista de Legendas já cadastradas */}
+                            {routeLegends.length === 0 ? (
+                                <div className="text-center py-6 text-slate-400 text-xs font-bold uppercase italic">
+                                    Nenhuma legenda cadastrada nesta rota. Clique no ícone de etiqueta ao lado de qualquer horário ou no botão acima para adicionar.
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
+                                    {routeLegends.map((leg, idx) => (
+                                        <div 
+                                            key={leg.id || idx}
+                                            className="bg-white/5 hover:bg-white/10 p-3.5 rounded-2xl border border-white/10 flex items-center justify-between gap-3 transition-colors"
+                                        >
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <span className="px-2.5 py-1 bg-yellow-400 text-slate-950 font-black text-xs font-mono rounded-lg shrink-0 shadow-xs">
+                                                    {leg.symbol}
+                                                </span>
+                                                <span className="text-xs font-black text-white uppercase truncate" title={leg.text}>
+                                                    {leg.text || 'Sem descrição'}
+                                                </span>
+                                            </div>
+                                            <div className="flex items-center gap-1 shrink-0">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        setActiveLegendTimeContext({
+                                                            day: 'weekdays',
+                                                            time: (formData.schedule?.weekdays?.[0]?.time || '06:00'),
+                                                            direction: 'IDA',
+                                                            currentSymbol: leg.symbol,
+                                                            currentText: leg.text
+                                                        });
+                                                        setLegendModalOpen(true);
+                                                    }}
+                                                    className="p-1.5 text-yellow-400 hover:bg-yellow-400/20 rounded-lg transition-colors"
+                                                    title="Editar símbolo / texto desta legenda"
+                                                >
+                                                    <Pencil size={13} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const filtered = routeLegends.filter((_, i) => i !== idx);
+                                                        setRouteLegends(filtered);
+                                                        if (formData.id) {
+                                                            localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(filtered));
+                                                        }
+                                                        addToast(`Legenda [${leg.symbol}] removida da rota.`, "warning");
+                                                    }}
+                                                    className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-lg transition-colors"
+                                                    title="Excluir esta legenda"
+                                                >
+                                                    <Trash2 size={13} />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 )}
                 
@@ -1180,6 +1671,71 @@ const RouteManager: React.FC<RouteManagerProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Exportação do Quadro de Horários (PNG 3x) */}
+      {exportModalRoute && (
+        <TimetableExportModal
+          isOpen={!!exportModalRoute}
+          onClose={() => setExportModalRoute(null)}
+          route={exportModalRoute}
+          company={
+            companies.find(c => 
+              c.id === exportModalRoute.company_id ||
+              (c.nome_fantasia && exportModalRoute.company_id && c.nome_fantasia.toLowerCase() === exportModalRoute.company_id.toLowerCase()) ||
+              (c.name && exportModalRoute.company_id && c.name.toLowerCase() === exportModalRoute.company_id.toLowerCase())
+            ) || companies[0]
+          }
+          systemSettings={systemSettings}
+          initialTimes={exportModalTimes}
+          addToast={addToast}
+        />
+      )}
+
+      {/* Modal de Exportação em Lote (ZIP contendo PNGs de várias rotas) */}
+      {isBatchExportOpen && (
+        <BatchTimetableExportModal
+          isOpen={isBatchExportOpen}
+          onClose={() => setIsBatchExportOpen(false)}
+          routes={routes}
+          companies={companies}
+          systemSettings={systemSettings}
+          trips={trips}
+          addToast={addToast}
+        />
+      )}
+
+      {/* Seletor Visual de Legendas para Cadastro de Horários */}
+      {legendModalOpen && activeLegendTimeContext && (
+        <LegendSymbolSelectorModal
+          isOpen={legendModalOpen}
+          onClose={() => {
+            setLegendModalOpen(false);
+            setActiveLegendTimeContext(null);
+          }}
+          targetTime={activeLegendTimeContext.time}
+          initialSymbol={activeLegendTimeContext.currentSymbol || '*'}
+          initialText={activeLegendTimeContext.currentText || ''}
+          existingLegends={routeLegends}
+          onSave={(res) => {
+            handleSaveLegendForTime(
+              activeLegendTimeContext.day,
+              activeLegendTimeContext.time,
+              activeLegendTimeContext.direction,
+              activeLegendTimeContext.section_name,
+              res.symbol,
+              res.text
+            );
+          }}
+          onDelete={activeLegendTimeContext.currentSymbol && activeLegendTimeContext.currentSymbol !== '*' ? () => {
+            handleRemoveLegendFromTime(
+              activeLegendTimeContext.day,
+              activeLegendTimeContext.time,
+              activeLegendTimeContext.direction,
+              activeLegendTimeContext.section_name
+            );
+          } : undefined}
+        />
       )}
     </div>
   );
