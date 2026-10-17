@@ -3,7 +3,7 @@
  */
 
 export class NotificationService {
-  private static defaultIcon = 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png';
+  private static defaultIcon = '/Logo_ViaLivre.png';
 
   /**
    * Solicita permissão do usuário para envio de notificações no dispositivo

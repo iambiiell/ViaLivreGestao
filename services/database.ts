@@ -17,10 +17,21 @@ import {
   SystemSettings, 
   TimeEntry 
 } from '../types';
-import { supabase, isSupabaseConfigured } from './supabaseClient';
+import { 
+  supabase, 
+  isSupabaseConfigured, 
+  SUPABASE_URL as RAW_SB_URL, 
+  SUPABASE_ANON_KEY as RAW_SB_KEY,
+  getCleanSupabaseConfig 
+} from './supabaseClient';
 import { safeLocalStorage } from '../utils/storage';
-import { RealtimeChannel } from '@supabase/supabase-js';
+export type RealtimeChannel = any;
 
+const SAFE_DEFAULT_SB_URL = 'https://xyzapbchpquycfcqxioz.supabase.co';
+const SAFE_DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emFwYmNocHF1eWNmY3F4aW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NTI2MzcsImV4cCI6MjEwNzQyODYzN30.b3cEUOfR9ZTEF7Y3r1cLnIfvGE8kxvmVnm8p69jiSnI';
+
+export const SUPABASE_URL = RAW_SB_URL || SAFE_DEFAULT_SB_URL;
+export const SUPABASE_ANON_KEY = RAW_SB_KEY || SAFE_DEFAULT_SB_KEY;
 export { supabase, isSupabaseConfigured };
 
 export type TableName = 
@@ -107,6 +118,8 @@ export const isValidUUID = (str: any): boolean => {
   return typeof str === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str);
 };
 
+export const DEFAULT_SYSTEM_UUID = '43e370b2-2c60-cf5f-7886-e111e8213ffb';
+
 export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   if (!obj || typeof obj !== 'object') return {};
   
@@ -117,30 +130,6 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (v === undefined) continue;
 
     if (v === '' || v === 'none' || v === 'null') {
-      const lowerKey = key.toLowerCase();
-      if (
-        lowerKey.endsWith('_id') ||
-        lowerKey === 'id' ||
-        lowerKey.includes('date') ||
-        lowerKey.includes('at') ||
-        lowerKey.includes('time') ||
-        lowerKey.includes('birth') ||
-        lowerKey.includes('expiry') ||
-        lowerKey.includes('valid') ||
-        lowerKey.includes('price') ||
-        lowerKey.includes('amount') ||
-        lowerKey.includes('cost') ||
-        lowerKey.includes('balance') ||
-        lowerKey.includes('capacity') ||
-        lowerKey.includes('seats') ||
-        lowerKey.includes('km') ||
-        lowerKey.includes('salary') ||
-        lowerKey.includes('points') ||
-        lowerKey.includes('code')
-      ) {
-        cleaned[key] = null;
-        continue;
-      }
       cleaned[key] = null;
       continue;
     }
@@ -166,8 +155,16 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     delete cleaned.occurrences;
   }
 
+  if (table === 'notifications') {
+    delete cleaned.metadata;
+  }
+
+  if (cleaned.system_id === 'sys-vialivre-default' || cleaned.system_id === 'default-sys') {
+    cleaned.system_id = DEFAULT_SYSTEM_UUID;
+  }
+
   if (currentSystemId && !cleaned.system_id && !['subscriptions', 'activation_keys'].includes(table)) {
-    cleaned.system_id = currentSystemId;
+    cleaned.system_id = currentSystemId === 'sys-vialivre-default' ? DEFAULT_SYSTEM_UUID : currentSystemId;
   }
   
   return cleaned;
@@ -199,7 +196,30 @@ export const isNetworkError = (error: any): boolean => {
   );
 };
 
-let currentSystemId: string | null = null;
+export const PUBLIC_PASSENGER_TABLES: TableName[] = [
+  'routes',
+  'itineraries',
+  'bus_stations',
+  'bus_terminals',
+  'itinerary_sections',
+  'route_sections',
+  'cities'
+];
+
+export const getStoredSystemId = (): string | null => {
+  try {
+    if (typeof window !== 'undefined') {
+      const u = safeLocalStorage.getItem('fluxo_session_user') || safeLocalStorage.getItem('@vialivre_user');
+      if (u) {
+        const parsed = JSON.parse(u);
+        return parsed.system_id || null;
+      }
+    }
+  } catch {}
+  return null;
+};
+
+let currentSystemId: string | null = getStoredSystemId();
 
 // Helper para gerenciar exclusões locais
 const getDeletedIds = (table: TableName): Set<string> => {
@@ -233,23 +253,43 @@ const removeDeletedId = (table: TableName, id: string): void => {
   } catch (e) {}
 };
 
-// Cache local como suporte secundário
+// Cache local com suporte a multitenancy
 const getLocalData = <T>(table: TableName): T[] => {
   const deleted = getDeletedIds(table);
+  const isPublicPassenger = PUBLIC_PASSENGER_TABLES.includes(table);
+  const activeSysId = currentSystemId || getStoredSystemId();
+
   try {
+    let rawList: any[] = [];
     const raw = safeLocalStorage.getItem(`vialivre_db_${table}`);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
-        return parsed.filter((x: any) => x && x.id && !deleted.has(x.id)) as T[];
+        rawList = parsed;
       }
     }
-    if (table === 'bus_stations' || table === 'bus_terminals') {
+    if ((table === 'bus_stations' || table === 'bus_terminals') && rawList.length === 0) {
       const bsRaw = safeLocalStorage.getItem('vialivre_bus_stations');
       if (bsRaw !== null) {
         const bsParsed = JSON.parse(bsRaw);
-        if (Array.isArray(bsParsed)) return bsParsed.filter((x: any) => x && x.id && !deleted.has(x.id)) as T[];
+        if (Array.isArray(bsParsed)) rawList = bsParsed;
       }
+    }
+
+    if (rawList.length > 0) {
+      return rawList.filter((x: any) => {
+        if (!x || !x.id || deleted.has(x.id)) return false;
+        // Tabelas públicas de passageiros são livres para consulta
+        if (isPublicPassenger || table === 'activation_keys' || !activeSysId) {
+          return true;
+        }
+        // Se usuário autenticado está consultando tabelas isoladas, filtra pelo system_id
+        if (!x.system_id) return true; // Legados ou dados globais
+        if (activeSysId === DEFAULT_SYSTEM_UUID) {
+          return x.system_id === DEFAULT_SYSTEM_UUID || x.system_id === 'sys-vialivre-default';
+        }
+        return x.system_id === activeSysId;
+      }) as T[];
     }
   } catch (e) {
     console.warn(`[DB_LOCAL_READ_ERROR] Erro ao ler cache local de ${table}:`, e);
@@ -510,12 +550,47 @@ export const db = {
     return { success: true, syncedCount };
   },
 
-  // BUSCA UNIVERSAL NA NUVEM (Single Source of Truth)
-  fetchAll: async <T>(table: TableName): Promise<T[]> => {
+  // BUSCA UNIVERSAL NA NUVEM (Com Isolamento por Chave/Tenant e Janela do Passageiro Aberta)
+  fetchAll: async <T>(table: TableName, options?: { bypassSystemId?: boolean; filterSystemId?: string }): Promise<T[]> => {
     try {
-      const { data, error } = await supabase
-        .from(table)
-        .select('*');
+      let query = supabase.from(table).select('*');
+      
+      const isPublicPassenger = PUBLIC_PASSENGER_TABLES.includes(table);
+      const activeSysId = options?.filterSystemId || currentSystemId || getStoredSystemId();
+
+      // Regra 2: Janela do Passageiro (Acesso Aberto)
+      // As tabelas de rotas (routes), itinerários (itineraries), paragens (bus_stations) e cidades (cities)
+      // devem permanecer totalmente acessíveis e públicas para consulta livre por parte dos passageiros,
+      // mesmo sem autenticação restrita.
+      if (options?.bypassSystemId || (isPublicPassenger && !activeSysId)) {
+        // Consulta aberta irrestrita
+      } else if (table === 'activation_keys') {
+        // Chaves de ativação podem ser consultadas globalmente para validação de ativação
+      } else if (table === 'users' && !activeSysId) {
+        // Tela de login inicial buscando credenciais
+      } else if (activeSysId && !options?.bypassSystemId) {
+        if (isPublicPassenger) {
+          // No painel interno de gestão, operador consulta sua rede + rotas/cidades gerais
+          if (activeSysId === DEFAULT_SYSTEM_UUID) {
+            query = query.or(`system_id.eq.${activeSysId},system_id.eq.sys-vialivre-default,system_id.is.null`);
+          } else {
+            query = query.or(`system_id.eq.${activeSysId},system_id.is.null`);
+          }
+        } else {
+          // Regra 1: Isolamento estrito por chave de ativação (system_id)
+          // Frotas, motoristas, caixas, escalas, etc.
+          if (activeSysId === DEFAULT_SYSTEM_UUID) {
+            query = query.or(`system_id.eq.${activeSysId},system_id.eq.sys-vialivre-default,system_id.is.null`);
+          } else {
+            query = query.eq('system_id', activeSysId);
+          }
+        }
+      } else if (!activeSysId && !isPublicPassenger && table !== 'users') {
+        // Visitante não autenticado não deve ver dados corporativos privados
+        return [];
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         if (isNetworkError(error)) {
@@ -537,7 +612,19 @@ export const db = {
   },
 
   fetchAllGlobal: async <T>(table: TableName): Promise<T[]> => {
-    return db.fetchAll<T>(table);
+    return db.fetchAll<T>(table, { bypassSystemId: true });
+  },
+
+  clearLocalCache: () => {
+    try {
+      if (typeof window !== 'undefined') {
+        Object.keys(localStorage).forEach(key => {
+          if (key.startsWith('vialivre_db_') || key.startsWith('vialivre_deleted_')) {
+            localStorage.removeItem(key);
+          }
+        });
+      }
+    } catch {}
   },
 
   // CRIAÇÃO DIRETA NA NUVEM
@@ -572,7 +659,7 @@ export const db = {
         throw error;
       }
 
-      const finalItem = (Array.isArray(data) && data.length > 0 ? data[0] : (data || payload)) as T;
+      const finalItem = (Array.isArray(data) ? (data.length > 0 ? data[0] : payload) : (data || payload)) as T;
       const localList = getLocalData<any>(table);
       setLocalData(table, [finalItem, ...localList.filter((x: any) => x.id !== (finalItem as any).id)]);
       
@@ -618,7 +705,7 @@ export const db = {
         throw error;
       }
 
-      const finalItem = (Array.isArray(data) && data.length > 0 ? data[0] : (data || item)) as T;
+      const finalItem = (Array.isArray(data) ? (data.length > 0 ? data[0] : item) : (data || item)) as T;
       const localList = getLocalData<any>(table);
       const idx = localList.findIndex((x: any) => x.id === item.id);
       if (idx !== -1) localList[idx] = finalItem;
@@ -699,7 +786,86 @@ export const db = {
   },
 
   initializeRealtime: (onEvent: (table: string, payload: any) => void): any => {
-    return { unsubscribe: () => {} };
+    if (typeof window === 'undefined') return { unsubscribe: () => {} };
+
+    let sse: EventSource | null = null;
+    try {
+      sse = new EventSource('/api/events');
+      sse.onmessage = (e) => {
+        try {
+          const data = JSON.parse(e.data);
+          if (data && data.table) {
+            onEvent(data.table, data);
+          }
+        } catch (err) {
+          // ignore parse errors on keepalive ping
+        }
+      };
+      sse.onerror = () => {
+        // EventSource will automatically attempt reconnection
+      };
+    } catch (e) {
+      console.warn('[Realtime] Failed to connect SSE:', e);
+    }
+
+    // Direct Supabase Realtime Subscription
+    let supabaseChannel: any = null;
+    try {
+      supabaseChannel = supabase
+        .channel('vialivre-realtime-all')
+        .on('postgres_changes', { event: '*', schema: 'public' }, (payload: any) => {
+          if (payload && payload.table) {
+            onEvent(payload.table, payload);
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('[Realtime] Failed to subscribe to Supabase channel:', e);
+    }
+
+    // Mobile Synchronization Broadcast Channel for ViaLivre Mobile
+    let mobileBroadcastChannel: any = null;
+    try {
+      mobileBroadcastChannel = supabase
+        .channel('vialivre-mobile-sync')
+        .on('broadcast', { event: 'vialivre_mobile_event' }, (payload: any) => {
+          if (payload?.payload?.table) {
+            onEvent(payload.payload.table, payload.payload);
+          }
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
+          }
+        })
+        .subscribe();
+    } catch (e) {
+      console.warn('[Realtime] Falha ao assinar canal mobile broadcast:', e);
+    }
+
+    const localDataHandler = (e: any) => {
+      const detail = e.detail;
+      if (detail?.table && detail?.item) {
+        onEvent(detail.table, {
+          eventType: detail.action === 'create' ? 'INSERT' : detail.action === 'update' ? 'UPDATE' : 'DELETE',
+          new: detail.item,
+          old: detail.item
+        });
+      }
+    };
+
+    window.addEventListener('vialivre-data-changed', localDataHandler);
+
+    return {
+      unsubscribe: () => {
+        if (sse) sse.close();
+        if (supabaseChannel) {
+          try { supabase.removeChannel(supabaseChannel); } catch {}
+        }
+        if (mobileBroadcastChannel) {
+          try { supabase.removeChannel(mobileBroadcastChannel); } catch {}
+        }
+        window.removeEventListener('vialivre-data-changed', localDataHandler);
+      }
+    };
   },
 
   subscribeTable: (table: TableName, onEvent: (payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void): { unsubscribe: () => void } => {
@@ -745,9 +911,11 @@ export const db = {
 
   getCities: () => db.fetchAll<City>('cities'),
   getAllCities: () => db.fetchAll<City>('cities'),
+  getPublicCities: () => db.fetchAll<City>('cities', { bypassSystemId: true }),
 
   getRoutes: () => db.fetchAll<BusRoute>('routes'),
   getAllRoutes: () => db.fetchAll<BusRoute>('routes'),
+  getPublicRoutes: () => db.fetchAll<BusRoute>('routes', { bypassSystemId: true }),
 
   getTrips: () => db.fetchAll<Trip>('trips'),
   getAllTrips: () => db.fetchAll<Trip>('trips'),
@@ -791,8 +959,11 @@ export const db = {
   getTripsAudit: () => db.fetchAll<any>('trips_audit'),
   getTicketBooths: () => db.fetchAll<any>('ticket_booths'),
   getBusStations: () => db.fetchAll<any>('bus_stations'),
+  getPublicBusStations: () => db.fetchAll<any>('bus_stations', { bypassSystemId: true }),
   getBusTerminals: () => db.fetchAll<any>('bus_terminals'),
+  getPublicBusTerminals: () => db.fetchAll<any>('bus_terminals', { bypassSystemId: true }),
   getItineraries: () => db.fetchAll<any>('itineraries'),
+  getPublicItineraries: () => db.fetchAll<any>('itineraries', { bypassSystemId: true }),
 
   getSubscriptions: () => db.fetchAll<any>('subscriptions'),
   getAllSubscriptions: () => db.fetchAll<any>('subscriptions'),
@@ -834,5 +1005,96 @@ export const db = {
 
   updateUserProfile: async (userData: Partial<User> & { id: string }): Promise<User | null> => {
     return db.update<User>('users', userData as User);
+  },
+
+  // SINCRONIZAÇÃO COM O PROJETO VIALIVRE MOBILE
+  getMobileSyncConfig: () => {
+    let resolvedUrl = SAFE_DEFAULT_SB_URL;
+    let resolvedKey = SAFE_DEFAULT_SB_KEY;
+    try {
+      if (typeof getCleanSupabaseConfig === 'function') {
+        const conf = getCleanSupabaseConfig();
+        if (conf?.supabaseUrl) resolvedUrl = conf.supabaseUrl;
+        if (conf?.supabaseAnonKey) resolvedKey = conf.supabaseAnonKey;
+      } else if (typeof SUPABASE_URL !== 'undefined' && SUPABASE_URL) {
+        resolvedUrl = SUPABASE_URL;
+        resolvedKey = SUPABASE_ANON_KEY;
+      }
+    } catch (e) {
+      console.warn('[MobileSync] Fallback para credenciais padrão:', e);
+    }
+    const activeSysId = currentSystemId || getStoredSystemId() || 'sys-vialivre-default';
+    return {
+      appName: 'ViaLivre Gestão & Mobile Gateway',
+      mobileAppTarget: 'ViaLivre Mobile',
+      version: '1.5.0',
+      supabaseUrl: resolvedUrl,
+      supabaseAnonKey: resolvedKey,
+      systemId: activeSysId,
+      apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      realtimeChannels: [
+        'public:trips',
+        'public:routes',
+        'public:bus_stations',
+        'public:notices',
+        'public:imp_cards',
+        'public:imp_card_recharges',
+        'public:tickets',
+        'public:daily_logs',
+        'public:occurrences'
+      ],
+      publicPassengerTables: PUBLIC_PASSENGER_TABLES,
+      timestamp: Date.now()
+    };
+  },
+
+  syncWithMobile: async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
+    try {
+      // 1. Sincroniza fila de pendências offline com Supabase
+      const localResult = await db.syncPendingActions();
+
+      // 2. Dispara broadcast em tempo real para dispositivos ViaLivre Mobile conectados
+      try {
+        const syncChannel = supabase.channel('vialivre-mobile-sync');
+        await syncChannel.subscribe();
+        await syncChannel.send({
+          type: 'broadcast',
+          event: 'vialivre_mobile_event',
+          payload: {
+            type: 'SYNC_TRIGGER',
+            origin: 'vialivre_gestao',
+            system_id: currentSystemId || getStoredSystemId(),
+            timestamp: Date.now()
+          }
+        });
+        setTimeout(() => {
+          try { supabase.removeChannel(syncChannel); } catch {}
+        }, 1200);
+      } catch (e) {
+        console.warn('[Mobile Sync] Broadcast para ViaLivre Mobile:', e);
+      }
+
+      // 3. Atualiza timestamps locais e dispara recarregamento de interface
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('fluxo_session_sync_timestamp', String(Date.now()));
+        window.dispatchEvent(new CustomEvent('vialivre-sync-timestamp-updated'));
+        window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
+        window.dispatchEvent(new CustomEvent('vialivre-mobile-sync-event', {
+          detail: { type: 'MANUAL_SYNC', timestamp: Date.now() }
+        }));
+      }
+
+      return {
+        success: true,
+        syncedCount: localResult.syncedCount,
+        message: 'Sincronização bidirecional com ViaLivre Mobile executada com sucesso!'
+      };
+    } catch (err: any) {
+      return {
+        success: false,
+        syncedCount: 0,
+        message: err?.message || 'Falha na sincronização móvel.'
+      };
+    }
   }
 };

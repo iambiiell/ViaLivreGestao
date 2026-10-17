@@ -10,7 +10,7 @@ export const sanitizeCardForSession = (card: any) => {
   if (!card || typeof card !== 'object') return null;
 
   const photoUrl =
-    typeof card.photo_url === 'string' && card.photo_url.length > 2000
+    typeof card.photo_url === 'string' && card.photo_url.length > 2_000_000
       ? undefined
       : card.photo_url;
 

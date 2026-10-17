@@ -51,6 +51,70 @@ export const isTourCompleted = (tourId: string): boolean => {
 // Coleção de Tours Disponíveis
 export const TOURS: TourDefinition[] = [
   {
+    id: 'mobile_welcome',
+    title: 'Tour de Boas-Vindas Mobile',
+    subtitle: 'Navegação por polegares, menu hamburger, ações rápidas e gestos.',
+    category: 'Mobile',
+    duration: '1 min',
+    iconName: 'Smartphone',
+    steps: [
+      {
+        element: '#tour-mobile-header',
+        popover: {
+          title: '📱 Bem-vindo ao ViaLivre Mobile',
+          description: 'Ambiente ergonômico (412 × 732 px) projetado para operações no campo com botões táteis grandes e respostas imediatas.',
+          side: 'bottom',
+          align: 'center',
+        },
+      },
+      {
+        element: '#tour-mobile-hamburger',
+        popover: {
+          title: '🍔 Menu Hamburger (Todas as Abas)',
+          description: 'Toque neste ícone ou no botão "Mais" na barra inferior para abrir a gaveta com todas as abas e serviços liberados ao seu perfil.',
+          side: 'bottom',
+          align: 'start',
+        },
+      },
+      {
+        element: '#tour-mobile-gestures',
+        popover: {
+          title: '👆 Navegação por Gestos',
+          description: 'Deslize para cima/baixo para navegar, puxe a gaveta para baixo para fechá-la instantaneamente e use toques ergonômicos com o polegar.',
+          side: 'bottom',
+          align: 'center',
+        },
+      },
+      {
+        element: '#tour-mobile-quick-actions',
+        popover: {
+          title: '⚡ Ações Rápidas (Drag-and-Drop)',
+          description: 'Arraste e solte para reordenar suas abas favoritas como Ponto, Escalas e Avisos. Os 2 primeiros atalhos aparecem diretamente na barra inferior!',
+          side: 'top',
+          align: 'center',
+        },
+      },
+      {
+        element: '#tour-mobile-bottom-nav',
+        popover: {
+          title: '🖐️ Barra Inferior Personalizada',
+          description: 'Navegue facilmente com o polegar entre Início, Operação, Menu Mais e suas abas prioritárias personalizadas com 1 toque.',
+          side: 'top',
+          align: 'center',
+        },
+      },
+      {
+        element: '#tour-mobile-theme',
+        popover: {
+          title: '🌓 Modo Escuro & Design',
+          description: 'Clique no ícone de sol e lua a qualquer momento para abrir o pop-up "Design e Cores" e calibrar o contraste ideal para o campo.',
+          side: 'bottom',
+          align: 'end',
+        },
+      },
+    ],
+  },
+  {
     id: 'system_overview',
     title: 'Visão Geral do Sistema',
     subtitle: 'Conheça a interface mestre, navegação, pesquisa global e configurações.',
@@ -384,3 +448,11 @@ export const startGuidedTour = (
     driverInstance.drive();
   }, 300);
 };
+
+/**
+ * Inicia especificamente o tour de boas-vindas da versão mobile
+ */
+export const startMobileGuidedTour = (options?: { onFinish?: () => void }) => {
+  startGuidedTour('mobile_welcome', options);
+};
+
