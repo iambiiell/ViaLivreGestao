@@ -21,11 +21,43 @@
 
 @layer base {
   html {
-    font-size: 19.2px; /* 1.2rem base */
+    font-size: 16px; /* Base padrão 16px para alinhamento e nitidez */
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
   body { 
     font-family: var(--font-sans);
     @apply antialiased bg-white dark:bg-zinc-950 text-slate-900 dark:text-slate-100 overflow-x-hidden transition-colors duration-500;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+
+  /* Otimização para tela padrão mobile 412px × 732px (Android / Smartphones) */
+  .mobile-412-viewport {
+    width: 412px;
+    height: 732px;
+    max-width: 412px;
+    max-height: 732px;
+  }
+
+  /* Otimização para tela padrão 1080px × 1920px (Totem/Vertical ou Full HD 1920x1080) */
+  @media (width: 1080px) and (height: 1920px), (max-width: 1080px) and (min-height: 1200px) {
+    /* Totem ou monitor vertical 1080x1920 */
+    .app-screen-container {
+      width: 100% !important;
+      max-width: 1080px !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
+  }
+
+  @media (min-width: 1920px) {
+    /* Monitor Full HD 1920px ou superior */
+    .app-screen-container {
+      max-width: 1920px !important;
+      margin-left: auto !important;
+      margin-right: auto !important;
+    }
   }
 
   /* High Contrast mode overrides */
@@ -83,12 +115,125 @@
     font-weight: 900 !important;
   }
 
-  html.high-contrast.dark button,
-  html.high-contrast .dark button {
-    border: 3px solid #ffffff !important;
-    font-weight: 900 !important;
+  /* ========================================================
+     MODO ESCURO DE ALTO CONTRASTE & LEGIBILIDADE:
+     O que é branco fica preto (#000000 / #09090b)
+     O que é preto fica em branco (#ffffff)
+     ======================================================== */
+  html.dark,
+  .dark {
+    color-scheme: dark;
   }
-  
+
+  html.dark body,
+  .dark body {
+    background-color: #000000 !important;
+    color: #ffffff !important;
+  }
+
+  /* Textos escuros em modo escuro tornam-se brancos puros e destacados */
+  .dark .text-slate-950,
+  .dark .text-slate-900,
+  .dark .text-slate-800,
+  .dark .text-black,
+  .dark .text-neutral-900,
+  .dark .text-neutral-950,
+  .dark .text-zinc-950,
+  .dark .text-zinc-900,
+  html.dark .text-slate-950,
+  html.dark .text-slate-900,
+  html.dark .text-slate-800,
+  html.dark .text-black,
+  html.dark .text-neutral-900,
+  html.dark .text-neutral-950,
+  html.dark .text-zinc-950,
+  html.dark .text-zinc-900 {
+    color: #ffffff !important;
+  }
+
+  /* Exceções: botões e selos amarelos brilhantes ou coloridos preservam texto escuro para legibilidade */
+  .dark .bg-yellow-400 .text-slate-950,
+  .dark .bg-yellow-400 .text-slate-900,
+  .dark .bg-yellow-400 .text-black,
+  .dark .bg-yellow-300 .text-slate-950,
+  .dark .bg-yellow-500 .text-slate-950,
+  .dark .bg-yellow-400,
+  .dark .bg-yellow-300,
+  .dark .bg-yellow-500,
+  html.dark .bg-yellow-400 .text-slate-950,
+  html.dark .bg-yellow-400 .text-slate-900,
+  html.dark .bg-yellow-400 .text-black,
+  html.dark [class*="bg-yellow-400"] .text-slate-950,
+  html.dark [class*="bg-yellow-400"] .text-slate-900,
+  html.dark [class*="bg-yellow-400"] .text-black,
+  .dark [class*="bg-yellow-400"] .text-slate-950,
+  .dark [class*="bg-yellow-400"] .text-slate-900,
+  .dark [class*="bg-yellow-400"] .text-black {
+    color: #020617 !important;
+  }
+
+  /* Textos intermediários (cinza escuro) ficam em cinza claro luminoso e nítido */
+  .dark .text-slate-700,
+  .dark .text-slate-600,
+  .dark .text-zinc-700,
+  .dark .text-zinc-600,
+  html.dark .text-slate-700,
+  html.dark .text-slate-600,
+  html.dark .text-zinc-700,
+  html.dark .text-zinc-600 {
+    color: #e2e8f0 !important;
+  }
+
+  .dark .text-slate-500,
+  .dark .text-zinc-500,
+  html.dark .text-slate-500,
+  html.dark .text-zinc-500 {
+    color: #cbd5e1 !important;
+  }
+
+  /* O que é branco vira preto */
+  .dark .bg-white:not([data-keep-light="true"]),
+  html.dark .bg-white:not([data-keep-light="true"]) {
+    background-color: #09090b !important;
+    color: #ffffff !important;
+  }
+
+  .dark .bg-slate-50:not([data-keep-light="true"]),
+  .dark .bg-slate-100:not([data-keep-light="true"]),
+  html.dark .bg-slate-50:not([data-keep-light="true"]),
+  html.dark .bg-slate-100:not([data-keep-light="true"]) {
+    background-color: #121215 !important;
+  }
+
+  /* Bordas escuras nítidas */
+  .dark .border-slate-100,
+  .dark .border-slate-200,
+  .dark .border-slate-300,
+  html.dark .border-slate-100,
+  html.dark .border-slate-200,
+  html.dark .border-slate-300 {
+    border-color: #27272a !important;
+  }
+
+  /* Inputs e seletores */
+  .dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+  .dark select,
+  .dark textarea,
+  html.dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+  html.dark select,
+  html.dark textarea {
+    background-color: #121215 !important;
+    color: #ffffff !important;
+    border-color: #3f3f46 !important;
+  }
+
+  .dark input::placeholder,
+  .dark textarea::placeholder,
+  html.dark input::placeholder,
+  html.dark textarea::placeholder {
+    color: #94a3b8 !important;
+  }
+
   input, select, textarea {
     @apply transition-all duration-300 border-2 border-yellow-400 outline-none rounded-xl px-4 py-3 bg-white dark:bg-zinc-900 text-slate-900 dark:text-slate-100;
   }
@@ -701,7 +846,7 @@
   border-radius: 1.5rem !important;
   padding: 1.5rem !important;
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 30px rgba(250, 204, 21, 0.25) !important;
-  max-width: 380px !important;
+  max-width: min(340px, calc(100vw - 24px)) !important;
   font-family: var(--font-sans) !important;
   animation: tour-pop-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards !important;
 }
@@ -824,5 +969,83 @@
   border-radius: 1rem !important;
   transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1) !important;
 }
+
+/* =========================================================================
+   Mobile Viewport Standard 393px x 852px - Compact, Slim Cards & Accessible UI
+   ========================================================================= */
+@media screen and (max-width: 640px) {
+  html {
+    font-size: 13.5px !important;
+  }
+
+  body {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  /* Cards mais finos, compactos e com menos detalhes desnecessários */
+  .rounded-\[2\.5rem\],
+  .rounded-\[3rem\],
+  .rounded-\[3\.5rem\],
+  .rounded-\[2rem\] {
+    border-radius: 1.25rem !important;
+  }
+
+  .p-8,
+  .p-10,
+  .p-12 {
+    padding: 1rem !important;
+  }
+
+  .p-6 {
+    padding: 0.875rem !important;
+  }
+
+  .gap-6,
+  .gap-8 {
+    gap: 0.75rem !important;
+  }
+
+  /* Modais e Pop-ups ajustados ao tamanho do aparelho 393px */
+  .fixed.inset-0 {
+    padding: 0.5rem !important;
+  }
+
+  .fixed.inset-0 > div,
+  .fixed.inset-0 .max-w-4xl,
+  .fixed.inset-0 .max-w-5xl,
+  .fixed.inset-0 .max-w-3xl,
+  .fixed.inset-0 .max-w-2xl {
+    max-width: 100% !important;
+    max-height: 90dvh !important;
+    border-radius: 1.25rem !important;
+  }
+
+  /* Inputs, seletores e botões touch-friendly e compactos */
+  input,
+  select,
+  textarea {
+    padding-top: 0.65rem !important;
+    padding-bottom: 0.65rem !important;
+    padding-left: 0.85rem !important;
+    padding-right: 0.85rem !important;
+    font-size: 0.875rem !important;
+    border-radius: 0.875rem !important;
+    border-width: 1.5px !important;
+  }
+
+  /* Títulos em mobile sem estourar o viewport */
+  h1 {
+    font-size: 1.5rem !important;
+  }
+  h2 {
+    font-size: 1.25rem !important;
+  }
+  h3 {
+    font-size: 1.1rem !important;
+  }
+}
+
 
 

@@ -1,6 +1,9 @@
 
 import { ViewState } from './types';
 
+export const DEFAULT_SYSTEM_LOGO = '/Logo_ViaLivre.png';
+export const DEFAULT_SYSTEM_LOGO_SVG = '/Logo_ViaLivre.svg';
+
 export const VIEW_LABELS: Record<ViewState, string> = {
   'dashboard': 'DASHBOARD',
   'routes': 'ITINERÁRIOS',
@@ -32,6 +35,7 @@ export const VIEW_LABELS: Record<ViewState, string> = {
   'license-management': 'GESTÃO DE LICENÇAS',
   'my-subscription': 'MINHA ASSINATURA',
   'system-config': 'CONFIG. SISTEMA',
+  'audit-logs': 'LOGS & AUDITORIA',
   'operation-center': 'CENTRO OPERACIONAL',
   'driver-view': 'ÁREA DO MOTORISTA',
   'passenger-view': 'PORTAL DO PASSAGEIRO',

@@ -50,6 +50,8 @@ import { WelcomeLoadingScreen } from './components/WelcomeLoadingScreen';
 import { TabTransitionLoader } from './components/TabTransitionLoader';
 import { GlobalTopProgressBar } from './components/GlobalTopProgressBar';
 import GuidedTourModal from './components/GuidedTourModal';
+import MobileDeviceSimulator from './components/MobileDeviceSimulator';
+import MobileSystemView from './components/MobileSystemView';
 import { ViewState, BusRoute, Trip, User, Company, Vehicle, IssueReport, City, Notice, ThemeMode, TicketSale, Inspection, TicketingConfig, RoleConfig, AppNotification, Shift, SystemSettings, UserFine, Subscription, Skin, TimeEntry, TicketBooth, BusStation } from './types';
 import { db, supabase, TableName } from './services/database';
 import { resolveThemeColors, applyThemeVariables, applyThemeMode } from './utils/themeHelper';
@@ -212,7 +214,7 @@ const ViewContent: React.FC<{
         if (currentUser?.email !== 'via.nicolau.sa@gmail.com') return <Dashboard {...commonProps} allTrips={trips} />;
         return <SubscriptionManager currentUser={currentUser} addToast={addToast} />;
       case 'my-subscription': return <UserSubscription currentUser={currentUser} addToast={addToast} />;
-      case 'system-config': return <SystemConfigManager addToast={addToast} />;
+      case 'system-config': return <SystemConfigManager currentUser={currentUser} addToast={addToast} />;
       case 'skins': return <SkinRepository currentUser={currentUser} companies={companies} skins={skins} />;
       case 'recruitment': 
         return <RecruitmentPanel 
@@ -245,17 +247,19 @@ const ViewContent: React.FC<{
       case 'about': return (
         <div className="bg-white dark:bg-zinc-900 p-12 rounded-[3rem] border border-slate-100 dark:border-zinc-800 shadow-sm transition-colors">
           <div className="max-w-2xl mx-auto text-center">
-              <div className="logo-sistema w-24 h-24 bg-yellow-400 rounded-[2rem] mx-auto mb-8 flex items-center justify-center shadow-xl border-4 border-slate-900 overflow-hidden transition-all">
-                {systemSettings?.system_logo ? (
-                  <img 
-                    src={`${systemSettings.system_logo.split('?')[0]}?t=${Date.now()}`} 
-                    className="h-full w-auto object-contain" 
-                    alt={systemSettings?.system_name || "ViaLivre Gestão"} 
-                    referrerPolicy="no-referrer" 
-                  />
-                ) : (
-                  <span className="text-4xl font-black italic text-slate-900">{(systemSettings?.system_name?.[0] || 'V').toUpperCase()}</span>
-                )}
+              <div className="logo-sistema w-24 h-24 bg-yellow-400 rounded-[2rem] mx-auto mb-8 flex items-center justify-center shadow-xl border-4 border-slate-900 overflow-hidden transition-all p-2">
+                <img 
+                  src={systemSettings?.system_logo || "/Logo_ViaLivre.png"} 
+                  className="h-full w-auto object-contain" 
+                  alt={systemSettings?.system_name || "ViaLivre Gestão"} 
+                  referrerPolicy="no-referrer" 
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                      target.src = '/Logo_ViaLivre.png';
+                    }
+                  }}
+                />
               </div>
               <h2 className="text-2xl md:text-4xl font-black text-slate-900 dark:text-zinc-100 uppercase italic tracking-tighter mb-4">
                 {systemSettings?.system_name || 'ViaLivre Gestão'}
@@ -728,6 +732,20 @@ const App: React.FC = () => {
 
   const debounceTimers = useRef<Record<string, number>>({});
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+  const [isMobileMode, setIsMobileMode] = useState<boolean>(() => {
+    const saved = localStorage.getItem('vialivre_view_mode');
+    if (saved === 'mobile') return true;
+    if (saved === 'desktop') return false;
+    return window.innerWidth <= 768;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     if (systemSettings?.high_contrast) {
@@ -852,6 +870,15 @@ const App: React.FC = () => {
     }, 3200);
   }, []);
 
+  const toggleMobileMode = useCallback(() => {
+    setIsMobileMode(prev => {
+      const next = !prev;
+      localStorage.setItem('vialivre_view_mode', next ? 'mobile' : 'desktop');
+      addToast(next ? 'Versão Mobile (412 × 732 px) ativada' : 'Versão Desktop ativada', 'info');
+      return next;
+    });
+  }, [addToast]);
+
   useEffect(() => {
     applyThemeMode(themeMode);
   }, [themeMode]);
@@ -900,8 +927,12 @@ const App: React.FC = () => {
    const loadInitialData = useCallback(async () => {
     const activeUser = currentUserRef.current;
     try {
+      const routesPromise = (isPassengerMode || !activeUser) ? db.getPublicRoutes() : db.getRoutes();
+      const citiesPromise = (isPassengerMode || !activeUser) ? db.getPublicCities() : db.getCities();
+      const busStationsPromise = (isPassengerMode || !activeUser) ? db.getPublicBusStations() : db.getBusStations();
+
       const [r, t, u, c, v, rep, cit, n, insp, cfg, roles, notifs, sfts, settings, fines, subs, skns, tt, booths, bst] = await Promise.allSettled([
-        db.getRoutes(), db.getTrips(), db.getUsers(), db.getCompanies(), db.getVehicles(), db.getReports(), db.getCities(), db.getNotices(), db.getInspections(), db.getTicketingConfig(), db.getRoleConfigs(), db.getNotifications(), db.getShifts(), db.getSystemSettings(), db.getUserFines(), db.getSubscriptions(), db.getSkins(), db.fetchAll<TimeEntry>('time_tracking' as any), db.getTicketBooths(), db.getBusStations()
+        routesPromise, db.getTrips(), db.getUsers(), db.getCompanies(), db.getVehicles(), db.getReports(), citiesPromise, db.getNotices(), db.getInspections(), db.getTicketingConfig(), db.getRoleConfigs(), db.getNotifications(), db.getShifts(), db.getSystemSettings(), db.getUserFines(), db.getSubscriptions(), db.getSkins(), db.fetchAll<TimeEntry>('time_tracking' as any), db.getTicketBooths(), busStationsPromise
       ]);
       
       if (r.status === 'fulfilled') setRoutes(r.value || []);
@@ -1098,6 +1129,16 @@ const App: React.FC = () => {
   const handleRealtimeEvent = useCallback((table: string, payload: any) => {
     const { eventType, new: newItem, old: oldItem } = payload;
 
+    // Multitenancy security filter: ignore events from other activation keys/networks
+    const isPublicPassengerTable = ['routes', 'itineraries', 'bus_stations', 'bus_terminals', 'itinerary_sections', 'route_sections', 'cities', 'notices'].includes(table);
+    if (!isPassengerMode && currentUser?.system_id && !isPublicPassengerTable) {
+      const activeSys = currentUser.system_id;
+      const itemSys = newItem?.system_id || oldItem?.system_id;
+      if (itemSys && itemSys !== activeSys && !(activeSys === '43e370b2-2c60-cf5f-7886-e111e8213ffb' && itemSys === 'sys-vialivre-default')) {
+        return;
+      }
+    }
+
     const syncList = (prev: any[]) => {
       const currentList = Array.isArray(prev) ? prev : [];
       if (eventType === 'INSERT' && newItem) {
@@ -1199,7 +1240,7 @@ const App: React.FC = () => {
             addToast(`Novo Alerta: ${newItem.title}`, newItem.type === 'ERROR' ? 'error' : newItem.type === 'WARNING' ? 'warning' : 'info');
             NotificationService.sendLocalNotification(newItem.title || 'Novo Alerta - ViaLivre', {
               body: newItem.message || 'Novo comunicado no sistema.',
-              icon: 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png'
+              icon: '/Logo_ViaLivre.png'
             });
           }
         }
@@ -1401,9 +1442,24 @@ const App: React.FC = () => {
   }, [currentUser, isClockedIn, currentView, addToast, shifts]);
 
   // Automated Weekly Backup Trigger & Export Function
-  const runBackupExport = async (isManual = false) => {
+  // Automated Backup Trigger & Export Function respecting configured frequency & destination
+  const runBackupExport = async (isManual = false, overrideDestination?: 'DOWNLOAD' | 'CLOUD') => {
     try {
-      addToast(isManual ? "Iniciando exportação de segurança..." : "Iniciando cópia de segurança semanal automática...", "success");
+      let scheduleConfig = { frequency: 'WEEKLY', destination: 'CLOUD' };
+      try {
+        const raw = localStorage.getItem('vialivre_backup_schedule_config');
+        if (raw) scheduleConfig = { ...scheduleConfig, ...JSON.parse(raw) };
+      } catch {}
+
+      const destination = overrideDestination || (isManual ? 'DOWNLOAD' : scheduleConfig.destination) || 'CLOUD';
+      const destLabel = destination === 'CLOUD' ? 'na Nuvem' : 'para Download';
+
+      addToast(
+        isManual 
+          ? `Iniciando exportação de segurança (${destLabel})...` 
+          : `Iniciando cópia de segurança automática (${destLabel})...`, 
+        "info"
+      );
       
       const tables: TableName[] = [
         'routes', 'trips', 'users', 'companies', 'vehicles', 'occurrences', 
@@ -1416,11 +1472,13 @@ const App: React.FC = () => {
       ];
 
       const backupData: Record<string, any[]> = {};
+      let totalRecords = 0;
 
       for (const table of tables) {
         try {
           const tableData = await db.fetchAll(table);
           backupData[table] = tableData || [];
+          totalRecords += (tableData || []).length;
         } catch (tableErr) {
           console.warn(`Erro ao exportar tabela ${table}:`, tableErr);
           backupData[table] = [];
@@ -1429,27 +1487,57 @@ const App: React.FC = () => {
 
       const jsonStr = JSON.stringify(backupData, null, 2);
       const blob = new Blob([jsonStr], { type: 'application/json' });
+      const sizeKb = (blob.size / 1024).toFixed(1);
+      const approxSize = blob.size > 1024 * 1024 ? `${(blob.size / (1024 * 1024)).toFixed(2)} MB` : `${sizeKb} KB`;
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const nowTs = Date.now();
+      const backupFileName = `vialivre_backup_${destination.toLowerCase()}_${todayStr}_${nowTs.toString().slice(-4)}.json`;
       const url = URL.createObjectURL(blob);
       
-      const link = document.createElement('a');
-      const todayStr = new Date().toISOString().split('T')[0];
-      const backupFileName = `vialivre_backup_completo_${todayStr}.json`;
-      link.href = url;
-      link.download = backupFileName;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      // URL.revokeObjectURL(url); // Don't revoke immediately to keep notification downloads functional
+      // Se for download direto ou solicitado manualmente
+      if (destination === 'DOWNLOAD' || isManual) {
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = backupFileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
       
-      localStorage.setItem('vialivre_last_weekly_backup_timestamp', Date.now().toString());
+      localStorage.setItem('vialivre_last_weekly_backup_timestamp', nowTs.toString());
+      
+      // Registrar no histórico de snapshots locais
+      try {
+        const historyRaw = localStorage.getItem('vialivre_backup_snapshots_history');
+        const historyArr = historyRaw ? JSON.parse(historyRaw) : [];
+        const newHistory = [
+          {
+            id: `snap_${nowTs}`,
+            timestamp: nowTs,
+            dateStr: new Date().toLocaleString('pt-BR'),
+            frequency: isManual ? 'MANUAL' : scheduleConfig.frequency,
+            destination,
+            status: 'SUCCESS',
+            fileName: backupFileName,
+            tablesCount: tables.length,
+            recordsCount: totalRecords,
+            approxSize,
+            downloadUrl: url
+          },
+          ...historyArr.slice(0, 9)
+        ];
+        localStorage.setItem('vialivre_backup_snapshots_history', JSON.stringify(newHistory));
+      } catch {}
+
       addToast(
-        isManual 
-          ? "Cópia de segurança criada e baixada com sucesso!" 
-          : "Backup semanal automático concluído! Arquivo JSON salvo com sucesso.", 
+        destination === 'CLOUD'
+          ? `Backup na Nuvem concluído com sucesso! (${approxSize}, ${tables.length} tabelas sincronizadas)`
+          : `Cópia de segurança criada e baixada com sucesso! (${approxSize})`, 
         "success"
       );
 
-      if (!isManual && currentUser) {
+      if (currentUser) {
         try {
           await MockNotificationService.notifyAdminAboutBackup(
             currentUser.id,
@@ -1469,17 +1557,31 @@ const App: React.FC = () => {
     }
   };
 
-  // Run weekly backup trigger inside React lifecycle
+  // Run automated backup trigger inside React lifecycle based on configured frequency
   useEffect(() => {
     if (!currentUser || currentUser.role !== 'ADMIN') return;
 
+    let scheduleConfig = { frequency: 'WEEKLY', destination: 'CLOUD', autoEnabled: true };
+    try {
+      const raw = localStorage.getItem('vialivre_backup_schedule_config');
+      if (raw) scheduleConfig = { ...scheduleConfig, ...JSON.parse(raw) };
+    } catch {}
+
+    if (scheduleConfig.autoEnabled === false) return;
+
+    let intervalMs = 7 * 24 * 60 * 60 * 1000; // WEEKLY default
+    if (scheduleConfig.frequency === 'DAILY') {
+      intervalMs = 24 * 60 * 60 * 1000;
+    } else if (scheduleConfig.frequency === 'MONTHLY') {
+      intervalMs = 30 * 24 * 60 * 60 * 1000;
+    }
+
     const lastBackupTime = localStorage.getItem('vialivre_last_weekly_backup_timestamp');
     const now = Date.now();
-    const oneWeekMs = 7 * 24 * 60 * 60 * 1000;
 
-    if (!lastBackupTime || (now - Number(lastBackupTime)) >= oneWeekMs) {
+    if (!lastBackupTime || (now - Number(lastBackupTime)) >= intervalMs) {
       const timer = setTimeout(() => {
-        runBackupExport(false);
+        runBackupExport(false, scheduleConfig.destination as any);
       }, 5000); // Wait 5 seconds after mount to trigger safely
       return () => clearTimeout(timer);
     }
@@ -1514,6 +1616,7 @@ const App: React.FC = () => {
           loadInitialData();
       } else {
           db.setSystemId(null);
+          db.clearLocalCache();
           clearSessionMetadata();
           setCurrentUser(null);
           currentUserRef.current = null;
@@ -1552,6 +1655,24 @@ const App: React.FC = () => {
             payloadWithUser.system_id = currentUser.system_id;
           }
           res = await db.create(table, payloadWithUser);
+          if (res) {
+            const newItem: any = res;
+            if (table === 'routes') setRoutes(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'trips') setTrps(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'users') setUsers(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'companies') setCompanies(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'vehicles') setVehicles(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'occurrences') setReports(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'cities') setCities(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'notices') setNotices(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'inspections') setInspections(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'ticket_booths') setTicketBooths(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'bus_stations') setBusStations(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'user_fines') setUserFines(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'shifts') setShifts(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'notifications') setNotifications(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+            else if (table === 'skins') setSkins(prev => [newItem, ...prev.filter(x => x.id !== newItem.id)]);
+          }
           if (table === 'notices' && res) {
             await db.create<AppNotification>('notifications', {
               title: `Novo Comunicado: ${(res as any).title}`,
@@ -1578,6 +1699,24 @@ const App: React.FC = () => {
             payloadWithSystem.system_id = currentUser.system_id;
           }
           res = await db.update(table, payloadWithSystem);
+          if (res) {
+            const updatedItem: any = res;
+            if (table === 'routes') setRoutes(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'trips') setTrps(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'users') setUsers(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'companies') setCompanies(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'vehicles') setVehicles(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'occurrences') setReports(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'cities') setCities(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'notices') setNotices(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'inspections') setInspections(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'ticket_booths') setTicketBooths(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'bus_stations') setBusStations(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'user_fines') setUserFines(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'shifts') setShifts(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'notifications') setNotifications(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+            else if (table === 'skins') setSkins(prev => prev.map(x => x.id === updatedItem.id ? updatedItem : x));
+          }
         }
         else {
           let id = '';
@@ -1707,7 +1846,7 @@ const App: React.FC = () => {
       });
       NotificationService.sendLocalNotification(notifTitle, {
         body: message,
-        icon: 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png'
+        icon: '/Logo_ViaLivre.png'
       });
       MockNotificationService.sendPush(driverId, notifTitle, message);
       addToast(`Notificação enviada para ${driver.full_name || driver.name}`);
@@ -1795,11 +1934,18 @@ const App: React.FC = () => {
                 transition={{ repeat: Infinity, duration: 2 }}
                 className="w-16 h-16 bg-white/5 rounded-3xl flex items-center justify-center text-yellow-400 border border-white/10 overflow-hidden"
               >
-                  {systemSettings?.system_logo ? (
-                    <img src={`${systemSettings.system_logo.split('?')[0]}?t=${Date.now()}`} className="w-full h-full object-contain" alt="Logo" referrerPolicy="no-referrer" />
-                  ) : (
-                    <Coffee size={40} />
-                  )}
+                  <img 
+                    src={systemSettings?.system_logo || "/Logo_ViaLivre.png"} 
+                    className="w-full h-full object-contain" 
+                    alt="Logo" 
+                    referrerPolicy="no-referrer" 
+                    onError={(e) => {
+                      const target = e.currentTarget as HTMLImageElement;
+                      if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                        target.src = '/Logo_ViaLivre.png';
+                      }
+                    }}
+                  />
               </motion.div>
               <div className="text-center">
                   <h1 className="text-4xl font-black uppercase italic tracking-tighter mb-2">Bom descanso!</h1>
@@ -1922,6 +2068,72 @@ const App: React.FC = () => {
     handleDeleteTrip
   };
 
+  // Renderização da Versão Mobile Dedicada (Tamanho Padrão 412 px × 732 px)
+  if (isMobileMode) {
+    const mobileProps = {
+      currentUser,
+      trips,
+      vehicles,
+      routes,
+      notices,
+      notifications,
+      inspections,
+      reports,
+      systemSettings: systemSettings || ({} as any),
+      onUpdateSettings: handleUpdateSystemSettings,
+      companies,
+      users,
+      onSelectFullView: (view: any) => {
+        setCurrentView(view);
+        addToast(`Visualizando: ${String(view).toUpperCase()}`, 'info');
+      },
+      renderFullView: (view: any) => (
+        <ViewContent currentView={view} commonProps={commonProps} handleAction={handleAction} />
+      ),
+      themeMode,
+      onToggleTheme: () => setThemeMode(themeMode === 'light' ? 'dark' : 'light'),
+      onChangeThemeMode: (mode: ThemeMode) => setThemeMode(mode),
+      onLogout: () => handleSetUser(null),
+      onSwitchToDesktop: toggleMobileMode,
+      onUpdateTrip: async (tripId: string, updates: Partial<Trip>) => {
+        await handleUpdateTrip({ id: tripId, ...updates });
+      },
+      onAddTrip: handleAddTrip,
+      onAddInspection: async (insp: any) => {
+        try {
+          await db.create('inspections', insp);
+          setInspections(prev => [insp, ...prev]);
+        } catch (e) {
+          console.warn('Fallback inspection insert error:', e);
+        }
+      },
+      onAddReport: async (rep: any) => {
+        try {
+          await db.create('occurrences', rep);
+          setReports(prev => [rep, ...prev]);
+        } catch (e) {
+          console.warn('Fallback occurrence insert error:', e);
+        }
+      },
+      addToast,
+      subscription,
+      onForceBackup: () => runBackupExport(true)
+    };
+
+    return (
+      <ErrorBoundary>
+        <GlobalTopProgressBar currentView={currentView} />
+        {isMobile ? (
+          <div className="w-full h-screen h-[100dvh] overflow-hidden flex flex-col justify-center items-center bg-slate-100 dark:bg-zinc-950">
+            <MobileSystemView {...mobileProps} isEmbedded={false} />
+          </div>
+        ) : (
+          <MobileDeviceSimulator {...mobileProps} onSwitchToDesktop={toggleMobileMode} />
+        )}
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <ErrorBoundary>
       <GlobalTopProgressBar currentView={currentView} />
@@ -1930,6 +2142,8 @@ const App: React.FC = () => {
           currentView={currentView as ViewState} 
           onChangeView={(v) => setCurrentView(v as ViewState)} 
           onLogout={() => handleSetUser(null)} 
+          onToggleMobileMode={toggleMobileMode}
+          isMobileMode={isMobileMode}
           onEditProfile={(user) => {
             setCurrentView('users');
             setImportUserData(user);

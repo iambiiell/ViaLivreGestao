@@ -111,9 +111,9 @@ export interface BusRoute {
   sections?: RouteSection[];
   stops: string[];
   schedule: {
-    weekdays: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
-    saturday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
-    sunday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string }[];
+    weekdays: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string; destination?: string; origin?: string; point_name?: string }[];
+    saturday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string; destination?: string; origin?: string; point_name?: string }[];
+    sunday: { time: string; direction: 'IDA' | 'VOLTA'; section_name?: string; legend_symbol?: string; legend_text?: string; destination?: string; origin?: string; point_name?: string }[];
   };
   letreiro_principal: string;
   letreiro_principal_modo: 'FIXO' | 'ROLANTE';
@@ -269,7 +269,7 @@ export interface AppNotification {
   metadata?: any;
 }
 
-export type ViewState = 'dashboard' | 'routes' | 'schedule' | 'drivers' | 'companies' | 'users' | 'vehicles' | 'observations' | 'cities' | 'notices' | 'reports-view' | 'maintenance' | 'ticketing' | 'inspections' | 'ticketing-config' | 'time-tracking' | 'payroll' | 'management' | 'shifts' | 'notifications' | 'dispatcher' | 'sac' | 'work-with-us' | 'recruitment' | 'about' | 'skins' | 'subscriptions' | 'license-management' | 'my-subscription' | 'system-config' | 'driver-view' | 'passenger-view' | 'driver-urban' | 'driver-road' | 'conductor' | 'operation-center' | 'monitoring' | 'bus-stations';
+export type ViewState = 'dashboard' | 'routes' | 'schedule' | 'drivers' | 'companies' | 'users' | 'vehicles' | 'observations' | 'cities' | 'notices' | 'reports-view' | 'maintenance' | 'ticketing' | 'inspections' | 'ticketing-config' | 'time-tracking' | 'payroll' | 'management' | 'shifts' | 'notifications' | 'dispatcher' | 'sac' | 'work-with-us' | 'recruitment' | 'about' | 'skins' | 'subscriptions' | 'license-management' | 'my-subscription' | 'system-config' | 'audit-logs' | 'driver-view' | 'passenger-view' | 'driver-urban' | 'driver-road' | 'conductor' | 'operation-center' | 'monitoring' | 'bus-stations';
 
 export interface ActivationKey {
   id: string;
@@ -675,6 +675,9 @@ export interface SystemSettings {
   high_contrast?: boolean;
   glass_effect?: boolean;
   custom_shortcuts?: { [key: string]: string };
+  description?: string;
+  backup_schedule_config?: any;
+  maintenance_km_threshold?: number;
 }
 
 export interface Skin {
@@ -836,3 +839,45 @@ export interface ImpCardRecharge {
   payment_method: ImpCardPaymentMethod;
   created_at: string;
 }
+
+export type AuditActionType = 
+  | 'TRIP_DELETED' 
+  | 'TRIP_UPDATED' 
+  | 'TRIP_CREATED' 
+  | 'SHIFT_MODIFIED' 
+  | 'SHIFT_DELETED' 
+  | 'SHIFT_CREATED' 
+  | 'ROUTE_DELETED' 
+  | 'ROUTE_UPDATED' 
+  | 'VEHICLE_DELETED' 
+  | 'VEHICLE_UPDATED' 
+  | 'USER_DELETED' 
+  | 'USER_ROLE_CHANGED'
+  | 'BACKUP_TRIGGERED'
+  | 'SYSTEM_CONFIG_UPDATED'
+  | 'OPERATIONAL_OVERRIDE';
+
+export type AuditSeverity = 'CRITICAL' | 'WARNING' | 'INFO';
+
+export interface AuditLog {
+  id: string;
+  system_id?: string;
+  user_id?: string;
+  user_name: string;
+  user_role?: string;
+  user_email?: string;
+  user_photo?: string;
+  action_type: AuditActionType;
+  severity: AuditSeverity;
+  entity_type: 'TRIP' | 'SHIFT' | 'ROUTE' | 'USER' | 'VEHICLE' | 'BACKUP' | 'SYSTEM';
+  entity_id?: string;
+  entity_label?: string;
+  description: string;
+  details?: string;
+  previous_state?: Record<string, any>;
+  new_state?: Record<string, any>;
+  ip_address?: string;
+  device_info?: string;
+  created_at: string;
+}
+
