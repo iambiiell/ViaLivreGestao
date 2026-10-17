@@ -1471,8 +1471,13 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                   <span className="truncate max-w-[110px]">{loggedInBuyer ? loggedInBuyer.name.split(' ')[0] : 'Comprar Passagens'}</span>
                 </button>
 
-                <button onClick={toggleNotifications} className={`p-2 rounded-xl transition-all ${notificationsEnabled ? 'bg-slate-900 text-yellow-400 font-extrabold border-2 border-yellow-400' : 'bg-slate-900/10 hover:bg-slate-900/20'}`} title={notificationsEnabled ? "Notificações Ativas" : "Permitir Acesso às Notificações"}><SmartphoneNfc size={18}/></button>
-                <button onClick={() => setShowThemePopup(true)} className="p-2 bg-slate-900/10 hover:bg-slate-900/20 rounded-xl transition-all text-slate-800" title="Design e Cores"><Palette size={18}/></button>
+                <button 
+                  onClick={() => setShowThemePopup(true)} 
+                  className="p-2 bg-slate-900/10 hover:bg-slate-900/20 dark:bg-zinc-800 rounded-xl transition-all text-slate-800 dark:text-zinc-200" 
+                  title="Design e Cores (Ajustar Tema, Cores e Alto Contraste)"
+                >
+                  {themeMode === 'light' ? <Moon size={18} /> : <Sun size={18} className="text-yellow-400" />}
+                </button>
                 <button onClick={onExit} className="px-3 py-2 bg-slate-900/10 hover:bg-slate-900/20 rounded-xl text-[10px] font-black uppercase">Sair</button>
            </div>
         </div>

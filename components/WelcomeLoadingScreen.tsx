@@ -71,18 +71,18 @@ export const WelcomeLoadingScreen: React.FC<WelcomeLoadingScreenProps> = ({
             transition={{ type: 'spring', stiffness: 200, damping: 15 }}
             className="w-20 h-20 bg-gradient-to-br from-yellow-400 to-amber-500 rounded-3xl p-1 shadow-lg shadow-yellow-500/20 flex items-center justify-center shrink-0 border-2 border-slate-900 overflow-hidden"
           >
-            {systemLogo ? (
-              <img
-                src={`${systemLogo.split('?')[0]}?t=${Date.now()}`}
-                alt="Logo"
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="w-full h-full bg-slate-900 rounded-2xl flex items-center justify-center text-yellow-400 font-black text-2xl">
-                {firstName.charAt(0)}
-              </div>
-            )}
+            <img
+              src={systemLogo || "/Logo_ViaLivre.png"}
+              alt="Logo"
+              className="w-full h-full object-contain"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                  target.src = '/Logo_ViaLivre.png';
+                }
+              }}
+            />
           </motion.div>
 
           <div className="text-left space-y-1 min-w-0">

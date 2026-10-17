@@ -418,7 +418,15 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                     <div className="flex items-start justify-between mb-6">
                       <div className="w-16 h-16 bg-slate-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center overflow-hidden border-2 border-white dark:border-zinc-700 shadow-sm">
                         {card.photo_url ? (
-                          <img src={card.photo_url} className="w-full h-full object-cover" alt="Foto" referrerPolicy="no-referrer" />
+                          <img 
+                            src={card.photo_url} 
+                            className="w-full h-full object-cover" 
+                            alt="Foto" 
+                            referrerPolicy="no-referrer" 
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
                         ) : (
                           <User className="text-slate-300" size={32} />
                         )}
@@ -531,7 +539,15 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                       className="w-full aspect-square bg-slate-100 dark:bg-zinc-800 rounded-[3rem] border-4 border-dashed border-slate-200 dark:border-zinc-700 flex flex-col items-center justify-center gap-4 overflow-hidden relative cursor-pointer hover:border-yellow-400 transition-all"
                     >
                       {formData.photo_url ? (
-                        <img src={formData.photo_url} className="w-full h-full object-cover" alt="Foto" referrerPolicy="no-referrer" />
+                        <img 
+                          src={formData.photo_url} 
+                          className="w-full h-full object-cover" 
+                          alt="Foto" 
+                          referrerPolicy="no-referrer" 
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
                       ) : (
                         <>
                           <Upload size={48} className="text-slate-300" />
@@ -892,7 +908,15 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                 <div className="flex items-center gap-6">
                   <div className="w-20 h-20 bg-white rounded-3xl border-2 border-slate-900 flex items-center justify-center overflow-hidden">
                     {rechargeCard.photo_url ? (
-                      <img src={rechargeCard.photo_url} className="w-full h-full object-cover" alt="Foto" referrerPolicy="no-referrer" />
+                      <img 
+                        src={rechargeCard.photo_url} 
+                        className="w-full h-full object-cover" 
+                        alt="Foto" 
+                        referrerPolicy="no-referrer" 
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
+                      />
                     ) : (
                       <User className="text-slate-300" size={40} />
                     )}

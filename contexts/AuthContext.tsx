@@ -1,6 +1,6 @@
 // src/contexts/AuthContext.jsx
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { supabase } from '../services/database';
+import { supabase, db } from '../services/database';
 
 const AuthContext = createContext({});
 
@@ -33,6 +33,10 @@ export const AuthProvider = ({ children }) => {
         role: profile?.role || profile?.cargo || 'Colaborador'
       };
 
+      if (userFull.system_id) {
+        db.setSystemId(userFull.system_id);
+      }
+
       setCurrentUser(userFull);
       setUserRole(userFull.role);
 
@@ -43,6 +47,9 @@ export const AuthProvider = ({ children }) => {
       const cached = localStorage.getItem('@vialivre_user');
       if (cached) {
         const parsed = JSON.parse(cached);
+        if (parsed.system_id) {
+          db.setSystemId(parsed.system_id);
+        }
         setCurrentUser(parsed);
         setUserRole(parsed.role);
       }

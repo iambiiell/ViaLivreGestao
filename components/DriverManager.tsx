@@ -5,7 +5,7 @@ import { UserCircle, Pencil, Plus, X, Save, Trash2, Search, Timer, Eye, EyeOff, 
 import { phoneMask, cpfMask, cepMask } from '../utils/masks';
 import { fetchAddress } from '../services/cep';
 import { VIEW_LABELS } from '../constants';
-import { generateUUID } from '../services/database';
+import { generateUUID, db } from '../services/database';
 
 interface DriverManagerProps {
   drivers: User[];
@@ -61,7 +61,18 @@ const IDCard: React.FC<{ user: User; companies: Company[]; onClose: () => void }
                         </div>
                         <div className="flex-1 p-6 flex flex-col items-center text-center">
                             <div className="w-32 h-32 rounded-3xl bg-slate-100 border-4 border-yellow-400 overflow-hidden mb-4 shadow-inner">
-                                {user.photo_url ? <img src={user.photo_url} className="w-full h-full object-cover" alt="P"/> : <UserCircle size={128} className="text-slate-300 w-full h-full"/>}
+                                {user.photo_url ? (
+                                    <img 
+                                        src={user.photo_url} 
+                                        className="w-full h-full object-cover" 
+                                        alt="P"
+                                        onError={(e) => {
+                                            (e.target as HTMLElement).style.display = 'none';
+                                        }}
+                                    />
+                                ) : (
+                                    <UserCircle size={128} className="text-slate-300 w-full h-full"/>
+                                )}
                             </div>
                             <h3 className="text-2xl font-black uppercase text-slate-900 leading-tight mb-1">{displayName}</h3>
                             
@@ -361,7 +372,12 @@ const DriverManager: React.FC<DriverManagerProps> = ({ drivers = [], cities = []
       else if (title.includes("Motorista")) role = 'DRIVER';
     }
 
-    const payload = { ...formData, role, occurrences } as User;
+    const payload = { 
+      ...formData, 
+      role, 
+      occurrences,
+      system_id: currentUser?.system_id || formData.system_id || db.getSystemId() || '43e370b2-2c60-cf5f-7886-e111e8213ffb'
+    } as User;
     
     // daily_hours_target validation
     if (payload.daily_hours_target) {
@@ -416,7 +432,18 @@ const DriverManager: React.FC<DriverManagerProps> = ({ drivers = [], cities = []
             <div className="bg-white dark:bg-zinc-900 p-5 rounded-[2rem] border border-slate-100 dark:border-zinc-800 shadow-sm group hover:shadow-xl transition-all relative overflow-hidden h-full">
               <div className="flex gap-4">
                   <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden border-2 border-slate-50 dark:border-zinc-700 flex items-center justify-center shrink-0 shadow-sm">
-                      {driver.photo_url ? <img src={driver.photo_url} className="w-full h-full object-cover" alt="Perfil" /> : <UserCircle size={32} className="text-slate-300 dark:text-zinc-600"/>}
+                      {driver.photo_url ? (
+                        <img 
+                          src={driver.photo_url} 
+                          className="w-full h-full object-cover" 
+                          alt="Perfil" 
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <UserCircle size={32} className="text-slate-300 dark:text-zinc-600"/>
+                      )}
                   </div>
                   <div className="flex-1 overflow-hidden">
                       <h3 className="font-black text-slate-800 dark:text-zinc-100 uppercase text-xs truncate leading-tight transition-colors">{driver.full_name}</h3>
@@ -531,7 +558,14 @@ const DriverManager: React.FC<DriverManagerProps> = ({ drivers = [], cities = []
                           >
                             {formData.photo_url ? (
                                 <>
-                                    <img src={formData.photo_url} className="w-full h-full object-cover" alt="Preview" />
+                                    <img 
+                                        src={formData.photo_url} 
+                                        className="w-full h-full object-cover" 
+                                        alt="Preview" 
+                                        onError={(e) => {
+                                            (e.target as HTMLElement).style.display = 'none';
+                                        }}
+                                    />
                                     <div className="absolute inset-0 bg-black/40 opacity-0 hover:opacity-100 transition-opacity flex items-center justify-center">
                                         <Camera className="text-white" size={32} />
                                     </div>

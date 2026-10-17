@@ -216,8 +216,16 @@ export default function SkinRepository({ currentUser, companies, skins }: SkinRe
               className="min-w-[280px] sm:min-w-[320px] md:min-w-0 snap-center flex-1 bg-white dark:bg-[#1e1e1e] border border-slate-200 dark:border-gray-800 rounded-xl overflow-hidden group hover:border-blue-500/50 transition-all h-full flex flex-col shadow-sm hover:shadow-md"
             >
               <div className="aspect-video bg-slate-100 dark:bg-[#2a2a2a] flex items-center justify-center relative overflow-hidden shrink-0">
-                {skin.file_url.endsWith('.png') ? (
-                  <img src={skin.file_url} alt={skin.skin_name} className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                {skin.file_url && (skin.file_url.startsWith('data:image/') || /\.(png|jpe?g|webp|svg|gif)($|\?)/i.test(skin.file_url) || !/\.(dds|zip|rar)($|\?)/i.test(skin.file_url)) ? (
+                  <img 
+                    src={skin.file_url} 
+                    alt={skin.skin_name} 
+                    className="w-full h-full object-cover" 
+                    referrerPolicy="no-referrer" 
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
                 ) : (
                   <div className="text-slate-400 dark:text-gray-500 flex flex-col items-center">
                     <Upload size={40} className="mb-2" />

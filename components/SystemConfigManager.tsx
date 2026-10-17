@@ -1,16 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
-import { ShieldCheck, Save, Loader2, CheckCircle2, AlertTriangle, Settings2, Users, Key, Calendar, CreditCard, RefreshCw, Palette, Pipette, Check, History, KeyRound } from 'lucide-react';
+import { ShieldCheck, Save, Loader2, CheckCircle2, AlertTriangle, Settings2, Users, Key, Calendar, CreditCard, RefreshCw, Palette, Pipette, Check, History, KeyRound, Upload, RotateCcw, Image as ImageIcon, Database } from 'lucide-react';
 import { RoleConfig, Subscription, SystemSettings, ActivationKey, User } from '../types';
 import { db } from '../services/database';
 import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor, applyThemeVariables } from '../utils/themeHelper';
 import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
+import BackupSchedulePanel from './BackupSchedulePanel';
+import SubscriptionExpirationAlert from './SubscriptionExpirationAlert';
 
 interface SystemConfigManagerProps {
-  addToast: (msg: string, type?: 'success' | 'error' | 'warning') => void;
+  currentUser?: User | null;
+  addToast: (msg: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
 }
 
-const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) => {
+const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ currentUser, addToast }) => {
+  const [activeTab, setActiveTab] = useState<'general' | 'backups' | 'roles' | 'subscription'>('general');
   const [roles, setRoles] = useState<RoleConfig[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -22,6 +26,28 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
   const [activationKey, setActivationKey] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const logoInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 3 * 1024 * 1024) {
+      addToast("A logo deve ter tamanho máximo de 3MB.", "warning");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const base64 = reader.result as string;
+      handleUpdateSystemSetting('system_logo', base64);
+      addToast("Logo do sistema atualizada com sucesso!", "success");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetDefaultLogo = () => {
+    handleUpdateSystemSetting('system_logo', '/Logo_ViaLivre.png');
+    addToast("Logo padrão ViaLivre restaurada!", "success");
+  };
 
   useEffect(() => {
     loadRoles();
@@ -261,7 +287,68 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
           </button>
         </div>
 
-        <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors mb-8">
+        {/* Barra de Abas de Configuração */}
+        <div className="flex flex-wrap items-center gap-2 mb-8 bg-white dark:bg-zinc-900 p-2 sm:p-2.5 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm">
+          <button
+            type="button"
+            onClick={() => setActiveTab('general')}
+            className={`flex-1 sm:flex-initial px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'general'
+                ? 'bg-yellow-400 text-slate-950 font-black shadow-md border-2 border-slate-900'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <Settings2 size={16} />
+            <span>Geral & Identidade</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('backups')}
+            className={`flex-1 sm:flex-initial px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'backups'
+                ? 'bg-yellow-400 text-slate-950 font-black shadow-md border-2 border-slate-900'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <Database size={16} />
+            <span>Backups Automáticos</span>
+            <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[8px] bg-slate-900 text-yellow-400">
+              Diário • Semanal • Mensal
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('roles')}
+            className={`flex-1 sm:flex-initial px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'roles'
+                ? 'bg-yellow-400 text-slate-950 font-black shadow-md border-2 border-slate-900'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <ShieldCheck size={16} />
+            <span>Permissões & Cargos</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('subscription')}
+            className={`flex-1 sm:flex-initial px-5 py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-2 ${
+              activeTab === 'subscription'
+                ? 'bg-yellow-400 text-slate-950 font-black shadow-md border-2 border-slate-900'
+                : 'text-slate-600 dark:text-zinc-400 hover:bg-slate-50 dark:hover:bg-zinc-800'
+            }`}
+          >
+            <CreditCard size={16} />
+            <span>Assinatura & Licenças</span>
+          </button>
+        </div>
+
+        {/* ABA 1: GERAL & IDENTIDADE */}
+        {activeTab === 'general' && (
+          <div className="space-y-8 animate-in fade-in duration-300">
+            <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors mb-8">
           <div className="p-8 border-b dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900">
             <div className="flex items-center gap-3">
               <Settings2 className="text-indigo-500" size={24} />
@@ -447,6 +534,79 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
                   </label>
                 </div>
             </div>
+
+            {/* Configuração e Prévia da Logo do Sistema */}
+            <div className="col-span-full border-t border-slate-50 dark:border-zinc-800/50 pt-6">
+              <div className="p-6 bg-slate-50 dark:bg-zinc-800/40 rounded-3xl border-2 border-slate-100 dark:border-zinc-800 space-y-5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 rounded-2xl bg-yellow-400 text-slate-950">
+                      <ImageIcon size={20} />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-black uppercase text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                        Logo do Sistema (Marca & Identidade)
+                      </h4>
+                      <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase italic mt-0.5">
+                        Exibida na tela de login, barra de navegação, vouchers de passagens e telas de carregamento.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => logoInputRef.current?.click()}
+                      className="px-4 py-2 bg-yellow-400 hover:bg-yellow-500 text-slate-950 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                    >
+                      <Upload size={14} /> Carregar Nova Logo
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleResetDefaultLogo}
+                      className="px-4 py-2 bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 font-black text-[10px] uppercase tracking-wider rounded-xl transition-all border border-slate-200 dark:border-zinc-700 flex items-center gap-1.5"
+                      title="Restaurar logo padrão oficial do sistema"
+                    >
+                      <RotateCcw size={14} /> Logo Padrão
+                    </button>
+                    <input
+                      ref={logoInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleLogoUpload}
+                    />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-6 bg-white dark:bg-zinc-900 p-5 rounded-2xl border border-slate-200 dark:border-zinc-700">
+                  <div className="w-20 h-20 bg-yellow-400/20 dark:bg-yellow-400/10 rounded-2xl border-2 border-yellow-400 p-2 flex items-center justify-center shrink-0 overflow-hidden shadow-inner">
+                    <img
+                      src={systemSettings?.system_logo || "/Logo_ViaLivre.png"}
+                      alt="Logo do Sistema"
+                      className="w-full h-full object-contain"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                          target.src = '/Logo_ViaLivre.png';
+                        }
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <p className="text-xs font-black uppercase text-slate-900 dark:text-zinc-100">
+                      Prévia em tempo real
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                      Status: <span className="text-emerald-500 font-bold uppercase">Carregada com Sucesso</span>
+                    </p>
+                    <p className="text-[9px] text-slate-400 font-mono">
+                      {systemSettings?.system_logo?.startsWith('data:') ? 'Imagem personalizada armazenada' : (systemSettings?.system_logo || '/Logo_ViaLivre.png')}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -538,10 +698,29 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
             </div>
           </div>
         </div>
+      </div>
+    )}
 
+        {/* ABA 2: BACKUPS AUTOMÁTICOS (Frequência: Diária, Semanal, Mensal & Destino) */}
+        {activeTab === 'backups' && (
+          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <BackupSchedulePanel 
+              currentUser={currentUser || null}
+              addToast={addToast}
+            />
+          </div>
+        )}
 
-        <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors mb-8">
-          <div className="p-8 border-b dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900">
+        {/* ABA 3: ASSINATURA & LICENÇAS */}
+        {activeTab === 'subscription' && (
+          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <SubscriptionExpirationAlert 
+              subscription={subscription} 
+              dismissible={false} 
+            />
+
+            <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors mb-8">
+              <div className="p-8 border-b dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900">
             <div className="flex items-center gap-3">
               <CreditCard className="text-blue-500" size={24} />
               <h3 className="text-lg font-black uppercase italic tracking-tighter">Assinatura do Sistema</h3>
@@ -617,8 +796,13 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
             </div>
           </div>
         </div>
+      </div>
+    )}
 
-        <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors">
+        {/* ABA 4: PERMISSÕES & CARGOS */}
+        {activeTab === 'roles' && (
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
+            <div className="bg-white dark:bg-zinc-900 rounded-[3rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm overflow-hidden transition-colors">
           <div className="overflow-x-auto custom-scrollbar">
             <table className="w-full border-collapse">
               <thead>
@@ -709,6 +893,8 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ addToast }) =
           </div>
         </div>
       </div>
+    )}
+  </div>
 
       <KeyActivationHistoryModal
         isOpen={showHistoryModal}

@@ -5,9 +5,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../services/database';
 import { supabase } from '../services/supabaseClient';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
-import TimetableExportModal from './TimetableExportModal';
+import TimetableExportModal, { TimeLegendEntry } from './TimetableExportModal';
 import BatchTimetableExportModal from './BatchTimetableExportModal';
-import LegendSymbolSelectorModal from './LegendSymbolSelectorModal';
+import LegendSymbolSelectorModal, { OperationDayKey } from './LegendSymbolSelectorModal';
 
 interface RouteManagerProps {
   routes: BusRoute[];
@@ -118,6 +118,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     symbol: string;
     text: string;
   }>>([]);
+  const [exportModalLegends, setExportModalLegends] = useState<TimeLegendEntry[]>([]);
 
   const handleOpenExportModal = async (route: BusRoute) => {
     setIsFetchingTimetable(true);
@@ -244,8 +245,228 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       }
     });
 
+    const initialLegends = getInitialLegendsForRoute(route);
+    setExportModalLegends(initialLegends);
     setExportModalRoute(route);
     setIsFetchingTimetable(false);
+  };
+
+  const getInitialLegendsForRoute = (targetRoute: BusRoute): TimeLegendEntry[] => {
+    const list: TimeLegendEntry[] = [];
+    const symMap = new Map<string, { symbol: string; text: string; timesByDay: Record<'weekdays' | 'saturday' | 'sunday', string[]> }>();
+
+    // 1. Carrega dados salvos no localStorage para a rota
+    try {
+      const saved = localStorage.getItem(`consimp_route_legends_${targetRoute.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((l: any) => {
+            if (l.symbol) {
+              const sym = l.symbol.trim();
+              if (!symMap.has(sym)) {
+                symMap.set(sym, {
+                  symbol: sym,
+                  text: l.text || '',
+                  timesByDay: { weekdays: [], saturday: [], sunday: [] }
+                });
+              }
+              const entry = symMap.get(sym)!;
+              if (l.text && !entry.text) entry.text = l.text;
+              if (l.day && (l.day === 'weekdays' || l.day === 'saturday' || l.day === 'sunday')) {
+                const dayTimes = Array.isArray(l.times) ? l.times : (l.time ? [l.time] : []);
+                dayTimes.forEach((t: string) => {
+                  if (!entry.timesByDay[l.day as 'weekdays' | 'saturday' | 'sunday'].includes(t)) {
+                    entry.timesByDay[l.day as 'weekdays' | 'saturday' | 'sunday'].push(t);
+                  }
+                });
+              }
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("Erro ao carregar legendas do localStorage:", e);
+    }
+
+    // 2. Mescla com legendas cadastradas no schedule da rota ou formData ativo
+    const sched = (formData.id === targetRoute.id && formData.schedule) ? formData.schedule : targetRoute.schedule;
+    if (sched) {
+      (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+        const items = sched[day];
+        if (Array.isArray(items)) {
+          items.forEach((item: any) => {
+            if (item.legend_symbol && item.time) {
+              const sym = item.legend_symbol.trim();
+              if (!symMap.has(sym)) {
+                symMap.set(sym, {
+                  symbol: sym,
+                  text: item.legend_text || '',
+                  timesByDay: { weekdays: [], saturday: [], sunday: [] }
+                });
+              }
+              const entry = symMap.get(sym)!;
+              if (item.legend_text && !entry.text) entry.text = item.legend_text;
+              if (!entry.timesByDay[day].includes(item.time)) {
+                entry.timesByDay[day].push(item.time);
+              }
+            }
+          });
+        }
+      });
+    }
+
+    // 3. Mescla com routeLegends em memória
+    routeLegends.forEach(l => {
+      const sym = l.symbol.trim();
+      if (!symMap.has(sym)) {
+        symMap.set(sym, {
+          symbol: sym,
+          text: l.text || '',
+          timesByDay: { weekdays: [], saturday: [], sunday: [] }
+        });
+      } else if (l.text && !symMap.get(sym)!.text) {
+        symMap.get(sym)!.text = l.text;
+      }
+    });
+
+    // 4. Converte map para lista de TimeLegendEntry
+    symMap.forEach((entry, sym) => {
+      (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+        const times = Array.from(new Set(entry.timesByDay[day])).sort();
+        if (times.length > 0) {
+          list.push({
+            id: `leg_${day}_${sym}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            day,
+            direction: 'ida',
+            times,
+            time: times[0] || '',
+            symbol: sym,
+            text: entry.text
+          });
+        }
+      });
+
+      const totalTimes = entry.timesByDay.weekdays.length + entry.timesByDay.saturday.length + entry.timesByDay.sunday.length;
+      if (totalTimes === 0) {
+        list.push({
+          id: `leg_placeholder_${sym}_${Date.now()}`,
+          day: 'weekdays',
+          direction: 'ida',
+          times: [],
+          time: '',
+          symbol: sym,
+          text: entry.text
+        });
+      }
+    });
+
+    return list;
+  };
+
+  const handleSyncLegendsWithRoute = (syncedLegends: TimeLegendEntry[]) => {
+    // 1. Atualiza lista de símbolos distintos em routeLegends
+    const distinctMap = new Map<string, { id: string; symbol: string; text: string }>();
+    syncedLegends.forEach(l => {
+      if (l.symbol && !distinctMap.has(l.symbol.trim().toLowerCase())) {
+        distinctMap.set(l.symbol.trim().toLowerCase(), {
+          id: l.id || `leg_${Date.now()}`,
+          symbol: l.symbol.trim(),
+          text: l.text || ''
+        });
+      }
+    });
+    const newRouteLegends = Array.from(distinctMap.values());
+    setRouteLegends(newRouteLegends);
+
+    if (exportModalRoute) {
+      try {
+        localStorage.setItem(`consimp_route_legends_${exportModalRoute.id}`, JSON.stringify(syncedLegends));
+      } catch (e) {
+        console.error(e);
+      }
+
+      // 2. Se a rota aberta para edição no formulário for a mesma do pop-up de exportação, sincroniza os horários em formData.schedule
+      if (formData.id === exportModalRoute.id && formData.schedule) {
+        setFormData(prev => {
+          const nextSchedule = {
+            weekdays: [...(prev.schedule?.weekdays || [])],
+            saturday: [...(prev.schedule?.saturday || [])],
+            sunday: [...(prev.schedule?.sunday || [])]
+          };
+
+          (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+            nextSchedule[day] = nextSchedule[day].map(item => {
+              const matched = syncedLegends.find(l => 
+                l.day === day &&
+                ((l.times && l.times.includes(item.time)) || l.time === item.time)
+              );
+              if (matched) {
+                return {
+                  ...item,
+                  legend_symbol: matched.symbol,
+                  legend_text: matched.text
+                };
+              } else if (item.legend_symbol) {
+                const stillExists = syncedLegends.some(l => l.symbol.trim().toLowerCase() === item.legend_symbol?.trim().toLowerCase());
+                if (!stillExists) {
+                  const copy = { ...item };
+                  delete copy.legend_symbol;
+                  delete copy.legend_text;
+                  return copy;
+                }
+              }
+              return item;
+            });
+          });
+
+          return {
+            ...prev,
+            schedule: nextSchedule
+          };
+        });
+      }
+
+      // 3. Atualiza também a rota no estado global caso targetRoute exista
+      const targetRoute = routes.find(r => r.id === exportModalRoute.id);
+      if (targetRoute && targetRoute.schedule) {
+        const updatedSchedule = {
+          weekdays: [...(targetRoute.schedule.weekdays || [])],
+          saturday: [...(targetRoute.schedule.saturday || [])],
+          sunday: [...(targetRoute.schedule.sunday || [])]
+        };
+
+        (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+          updatedSchedule[day] = updatedSchedule[day].map(item => {
+            const matched = syncedLegends.find(l => 
+              l.day === day &&
+              ((l.times && l.times.includes(item.time)) || l.time === item.time)
+            );
+            if (matched) {
+              return {
+                ...item,
+                legend_symbol: matched.symbol,
+                legend_text: matched.text
+              };
+            } else if (item.legend_symbol) {
+              const stillExists = syncedLegends.some(l => l.symbol.trim().toLowerCase() === item.legend_symbol?.trim().toLowerCase());
+              if (!stillExists) {
+                const copy = { ...item };
+                delete copy.legend_symbol;
+                delete copy.legend_text;
+                return copy;
+              }
+            }
+            return item;
+          });
+        });
+
+        onUpdateRoute({
+          ...targetRoute,
+          schedule: updatedSchedule
+        });
+      }
+    }
   };
 
   const { isOpen: isConfirmOpen, options: confirmOptions, confirm, handleClose: handleConfirmClose } = useConfirmDialog();
@@ -373,7 +594,13 @@ const RouteManager: React.FC<RouteManagerProps> = ({
 
     const newSchedule = {
       ...formData.schedule!,
-      [dayType]: [...currentSchedule, { time: formattedTime, direction: selectedDirection, section_name: selectedScope || undefined }]
+      [dayType]: [...currentSchedule, { 
+        time: formattedTime, 
+        direction: selectedDirection, 
+        section_name: selectedScope || undefined,
+        destination: selectedDirection === 'IDA' ? (formData.destination || 'Ponto de Destino') : undefined,
+        origin: selectedDirection === 'VOLTA' ? (formData.origin || 'Ponto de Origem') : undefined
+      }]
     };
 
     setFormData(prev => ({ ...prev, schedule: newSchedule }));
@@ -410,7 +637,9 @@ const RouteManager: React.FC<RouteManagerProps> = ({
           updatedList.push({
             time: formattedTime,
             direction: selectedDirection,
-            section_name: selectedScope || undefined
+            section_name: selectedScope || undefined,
+            destination: selectedDirection === 'IDA' ? (formData.destination || 'Ponto de Destino') : undefined,
+            origin: selectedDirection === 'VOLTA' ? (formData.origin || 'Ponto de Origem') : undefined
           });
           addedCount++;
         }
@@ -519,33 +748,62 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSaveLegendForTime = (
-    dayType: 'weekdays' | 'saturday' | 'sunday',
-    time: string,
-    direction: 'IDA' | 'VOLTA',
-    section_name: string | undefined,
+  const handleSaveLegendForMultiTimes = (
     symbol: string,
-    text: string
+    text: string,
+    selectedTimesByDay: Record<'weekdays' | 'saturday' | 'sunday', string[]>
   ) => {
-    const currentSchedule = [...(formData.schedule?.[dayType] || [])];
-    const updated = currentSchedule.map(item => {
-      if (item.time === time && item.direction === direction && (item.section_name || undefined) === section_name) {
-        return {
-          ...item,
-          legend_symbol: symbol,
-          legend_text: text
-        };
-      }
-      return item;
-    });
+    let appliedCount = 0;
 
-    setFormData(prev => ({
-      ...prev,
-      schedule: {
-        ...prev.schedule!,
-        [dayType]: updated
-      }
-    }));
+    setFormData(prev => {
+      const nextSchedule = {
+        weekdays: [...(prev.schedule?.weekdays || [])],
+        saturday: [...(prev.schedule?.saturday || [])],
+        sunday: [...(prev.schedule?.sunday || [])]
+      };
+
+      (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+        const timesForDay = selectedTimesByDay[day] || [];
+        if (timesForDay.length > 0) {
+          const list = [...nextSchedule[day]];
+          const existingTimes = new Set(list.map(i => i.time));
+
+          // 1. Atualiza horários existentes
+          const updatedList = list.map(item => {
+            if (timesForDay.includes(item.time)) {
+              appliedCount++;
+              return {
+                ...item,
+                legend_symbol: symbol,
+                legend_text: text
+              };
+            }
+            return item;
+          });
+
+          // 2. Adiciona horários customizados inseridos no seletor caso não existam
+          timesForDay.forEach(t => {
+            if (!existingTimes.has(t)) {
+              appliedCount++;
+              updatedList.push({
+                time: t,
+                direction: 'IDA',
+                legend_symbol: symbol,
+                legend_text: text
+              });
+            }
+          });
+
+          updatedList.sort((a, b) => a.time.localeCompare(b.time));
+          nextSchedule[day] = updatedList;
+        }
+      });
+
+      return {
+        ...prev,
+        schedule: nextSchedule
+      };
+    });
 
     setRouteLegends(prev => {
       const existingIdx = prev.findIndex(l => l.symbol.trim().toLowerCase() === symbol.trim().toLowerCase());
@@ -566,7 +824,73 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       return nextList;
     });
 
-    addToast(`Legenda [${symbol}] aplicada ao horário ${time}!`, 'success');
+    addToast(`Legenda [${symbol}] aplicada com sucesso a ${appliedCount} horário(s) selecionado(s)!`, 'success');
+  };
+
+  const handleRemoveLegendFromMultiTimes = (
+    symbol: string,
+    targetDay?: 'weekdays' | 'saturday' | 'sunday',
+    targetTime?: string
+  ) => {
+    setFormData(prev => {
+      const nextSchedule = {
+        weekdays: [...(prev.schedule?.weekdays || [])],
+        saturday: [...(prev.schedule?.saturday || [])],
+        sunday: [...(prev.schedule?.sunday || [])]
+      };
+
+      (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+        nextSchedule[day] = nextSchedule[day].map(item => {
+          const shouldRemove = targetTime && targetDay
+            ? (day === targetDay && item.time === targetTime)
+            : (item.legend_symbol?.trim().toLowerCase() === symbol.trim().toLowerCase());
+
+          if (shouldRemove && item.legend_symbol) {
+            const copy = { ...item };
+            delete copy.legend_symbol;
+            delete copy.legend_text;
+            return copy;
+          }
+          return item;
+        });
+      });
+
+      return {
+        ...prev,
+        schedule: nextSchedule
+      };
+    });
+
+    if (!targetTime) {
+      setRouteLegends(prev => {
+        const nextList = prev.filter(l => l.symbol.trim().toLowerCase() !== symbol.trim().toLowerCase());
+        if (formData.id) {
+          try {
+            localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(nextList));
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        return nextList;
+      });
+    }
+
+    addToast(`Legenda [${symbol}] removida com sucesso.`, 'warning');
+  };
+
+  const handleSaveLegendForTime = (
+    dayType: 'weekdays' | 'saturday' | 'sunday',
+    time: string,
+    direction: 'IDA' | 'VOLTA',
+    section_name: string | undefined,
+    symbol: string,
+    text: string
+  ) => {
+    handleSaveLegendForMultiTimes(symbol, text, {
+      weekdays: dayType === 'weekdays' ? [time] : [],
+      saturday: dayType === 'saturday' ? [time] : [],
+      sunday: dayType === 'sunday' ? [time] : []
+    });
   };
 
   const handleRemoveLegendFromTime = (
@@ -575,26 +899,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     direction: 'IDA' | 'VOLTA',
     section_name: string | undefined
   ) => {
-    const currentSchedule = [...(formData.schedule?.[dayType] || [])];
-    const updated = currentSchedule.map(item => {
-      if (item.time === time && item.direction === direction && (item.section_name || undefined) === section_name) {
-        const copy = { ...item };
-        delete copy.legend_symbol;
-        delete copy.legend_text;
-        return copy;
-      }
-      return item;
-    });
-
-    setFormData(prev => ({
-      ...prev,
-      schedule: {
-        ...prev.schedule!,
-        [dayType]: updated
-      }
-    }));
-
-    addToast(`Legenda removida do horário ${time}.`, 'warning');
+    handleRemoveLegendFromMultiTimes('*', dayType, time);
   };
 
   const handleSave = () => {
@@ -1171,14 +1476,20 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                         })()}
                                     </div>
                                     <div className="flex items-center gap-2">
-                                        <select 
-                                            className="px-3 py-4 bg-white dark:bg-zinc-800 border-2 border-slate-200 dark:border-zinc-700 rounded-2xl font-black text-[10px] dark:text-white"
-                                            value={selectedDirection}
-                                            onChange={e => setSelectedDirection(e.target.value as 'IDA' | 'VOLTA')}
-                                        >
-                                            <option value="IDA">IDA</option>
-                                            <option value="VOLTA">VOLTA</option>
-                                        </select>
+                                        <div className="flex flex-col">
+                                            <span className="text-[8px] font-black uppercase text-indigo-600 dark:text-indigo-400 truncate max-w-[170px]" title={selectedDirection === 'IDA' ? `Ponto de Destino: ${formData.destination || 'Não definido'}` : `Ponto de Origem: ${formData.origin || 'Não definido'}`}>
+                                                {selectedDirection === 'IDA' ? `Destino: ${formData.destination || 'Cadastro'}` : `Origem: ${formData.origin || 'Cadastro'}`}
+                                            </span>
+                                            <select 
+                                                className="px-3 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-200 dark:border-zinc-700 rounded-2xl font-black text-[10px] dark:text-white"
+                                                value={selectedDirection}
+                                                onChange={e => setSelectedDirection(e.target.value as 'IDA' | 'VOLTA')}
+                                                title="IDA para Ponto de Destino | VOLTA para Ponto de Origem"
+                                            >
+                                                <option value="IDA">IDA ({formData.destination ? `Destino: ${formData.destination}` : 'Ponto de Destino'})</option>
+                                                <option value="VOLTA">VOLTA ({formData.origin ? `Origem: ${formData.origin}` : 'Ponto de Origem'})</option>
+                                            </select>
+                                        </div>
                                         <input 
                                             type="time" 
                                             className="px-6 py-4 bg-white dark:bg-zinc-800 border-2 border-slate-200 dark:border-zinc-700 rounded-2xl font-black text-xl dark:text-white w-40"
@@ -1382,9 +1693,13 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => {
+                                                        const firstDayWithTime = (['weekdays', 'saturday', 'sunday'] as const).find(d => 
+                                                          (formData.schedule?.[d] || []).some(i => i.legend_symbol === leg.symbol)
+                                                        ) || 'weekdays';
+                                                        const matchingTime = (formData.schedule?.[firstDayWithTime] || []).find(i => i.legend_symbol === leg.symbol)?.time || (formData.schedule?.weekdays?.[0]?.time || '');
                                                         setActiveLegendTimeContext({
-                                                            day: 'weekdays',
-                                                            time: (formData.schedule?.weekdays?.[0]?.time || '06:00'),
+                                                            day: firstDayWithTime,
+                                                            time: matchingTime,
                                                             direction: 'IDA',
                                                             currentSymbol: leg.symbol,
                                                             currentText: leg.text
@@ -1399,15 +1714,10 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const filtered = routeLegends.filter((_, i) => i !== idx);
-                                                        setRouteLegends(filtered);
-                                                        if (formData.id) {
-                                                            localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(filtered));
-                                                        }
-                                                        addToast(`Legenda [${leg.symbol}] removida da rota.`, "warning");
+                                                        handleRemoveLegendFromMultiTimes(leg.symbol);
                                                     }}
                                                     className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-lg transition-colors"
-                                                    title="Excluir esta legenda"
+                                                    title="Excluir esta legenda de todos os horários da rota"
                                                 >
                                                     <Trash2 size={13} />
                                                 </button>
@@ -1688,6 +1998,8 @@ const RouteManager: React.FC<RouteManagerProps> = ({
           }
           systemSettings={systemSettings}
           initialTimes={exportModalTimes}
+          initialLegends={exportModalLegends}
+          onSyncLegendsWithRoute={handleSyncLegendsWithRoute}
           addToast={addToast}
         />
       )}
@@ -1714,27 +2026,50 @@ const RouteManager: React.FC<RouteManagerProps> = ({
             setActiveLegendTimeContext(null);
           }}
           targetTime={activeLegendTimeContext.time}
+          targetDay={activeLegendTimeContext.day}
           initialSymbol={activeLegendTimeContext.currentSymbol || '*'}
           initialText={activeLegendTimeContext.currentText || ''}
           existingLegends={routeLegends}
+          availableTimesByDay={{
+            weekdays: Array.from(new Set((formData.schedule?.weekdays || []).map(i => i.time))).sort(),
+            saturday: Array.from(new Set((formData.schedule?.saturday || []).map(i => i.time))).sort(),
+            sunday: Array.from(new Set((formData.schedule?.sunday || []).map(i => i.time))).sort()
+          }}
+          initialSelectedTimesByDay={(() => {
+            const sym = activeLegendTimeContext.currentSymbol;
+            if (sym && sym !== '*') {
+              return {
+                weekdays: (formData.schedule?.weekdays || []).filter(i => i.legend_symbol === sym).map(i => i.time),
+                saturday: (formData.schedule?.saturday || []).filter(i => i.legend_symbol === sym).map(i => i.time),
+                sunday: (formData.schedule?.sunday || []).filter(i => i.legend_symbol === sym).map(i => i.time)
+              };
+            }
+            return {
+              [activeLegendTimeContext.day]: activeLegendTimeContext.time ? [activeLegendTimeContext.time] : []
+            };
+          })()}
           onSave={(res) => {
-            handleSaveLegendForTime(
+            const hasMultiple = Object.values(res.selectedTimesByDay).some(arr => arr.length > 0);
+            if (hasMultiple) {
+              handleSaveLegendForMultiTimes(res.symbol, res.text, res.selectedTimesByDay);
+            } else {
+              handleSaveLegendForTime(
+                activeLegendTimeContext.day,
+                activeLegendTimeContext.time,
+                activeLegendTimeContext.direction,
+                activeLegendTimeContext.section_name,
+                res.symbol,
+                res.text
+              );
+            }
+          }}
+          onDelete={() => {
+            handleRemoveLegendFromMultiTimes(
+              activeLegendTimeContext.currentSymbol || '*',
               activeLegendTimeContext.day,
-              activeLegendTimeContext.time,
-              activeLegendTimeContext.direction,
-              activeLegendTimeContext.section_name,
-              res.symbol,
-              res.text
+              activeLegendTimeContext.time
             );
           }}
-          onDelete={activeLegendTimeContext.currentSymbol && activeLegendTimeContext.currentSymbol !== '*' ? () => {
-            handleRemoveLegendFromTime(
-              activeLegendTimeContext.day,
-              activeLegendTimeContext.time,
-              activeLegendTimeContext.direction,
-              activeLegendTimeContext.section_name
-            );
-          } : undefined}
         />
       )}
     </div>

@@ -8,6 +8,8 @@ import AnalyticsPanel from './AnalyticsPanel';
 import { OperationsSummary } from './OperationsSummary';
 import { triggerHaptic } from '../utils/haptic';
 import { formatDate, formatDateTime } from '../utils/dateFormatter';
+import PreventiveMaintenanceWidget from './PreventiveMaintenanceWidget';
+import SubscriptionExpirationAlert from './SubscriptionExpirationAlert';
 
 interface DashboardProps {
   allTrips: Trip[];
@@ -20,6 +22,7 @@ interface DashboardProps {
   subscription?: Subscription | null;
   onForceBackup?: () => void;
   isMobile?: boolean;
+  systemSettings?: any;
 }
 
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -77,7 +80,7 @@ const StatCard: React.FC<{ title: string; value: string; icon: React.ReactNode; 
   </motion.div>
 );
 
-const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], companies = [], vehicles = [], users = [], subscription, onForceBackup, isMobile = false }) => {
+const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], companies = [], vehicles = [], users = [], subscription, onForceBackup, isMobile = false, systemSettings }) => {
   const [activeTab, setActiveTab] = useState<'realtime' | 'analytics'>('realtime');
   const [mobileCardIndex, setMobileCardIndex] = useState<number>(0);
   const [filterCompanyId, setFilterCompanyId] = useState<string>('');
@@ -359,38 +362,11 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], compa
     <div className="space-y-8 animate-in fade-in duration-700">
       <OperationsSummary trips={allTrips} vehicles={vehicles} users={users} routes={routes} />
 
-      {daysUntilExpiration !== null && daysUntilExpiration <= 7 && daysUntilExpiration > 0 && (
-        <div className="bg-red-50 dark:bg-red-900/20 border-2 border-red-200 dark:border-red-800/50 rounded-[2rem] p-6 flex flex-col md:flex-row items-center justify-between gap-4 shadow-lg shadow-red-500/5">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-red-600 rounded-2xl flex items-center justify-center text-white shadow-lg shrink-0">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <h4 className="text-sm font-black text-red-600 uppercase tracking-tight">Atenção! Assinatura Expirando</h4>
-              <p className="text-xs font-bold text-red-700/70 dark:text-red-400/70 leading-tight">
-                Sua assinatura do <span className="font-black">ViaLivre Gestão</span> expira em {daysUntilExpiration} {daysUntilExpiration === 1 ? 'dia' : 'dias'}. 
-                Reative seu plano agora para evitar o bloqueio de acesso para você e sua equipe. Faça backup dos seus dados para segurança.
-              </p>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            {onForceBackup && (
-              <button 
-                onClick={onForceBackup}
-                className="px-6 py-3 bg-yellow-400 text-slate-900 rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-yellow-500 transition-all flex items-center gap-2 shadow-md active:scale-95 shrink-0 border-2 border-slate-900"
-              >
-                Cópia de Segurança (JSON) <Download size={14} />
-              </button>
-            )}
-            <button 
-              onClick={() => window.dispatchEvent(new CustomEvent('change-view', { detail: 'my-subscription' }))}
-              className="px-6 py-3 bg-red-600 text-white rounded-xl font-black uppercase text-[10px] tracking-widest hover:bg-red-700 transition-all flex items-center gap-2 shadow-md active:scale-95 shrink-0"
-            >
-              Reativar Plano <ExternalLink size={14} />
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Alerta de Assinatura Expirando */}
+      <SubscriptionExpirationAlert 
+        subscription={subscription} 
+        onForceBackup={onForceBackup} 
+      />
 
       {/* Seletor de Visão do Painel */}
       <div id="tour-dashboard-tabs" className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-zinc-900 p-2 sm:p-3 rounded-[2rem] border border-slate-100 dark:border-zinc-800 shadow-sm">
@@ -618,6 +594,13 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], compa
           <StatCard title="Receita Líquida Estimada" value={summary.revenue.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} icon={<DollarSign size={24} />} color="bg-emerald-500" textColor="text-white" delay={0.3} />
         </div>
       </div>
+
+      {/* Widget Visual de Manutenção Preventiva da Frota */}
+      <PreventiveMaintenanceWidget 
+        vehicles={vehicles} 
+        allTrips={allTrips} 
+        systemSettings={systemSettings} 
+      />
 
       {/* Painel Gráfico de Demanda e Receita */}
       <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
@@ -848,11 +831,11 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], compa
                             <div className="flex gap-4 items-center">
                                 {trip.status === 'Em Rota' && (
                                     <div className="text-right">
-                                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Rec. Acumulada</p>
-                                        <p className="text-sm font-black text-emerald-600">R$ {(Object.values(trip.passengers || {}).reduce((acc: number, p: any) => acc + (p.pagantes + p.vale_transporte + (p.imp_card*0.7)) * (r?.price||0), 0) as number).toFixed(2)}</p>
+                                        <p className="text-[8px] font-black text-slate-500 dark:text-zinc-400 uppercase tracking-widest">Rec. Acumulada</p>
+                                        <p className="text-sm font-black text-emerald-600 dark:text-emerald-400">R$ {(Object.values(trip.passengers || {}).reduce((acc: number, p: any) => acc + (p.pagantes + p.vale_transporte + (p.imp_card*0.7)) * (r?.price||0), 0) as number).toFixed(2)}</p>
                                     </div>
                                 )}
-                                <span className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase ${trip.status === 'Em Rota' ? 'bg-yellow-400 text-slate-900 animate-pulse' : trip.status === 'Concluída' ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 dark:bg-zinc-700 text-slate-500'}`}>{trip.status}</span>
+                                <span className={`px-4 py-2 rounded-xl text-[8px] font-black uppercase ${trip.status === 'Em Rota' ? 'bg-yellow-400 text-slate-950 font-black animate-pulse' : trip.status === 'Concluída' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300' : 'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'}`}>{trip.status}</span>
                             </div>
                         </div>
                     )

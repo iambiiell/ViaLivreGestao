@@ -424,7 +424,7 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
 
         NotificationService.sendLocalNotification(notifTitle, {
           body: notifMsg,
-          icon: 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png'
+          icon: '/Logo_ViaLivre.png'
         });
       } catch (errNotif) {
         console.warn("Aviso ao gerar notificação:", errNotif);

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Tag, 
@@ -8,7 +8,11 @@ import {
   Clock, 
   Eye, 
   Info,
-  Layers
+  Layers,
+  Calendar,
+  CheckSquare,
+  Square,
+  ListChecks
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -18,14 +22,23 @@ export interface LegendOption {
   time?: string;
 }
 
-interface LegendSymbolSelectorModalProps {
+export type OperationDayKey = 'weekdays' | 'saturday' | 'sunday';
+
+export interface LegendSymbolSelectorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (legend: { symbol: string; text: string }) => void;
+  onSave: (legend: { 
+    symbol: string; 
+    text: string;
+    selectedTimesByDay: Record<OperationDayKey, string[]>;
+  }) => void;
   onDelete?: () => void;
   initialSymbol?: string;
   initialText?: string;
   targetTime?: string;
+  targetDay?: OperationDayKey;
+  availableTimesByDay?: Record<OperationDayKey, string[]>;
+  initialSelectedTimesByDay?: Partial<Record<OperationDayKey, string[]>>;
   existingLegends?: { symbol: string; text: string }[];
   title?: string;
 }
@@ -115,6 +128,12 @@ const PRESET_CATEGORIES = [
   }
 ];
 
+const DAY_LABELS: Record<OperationDayKey, { label: string; short: string }> = {
+  weekdays: { label: 'Segunda a Sexta (Dias Úteis)', short: 'Dias Úteis' },
+  saturday: { label: 'Sábados', short: 'Sábado' },
+  sunday: { label: 'Domingos e Feriados', short: 'Domingo' }
+};
+
 export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps> = ({
   isOpen,
   onClose,
@@ -123,6 +142,9 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
   initialSymbol = '*',
   initialText = '',
   targetTime,
+  targetDay = 'weekdays',
+  availableTimesByDay = { weekdays: [], saturday: [], sunday: [] },
+  initialSelectedTimesByDay,
   existingLegends = [],
   title = 'Identificação do Símbolo da Legenda'
 }) => {
@@ -130,20 +152,122 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
   const [text, setText] = useState(initialText);
   const [activeTab, setActiveTab] = useState(0);
 
+  // Múltiplos dias selecionados
+  const [activeDayTabs, setActiveDayTabs] = useState<OperationDayKey[]>(['weekdays', 'saturday']);
+  const [currentDayTab, setCurrentDayTab] = useState<OperationDayKey>(targetDay);
+  
+  // Horários selecionados por dia
+  const [selectedTimesByDay, setSelectedTimesByDay] = useState<Record<OperationDayKey, string[]>>({
+    weekdays: [],
+    saturday: [],
+    sunday: []
+  });
+
+  const [customInputTime, setCustomInputTime] = useState('');
+
   useEffect(() => {
     if (isOpen) {
       setSymbol(initialSymbol || '*');
       setText(initialText || '');
+      setCurrentDayTab(targetDay);
+
+      // Prepara seleção inicial
+      const initialMap: Record<OperationDayKey, string[]> = {
+        weekdays: initialSelectedTimesByDay?.weekdays ? [...initialSelectedTimesByDay.weekdays] : [],
+        saturday: initialSelectedTimesByDay?.saturday ? [...initialSelectedTimesByDay.saturday] : [],
+        sunday: initialSelectedTimesByDay?.sunday ? [...initialSelectedTimesByDay.sunday] : []
+      };
+
+      if (targetTime && targetDay) {
+        if (!initialMap[targetDay].includes(targetTime)) {
+          initialMap[targetDay].push(targetTime);
+        }
+      }
+
+      setSelectedTimesByDay(initialMap);
+
+      // Define abas ativas
+      const activeDays: OperationDayKey[] = [];
+      if (initialMap.weekdays.length > 0 || targetDay === 'weekdays') activeDays.push('weekdays');
+      if (initialMap.saturday.length > 0 || targetDay === 'saturday') activeDays.push('saturday');
+      if (initialMap.sunday.length > 0 || targetDay === 'sunday') activeDays.push('sunday');
+      if (activeDays.length === 0) activeDays.push('weekdays', 'saturday');
+      setActiveDayTabs(activeDays);
     }
-  }, [isOpen, initialSymbol, initialText]);
+  }, [isOpen, initialSymbol, initialText, targetTime, targetDay, initialSelectedTimesByDay]);
+
+  // Contagem total de horários selecionados em todos os dias
+  const totalSelectedTimesCount = useMemo(() => {
+    return (
+      (selectedTimesByDay.weekdays?.length || 0) +
+      (selectedTimesByDay.saturday?.length || 0) +
+      (selectedTimesByDay.sunday?.length || 0)
+    );
+  }, [selectedTimesByDay]);
 
   if (!isOpen) return null;
 
-  // Handle symbol selection with automatic description synchronization
+  // Alterna a seleção de um dia inteiro
+  const toggleDayTab = (day: OperationDayKey) => {
+    setActiveDayTabs(prev => {
+      if (prev.includes(day)) {
+        if (prev.length === 1) return prev; // Mantém pelo menos um dia ativo
+        return prev.filter(d => d !== day);
+      } else {
+        return [...prev, day];
+      }
+    });
+    setCurrentDayTab(day);
+  };
+
+  // Alterna a seleção de um horário específico no dia corrente
+  const toggleTimeForDay = (day: OperationDayKey, time: string) => {
+    setSelectedTimesByDay(prev => {
+      const currentList = prev[day] || [];
+      const updated = currentList.includes(time)
+        ? currentList.filter(t => t !== time)
+        : [...currentList, time].sort((a, b) => a.localeCompare(b));
+      return { ...prev, [day]: updated };
+    });
+  };
+
+  // Seleciona todos os horários cadastrados do dia corrente
+  const handleSelectAllForDay = (day: OperationDayKey) => {
+    const all = availableTimesByDay[day] || [];
+    setSelectedTimesByDay(prev => ({
+      ...prev,
+      [day]: [...all]
+    }));
+  };
+
+  // Limpa todos os horários selecionados do dia corrente
+  const handleClearForDay = (day: OperationDayKey) => {
+    setSelectedTimesByDay(prev => ({
+      ...prev,
+      [day]: []
+    }));
+  };
+
+  // Adiciona horários customizados
+  const handleAddCustomTime = () => {
+    if (!customInputTime.trim()) return;
+    const parts = customInputTime
+      .split(/[,;\s]+/)
+      .map(s => s.trim())
+      .filter(Boolean);
+
+    setSelectedTimesByDay(prev => {
+      const currentList = prev[currentDayTab] || [];
+      const merged = Array.from(new Set([...currentList, ...parts])).sort((a, b) => a.localeCompare(b));
+      return { ...prev, [currentDayTab]: merged };
+    });
+    setCustomInputTime('');
+  };
+
+  // Sincroniza a descrição do símbolo ao selecionar um símbolo
   const handleSelectSymbol = (newSym: string, defaultTextSuggestion?: string) => {
     setSymbol(newSym);
 
-    // 1. Check if an existing registered legend has this symbol
     const cleanSym = newSym.trim().toLowerCase();
     const matched = existingLegends.find(l => l.symbol.trim().toLowerCase() === cleanSym && l.text && l.text.trim());
     
@@ -152,12 +276,10 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
       return;
     }
 
-    // 2. Otherwise, if current text is empty or matches a preset, suggest default text
     if (!text || text.trim().length === 0) {
       if (defaultTextSuggestion) {
         setText(defaultTextSuggestion);
       } else {
-        // Look up in all categories
         for (const cat of PRESET_CATEGORIES) {
           const item = cat.items.find(i => i.sym === newSym);
           if (item) {
@@ -184,7 +306,12 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
     e.preventDefault();
     const finalSym = symbol.trim() || '*';
     const finalText = text.trim() || `Observação para o símbolo ${finalSym}`;
-    onSave({ symbol: finalSym, text: finalText });
+
+    onSave({ 
+      symbol: finalSym, 
+      text: finalText,
+      selectedTimesByDay
+    });
     onClose();
   };
 
@@ -194,7 +321,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-3xl shadow-2xl border-2 border-amber-400 flex flex-col overflow-hidden"
+        className="bg-white dark:bg-zinc-900 w-full max-w-3xl rounded-3xl shadow-2xl border-2 border-amber-400 flex flex-col overflow-hidden max-h-[92vh]"
       >
         {/* Modal Top Header */}
         <div className="p-4 sm:px-6 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800 shrink-0">
@@ -212,7 +339,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
                 )}
               </h3>
               <p className="text-xs text-slate-400 mt-0.5">
-                Escolha um ícone ou símbolo e defina a descrição do itinerário.
+                Escolha o símbolo e selecione horários de um ou vários dias para sincronizar a legenda.
               </p>
             </div>
           </div>
@@ -224,134 +351,263 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
           </button>
         </div>
 
-        {/* Modal Body Form */}
-        <form onSubmit={handleSubmit} className="p-5 space-y-4 flex-1 overflow-y-auto custom-scrollbar">
-          {/* PRÉVIA VISUAL INSTANTÂNEA (MINI-CARD) */}
-          <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-zinc-950 dark:to-zinc-900 rounded-2xl border-2 border-amber-400/80 shadow-inner flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-amber-400 text-slate-950 flex items-center justify-center font-black shadow-md shrink-0">
-                <Eye size={20} />
-              </div>
-              <div>
-                <span className="text-[10px] font-black uppercase text-amber-800 dark:text-amber-400 tracking-wider block">
-                  Prévia Visual Instantânea (Mini-Card)
-                </span>
-                <span className="text-xs font-bold text-slate-700 dark:text-zinc-300">
-                  Como o horário e a legenda aparecem no sistema:
-                </span>
+        {/* Modal Body */}
+        <form onSubmit={handleSubmit} className="p-5 sm:p-6 space-y-5 overflow-y-auto max-h-[78vh] custom-scrollbar">
+          
+          {/* SEÇÃO 1: SELEÇÃO DE MÚLTIPLOS DIAS E HORÁRIOS */}
+          <div className="bg-amber-50/60 dark:bg-zinc-800/40 p-4.5 rounded-2xl border-2 border-amber-300 dark:border-amber-500/40 space-y-3.5">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-amber-200 dark:border-zinc-700 pb-2.5">
+              <div className="flex items-center gap-2">
+                <Calendar size={17} className="text-amber-600 dark:text-amber-400" />
+                <div>
+                  <label className="text-xs font-black uppercase text-slate-900 dark:text-zinc-100 flex items-center gap-2">
+                    <span>1. Aplicar aos Dias da Semana</span>
+                    <span className="px-2 py-0.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black">
+                      {totalSelectedTimesCount} horário{totalSelectedTimesCount === 1 ? '' : 's'} em {activeDayTabs.length} dia{activeDayTabs.length === 1 ? '' : 's'}
+                    </span>
+                  </label>
+                  <p className="text-[11px] text-slate-500 dark:text-zinc-400">
+                    Selecione múltiplos dias para vincular esta mesma legenda aos horários de cada dia.
+                  </p>
+                </div>
               </div>
             </div>
 
-            {/* Mini-Card Demo */}
-            <div className="inline-flex items-center gap-2 bg-white dark:bg-zinc-800 px-4 py-2.5 rounded-2xl border-2 border-amber-400 shadow-md">
-              <span className="font-mono text-base font-black text-slate-900 dark:text-zinc-100">
-                {targetTime || '06:30'}
-              </span>
-              <span className="px-2.5 py-0.5 bg-yellow-400 text-slate-950 font-black text-xs font-mono rounded-lg border border-yellow-500 shadow-xs inline-flex items-center gap-1">
-                <span>{symbol || '*'}</span>
-              </span>
+            {/* Checkboxes dos Dias da Semana */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              {(['weekdays', 'saturday', 'sunday'] as OperationDayKey[]).map(dayKey => {
+                const isDayActive = activeDayTabs.includes(dayKey);
+                const countForDay = selectedTimesByDay[dayKey]?.length || 0;
+                return (
+                  <button
+                    key={dayKey}
+                    type="button"
+                    onClick={() => toggleDayTab(dayKey)}
+                    className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                      isDayActive
+                        ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-xs'
+                        : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:border-amber-300'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {isDayActive ? (
+                        <CheckSquare size={16} className="text-slate-950 shrink-0" />
+                      ) : (
+                        <Square size={16} className="text-slate-400 shrink-0" />
+                      )}
+                      <span className="text-xs truncate">{DAY_LABELS[dayKey].label}</span>
+                    </div>
+                    {countForDay > 0 && (
+                      <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-black bg-slate-950 text-amber-300 shrink-0">
+                        {countForDay}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Abas e Grade de Horários por Dia */}
+            <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-xl border border-amber-200 dark:border-zinc-700 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-800 pb-2">
+                {/* Abas de navegação de dias */}
+                <div className="flex items-center gap-1.5">
+                  {activeDayTabs.map(dayKey => (
+                    <button
+                      key={dayKey}
+                      type="button"
+                      onClick={() => setCurrentDayTab(dayKey)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
+                        currentDayTab === dayKey
+                          ? 'bg-slate-950 text-amber-400 shadow-xs'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200'
+                      }`}
+                    >
+                      {DAY_LABELS[dayKey].short} ({selectedTimesByDay[dayKey]?.length || 0})
+                    </button>
+                  ))}
+                </div>
+
+                {/* Ações rápidas para o dia corrente */}
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectAllForDay(currentDayTab)}
+                    className="px-2.5 py-1 bg-slate-100 dark:bg-zinc-800 hover:bg-amber-100 dark:hover:bg-zinc-700 rounded-md text-[10px] font-bold text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 transition"
+                  >
+                    Selecionar Todos ({DAY_LABELS[currentDayTab].short})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClearForDay(currentDayTab)}
+                    className="px-2.5 py-1 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 rounded-md text-[10px] font-bold text-slate-700 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 transition"
+                  >
+                    Limpar
+                  </button>
+                </div>
+              </div>
+
+              {/* Chips de horários disponíveis para o dia ativo */}
+              {(() => {
+                const timesList = availableTimesByDay[currentDayTab] || [];
+                const currentSelected = selectedTimesByDay[currentDayTab] || [];
+
+                if (timesList.length === 0) {
+                  return (
+                    <div className="p-3 bg-amber-50/50 dark:bg-zinc-800/50 rounded-xl border border-dashed border-amber-300 dark:border-zinc-700 text-center">
+                      <p className="text-xs text-slate-500 dark:text-zinc-400">
+                        Nenhum horário cadastrado em {DAY_LABELS[currentDayTab].label}. Digite horários no campo abaixo.
+                      </p>
+                    </div>
+                  );
+                }
+
+                return (
+                  <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto p-1 custom-scrollbar">
+                    {timesList.map(timeStr => {
+                      const isSelected = currentSelected.includes(timeStr);
+                      return (
+                        <button
+                          key={timeStr}
+                          type="button"
+                          onClick={() => toggleTimeForDay(currentDayTab, timeStr)}
+                          className={`px-3 py-1.5 rounded-xl font-mono text-xs font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
+                            isSelected
+                              ? 'bg-amber-400 text-slate-950 font-black ring-2 ring-amber-500 shadow-xs'
+                              : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 hover:bg-slate-200 border border-slate-200 dark:border-zinc-700'
+                          }`}
+                        >
+                          {isSelected ? (
+                            <Check size={12} className="stroke-[3] text-slate-950" />
+                          ) : (
+                            <Square size={12} className="text-slate-400" />
+                          )}
+                          <span>{timeStr}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* Inclusão rápida de horários avulsos */}
+              <div className="flex gap-2 pt-1 border-t border-slate-100 dark:border-zinc-800">
+                <input
+                  type="text"
+                  value={customInputTime}
+                  onChange={e => setCustomInputTime(e.target.value)}
+                  placeholder={`Digitar outros horários para ${DAY_LABELS[currentDayTab].short} (Ex: 06:15, 08:30)`}
+                  className="flex-1 px-3 py-1.5 bg-slate-50 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 rounded-lg text-xs font-mono outline-none focus:border-amber-400"
+                />
+                <button
+                  type="button"
+                  onClick={handleAddCustomTime}
+                  className="px-3 py-1.5 bg-slate-900 text-amber-300 rounded-lg text-xs font-black uppercase hover:bg-black transition"
+                >
+                  Adicionar
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Campo de Símbolo Manual */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="sm:col-span-1">
-              <label className="block text-xs font-black uppercase text-slate-700 dark:text-zinc-300 mb-1">
-                Símbolo ou Sigla:
-              </label>
-              <div className="relative">
+          {/* SEÇÃO 2: DEFINIÇÃO DO SÍMBOLO E DESCRIÇÃO */}
+          <div className="bg-slate-50 dark:bg-zinc-800/40 p-4.5 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-4">
+            
+            {/* Símbolo Ativo e Campo de Texto */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 items-end">
+              <div>
+                <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1">
+                  2. Símbolo / Sigla (até 6 carac.)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={symbol}
+                    onChange={(e) => handleManualSymbolChange(e.target.value)}
+                    placeholder="Ex: *, (1), CTR"
+                    className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border-2 border-amber-400 rounded-xl text-sm font-mono font-black text-slate-900 dark:text-zinc-100 outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                  <div className="w-12 h-10 bg-amber-400 rounded-xl flex items-center justify-center font-mono font-black text-slate-950 text-base shadow-xs shrink-0">
+                    {symbol || '*'}
+                  </div>
+                </div>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1">
+                  3. Descrição / Variação de Itinerário
+                </label>
                 <input
                   type="text"
-                  maxLength={6}
-                  value={symbol}
-                  onChange={(e) => handleManualSymbolChange(e.target.value)}
-                  placeholder="Ex: *, CTR, 🚌"
-                  className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border-2 border-slate-300 dark:border-zinc-700 rounded-xl font-mono text-base font-black text-slate-900 dark:text-zinc-100 outline-none focus:border-amber-400 text-center shadow-xs"
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  placeholder="Ex: Passa pelo Centro Comercial / Via Expressa"
+                  className="w-full px-3 py-2 bg-white dark:bg-zinc-900 border-2 border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-900 dark:text-zinc-100 outline-none focus:border-amber-500"
                 />
               </div>
             </div>
 
-            <div className="sm:col-span-2">
-              <label className="block text-xs font-black uppercase text-slate-700 dark:text-zinc-300 mb-1">
-                Descrição do Itinerário / Observação:
-              </label>
-              <input
-                type="text"
-                value={text}
-                onChange={(e) => setText(e.target.value)}
-                placeholder="Ex: Passa pelo Centro Comercial / Via Expressa"
-                className="w-full px-3.5 py-2.5 bg-white dark:bg-zinc-900 border-2 border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-900 dark:text-zinc-100 outline-none focus:border-amber-400 shadow-xs"
-              />
-            </div>
-          </div>
-
-          {/* Sincronização Automática Aviso */}
-          {(() => {
-            const cleanSym = symbol.trim().toLowerCase();
-            const matched = cleanSym ? existingLegends.find(l => l.symbol.trim().toLowerCase() === cleanSym && l.text && l.text.trim()) : null;
-            if (!matched) return null;
-            return (
-              <div className="flex items-center gap-2 text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-950/70 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-800">
-                <Check size={14} className="text-amber-600 shrink-0" />
-                <span className="truncate">Símbolo já cadastrado no itinerário: descrição sincronizada com "{matched.text}"</span>
+            {/* Prévia do Cartaz */}
+            <div className="p-3 bg-[#08456c] rounded-xl border border-yellow-400 text-white flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 bg-yellow-400 text-slate-950 font-mono font-black text-xs rounded shadow-xs">
+                  {symbol || '*'}
+                </span>
+                <span className="font-bold text-yellow-200 uppercase truncate">
+                  {text || 'Descrição da Legenda'}
+                </span>
               </div>
-            );
-          })()}
-
-          {/* SELETOR VISUAL DE ÍCONES E SÍMBOLOS POR CATEGORIA */}
-          <div className="space-y-3 pt-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-black uppercase text-slate-800 dark:text-zinc-200 flex items-center gap-1.5">
-                <Sparkles size={15} className="text-amber-500" />
-                <span>Seletor Visual de Ícones & Símbolos</span>
-              </label>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">
-                Clique para selecionar
+              <span className="text-[10px] text-blue-200 font-bold uppercase shrink-0">
+                Prévia Oficial
               </span>
             </div>
 
-            {/* Tabs de Categorias */}
-            <div className="flex flex-wrap gap-1.5 pb-1">
-              {PRESET_CATEGORIES.map((cat, idx) => (
-                <button
-                  type="button"
-                  key={cat.category}
-                  onClick={() => setActiveTab(idx)}
-                  className={`px-3 py-1.5 rounded-xl text-[11px] font-black uppercase transition-all ${
-                    activeTab === idx
-                      ? 'bg-slate-900 text-yellow-400 shadow-sm border border-slate-800'
-                      : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200 dark:hover:bg-zinc-700'
-                  }`}
-                >
-                  {cat.category}
-                </button>
-              ))}
-            </div>
+            {/* Paleta de Símbolos por Categorias */}
+            <div className="space-y-2 pt-1">
+              <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
+                Catálogo de Símbolos Recomendados:
+              </span>
 
-            {/* Grid da Categoria Ativa */}
-            <div className="p-3.5 bg-slate-50 dark:bg-zinc-950/70 rounded-2xl border border-slate-200 dark:border-zinc-800 max-h-48 overflow-y-auto custom-scrollbar">
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {/* Abas de Categorias */}
+              <div className="flex gap-1.5 overflow-x-auto pb-1 custom-scrollbar">
+                {PRESET_CATEGORIES.map((cat, idx) => (
+                  <button
+                    key={cat.category}
+                    type="button"
+                    onClick={() => setActiveTab(idx)}
+                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase whitespace-nowrap transition-colors ${
+                      activeTab === idx
+                        ? 'bg-amber-400 text-slate-950 shadow-xs'
+                        : 'bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200'
+                    }`}
+                  >
+                    {cat.category}
+                  </button>
+                ))}
+              </div>
+
+              {/* Itens da Categoria Ativa */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 max-h-36 overflow-y-auto p-1 custom-scrollbar">
                 {PRESET_CATEGORIES[activeTab].items.map((item) => {
                   const isSelected = symbol === item.sym;
                   return (
                     <button
-                      type="button"
                       key={item.sym}
+                      type="button"
                       onClick={() => handleSelectSymbol(item.sym, item.defaultText)}
                       className={`p-2 rounded-xl text-left transition-all flex items-center gap-2 border ${
                         isSelected
-                          ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-md scale-[1.02]'
+                          ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-xs scale-[1.02]'
                           : 'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-300 hover:border-amber-400'
                       }`}
                     >
-                      <span className="font-mono font-black text-sm px-2 py-0.5 bg-white/90 dark:bg-zinc-800 rounded-lg shadow-2xs border border-slate-200 dark:border-zinc-700 shrink-0 text-slate-900 dark:text-zinc-100">
+                      <span className="font-mono font-black text-xs px-1.5 py-0.5 bg-white/90 dark:bg-zinc-800 rounded shadow-2xs border border-slate-200 shrink-0 text-slate-900 dark:text-zinc-100">
                         {item.sym}
                       </span>
-                      <div className="min-w-0">
-                        <span className="text-[11px] font-black block truncate leading-tight">
-                          {item.label}
-                        </span>
-                      </div>
+                      <span className="text-[10px] font-bold block truncate">
+                        {item.label}
+                      </span>
                     </button>
                   );
                 })}
@@ -360,7 +616,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
           </div>
 
           {/* Modal Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-3">
+          <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-3 shrink-0">
             <div>
               {onDelete && (
                 <button
@@ -369,7 +625,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
                     onDelete();
                     onClose();
                   }}
-                  className="px-3.5 py-2 rounded-xl text-xs font-black uppercase text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center gap-1.5 transition-colors"
+                  className="px-4 py-2.5 rounded-xl text-xs font-black uppercase text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center gap-1.5 border border-red-200 dark:border-red-900 transition-colors"
                 >
                   <Trash2 size={14} />
                   <span>Remover Legenda</span>
@@ -381,16 +637,16 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 rounded-xl text-xs font-black uppercase border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
+                className="px-4 py-2.5 rounded-xl text-xs font-black uppercase border border-slate-300 dark:border-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 transition-colors"
               >
                 Cancelar
               </button>
               <button
                 type="submit"
-                className="px-6 py-2 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-xs font-black uppercase flex items-center gap-1.5 shadow-md active:scale-95 transition-all border border-orange-400"
+                className="px-6 py-2.5 bg-[#ff6a00] hover:bg-[#e65f00] text-white rounded-xl text-xs font-black uppercase flex items-center gap-1.5 shadow-md active:scale-95 transition-all border border-orange-400"
               >
-                <Check size={15} />
-                <span>Salvar Legenda</span>
+                <Check size={16} />
+                <span>Salvar Legenda ({totalSelectedTimesCount} horários)</span>
               </button>
             </div>
           </div>

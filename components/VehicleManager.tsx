@@ -1,17 +1,19 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Vehicle, User, Company, City, Inspection, VehicleClass, TicketingConfig, Skin, MaintenanceRecord } from '../types';
-import { Plus, Pencil, Trash2, X, Save, Bus, Loader2, Building2, MapPin, Calendar, ClipboardCheck, Info, Copy, Search, CheckCircle2, AlertTriangle, Users, Palette, Wrench } from 'lucide-react';
+import { Vehicle, User, Company, City, Inspection, VehicleClass, TicketingConfig, Skin, MaintenanceRecord, BusRoute } from '../types';
+import { Plus, Pencil, Trash2, X, Save, Bus, Loader2, Building2, MapPin, Calendar, ClipboardCheck, Info, Copy, Search, CheckCircle2, AlertTriangle, Users, Palette, Wrench, Navigation, FileText, Download } from 'lucide-react';
 import { supabase, db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
+import { VehiclePdfReportModal } from './VehiclePdfReportModal';
 
 interface VehicleManagerProps {
   vehicles: Vehicle[];
   currentUser: User | null;
   companies: Company[];
   cities: City[];
+  routes?: BusRoute[];
   inspections: Inspection[];
   ticketingConfig: TicketingConfig | null;
   skins: Skin[];
@@ -40,6 +42,7 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
   currentUser,
   companies = [], 
   cities = [], 
+  routes = [],
   inspections = [],
   ticketingConfig,
   skins = [],
@@ -50,6 +53,7 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
   addToast
 }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [maintenanceCosts, setMaintenanceCosts] = useState<Record<string, number>>({});
@@ -123,10 +127,21 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
     year_fab: '', 
     last_inspection: '',
     capacity: 44,
-    skin_id: ''
+    skin_id: '',
+    route_id: '',
+    default_route_id: ''
   };
 
   const [formData, setFormData] = useState<any>(initialFormState);
+
+  const filteredModalRoutes = useMemo(() => {
+    return routes.filter(r => {
+      if (formData.company_id && r.company_id) {
+        return r.company_id === formData.company_id;
+      }
+      return true;
+    });
+  }, [routes, formData.company_id]);
 
   const getVehicleNextMaintenanceDaysLeft = (vehicle: Vehicle) => {
     const logsForVehicle = maintenanceRecords.filter(l => l.vehicle_id === vehicle.id && l.service_type === 'PREVENTIVA');
@@ -201,6 +216,8 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
 
     const payload = { 
       ...formData, 
+      route_id: formData.route_id || null,
+      default_route_id: formData.route_id || null,
       capacity,
       year_fab: formData.year_fab ? (Number(formData.year_fab) || null) : null
     };
@@ -239,7 +256,9 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
       id: undefined,
       prefix: newPrefix,
       plate: '',
-      status: 'ATIVO'
+      status: 'ATIVO',
+      route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
+      default_route_id: vehicle.route_id || (vehicle as any).default_route_id || ''
     });
     setIsModalOpen(true);
     addToast(`Dados duplicados. Prefixo atualizado para ${newPrefix}.`, "warning");
@@ -261,12 +280,23 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
               />
           </div>
         </div>
-        <button 
-            onClick={() => { setFormData({...initialFormState}); setEditingId(null); setIsModalOpen(true); }} 
-            className="bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2"
-        >
-            <Plus size={18} /> Novo Ativo
-        </button>
+        <div className="flex items-center gap-3 w-full md:w-auto">
+          <button 
+              type="button"
+              onClick={() => setIsPdfModalOpen(true)}
+              className="flex-1 md:flex-none bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl active:scale-95 transition-all flex items-center justify-center gap-2 border border-emerald-500/30"
+              title="Gerar relatório detalhado em PDF com status e média de KM por período"
+          >
+              <FileText size={18} /> Relatório da Frota (PDF)
+          </button>
+          <button 
+              type="button"
+              onClick={() => { setFormData({...initialFormState}); setEditingId(null); setIsModalOpen(true); }} 
+              className="flex-1 md:flex-none bg-blue-600 text-white px-8 py-4 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-2"
+          >
+              <Plus size={18} /> Novo Ativo
+          </button>
+        </div>
       </div>
 
       {/* Componente de Resumo com Efeito Liquid Glass */}
@@ -365,6 +395,20 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                     {vehicle.skin_id && (
                       <p className="flex items-center gap-2"><Palette size={12} className="text-indigo-500"/> Skin: {skins.find(s => s.id === vehicle.skin_id)?.skin_name || 'Personalizada'}</p>
                     )}
+                    {(vehicle.route_id || (vehicle as any).default_route_id) && (
+                      <p className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400">
+                        <Navigation size={12} className="text-indigo-500 shrink-0"/>
+                        <span className="truncate">
+                          Rota: {(() => {
+                            const targetRouteId = vehicle.route_id || (vehicle as any).default_route_id;
+                            const targetRoute = routes.find(r => r.id === targetRouteId);
+                            return targetRoute 
+                              ? `${targetRoute.prefixo_linha ? `[${targetRoute.prefixo_linha}] ` : ''}${targetRoute.origin} ➔ ${targetRoute.destination}`
+                              : 'Itinerário vinculado';
+                          })()}
+                        </span>
+                      </p>
+                    )}
                     <p className="flex items-center gap-2"><Wrench size={12} className="text-red-500"/> Gasto Manutenção: <span className="font-black text-red-600 dark:text-red-400 ml-auto">R$ {(maintenanceCosts[vehicle.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></p>
                     <div className="flex items-center justify-between pt-2 border-t dark:border-zinc-800">
                         <span className="flex items-center gap-2"><ClipboardCheck size={12} className="text-emerald-500"/> Última Vistoria:</span>
@@ -387,7 +431,15 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                         <Copy size={18} />
                     </button>
                     <button 
-                      onClick={() => { setFormData(vehicle); setEditingId(vehicle.id); setIsModalOpen(true); }} 
+                      onClick={() => { 
+                        setFormData({
+                          ...vehicle,
+                          route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
+                          default_route_id: vehicle.route_id || (vehicle as any).default_route_id || ''
+                        }); 
+                        setEditingId(vehicle.id); 
+                        setIsModalOpen(true); 
+                      }} 
                       className="p-3 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/10 rounded-xl transition-all"
                     >
                         <Pencil size={18} />
@@ -494,6 +546,25 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                     </div>
 
                     <div className="col-span-full">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-2 flex items-center justify-between">
+                            <span>Itinerário / Rota Vinculada</span>
+                            <span className="text-[9px] font-bold text-indigo-500 uppercase tracking-wider">Preenchimento automático na Escala</span>
+                        </label>
+                        <select 
+                            className="w-full px-4 py-3 border-2 border-yellow-400 rounded-xl bg-slate-50 dark:bg-zinc-900 dark:text-zinc-100 font-bold" 
+                            value={formData.route_id || formData.default_route_id || ''} 
+                            onChange={e => setFormData({ ...formData, route_id: e.target.value, default_route_id: e.target.value })}
+                        >
+                            <option value="">Nenhum itinerário associado (Livre para qualquer rota)</option>
+                            {filteredModalRoutes.map(r => (
+                                <option key={r.id} value={r.id}>
+                                    {r.prefixo_linha ? `[${r.prefixo_linha}] ` : ''}{r.origin} ➔ {r.destination}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="col-span-full">
                         <label className="block text-[10px] font-black text-slate-400 uppercase mb-3 ml-2">Skin Aplicada (Seleção Visual)</label>
                         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 max-h-[300px] overflow-y-auto p-2 custom-scrollbar">
                             <button 
@@ -515,7 +586,15 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                                 >
                                     <div className="w-full aspect-video bg-slate-100 dark:bg-zinc-800 rounded-2xl overflow-hidden flex items-center justify-center border border-slate-200 dark:border-zinc-700">
                                         {s.file_url ? (
-                                            <img src={s.file_url} className="w-full h-full object-cover transition-transform group-hover:scale-110" alt={s.skin_name} referrerPolicy="no-referrer" />
+                                            <img 
+                                                src={s.file_url} 
+                                                className="w-full h-full object-cover transition-transform group-hover:scale-110" 
+                                                alt={s.skin_name} 
+                                                referrerPolicy="no-referrer"
+                                                onError={(e) => {
+                                                    (e.target as HTMLElement).style.display = 'none';
+                                                }}
+                                            />
                                         ) : (
                                             <Palette size={24} className="text-slate-400" />
                                         )}
@@ -594,6 +673,19 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de Exportação do Relatório da Frota em PDF */}
+      <VehiclePdfReportModal
+        isOpen={isPdfModalOpen}
+        onClose={() => setIsPdfModalOpen(false)}
+        vehicles={vehicles}
+        companies={companies}
+        inspections={inspections}
+        maintenanceRecords={maintenanceRecords}
+        routes={routes}
+        systemSettings={systemSettings}
+        addToast={addToast}
+      />
     </div>
   );
 };

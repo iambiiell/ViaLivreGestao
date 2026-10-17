@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square } from 'lucide-react';
+import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database } from 'lucide-react';
 import { PayrollRubric, RoleConfig, ViewState, SystemSettings, User } from '../types';
 import { db, supabase } from '../services/database';
 import { VIEW_LABELS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
+import BackupSchedulePanel from './BackupSchedulePanel';
 
 const SHIFTS = ['6x1', '5x1', '5x2', '12x36'];
 
@@ -42,7 +43,7 @@ const ACCESSIBLE_VIEWS: ViewState[] = [
 ];
 
 const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; currentUser: User | null }> = ({ addToast, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics'>('roles');
+  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics' | 'backup'>('roles');
   const [rubrics, setRubrics] = useState<PayrollRubric[]>([]);
   const [roles, setRoles] = useState<RoleConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -216,9 +217,12 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2 border-l-2 border-yellow-400 pl-4">Configuração central de remuneração e eventos</p>
             </div>
             
-            <div className="flex bg-slate-50 dark:bg-zinc-950 p-1 rounded-2xl border dark:border-zinc-800">
-                <button onClick={() => setActiveTab('roles')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roles' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>Cargos & Salários</button>
-                <button onClick={() => setActiveTab('rubrics')} className={`px-6 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'rubrics' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>Tabela de Rubricas</button>
+            <div className="flex flex-wrap bg-slate-50 dark:bg-zinc-950 p-1 rounded-2xl border dark:border-zinc-800 gap-1">
+                <button onClick={() => setActiveTab('roles')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'roles' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>Cargos & Salários</button>
+                <button onClick={() => setActiveTab('rubrics')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'rubrics' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>Tabela de Rubricas</button>
+                <button onClick={() => setActiveTab('backup')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'backup' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
+                    <Database size={13} /> Backups Automáticos
+                </button>
             </div>
         </div>
       </div>
@@ -273,7 +277,7 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 ))}
             </div>
         </div>
-      ) : (
+      ) : activeTab === 'rubrics' ? (
         <div className="space-y-6">
             <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-zinc-800 transition-colors">
                 <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
@@ -353,6 +357,11 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 )}
             </div>
         </div>
+      ) : (
+        <BackupSchedulePanel 
+          currentUser={currentUser} 
+          addToast={addToast} 
+        />
       )}
 
       {/* MODAL DE EDIÇÃO DE CARGO */}

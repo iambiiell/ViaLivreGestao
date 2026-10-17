@@ -244,18 +244,22 @@ const RecruitmentPanel: React.FC<RecruitmentPanelProps> = ({ addToast, initialAp
   };
 
   const filteredApplications = useMemo(() => {
-    return applications.filter(app => {
-      const fullName = app.full_name || '';
-      const desiredPosition = app.desired_position || '';
-      const city = app.address_city || '';
+    const term = (searchTerm || '').trim().toLowerCase();
+    return (applications || []).filter(app => {
+      if (!app) return false;
+      const fullName = String(app.full_name || '').toLowerCase();
+      const desiredPosition = String(app.desired_position || '');
+      const desiredPositionLower = desiredPosition.toLowerCase();
+      const city = String(app.address_city || '').toLowerCase();
 
       const matchesSearch = 
-        fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        desiredPosition.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        city.toLowerCase().includes(searchTerm.toLowerCase());
+        !term ||
+        fullName.includes(term) ||
+        desiredPositionLower.includes(term) ||
+        city.includes(term);
       
       const matchesFilter = 
-        filter === 'Todos' || desiredPosition === filter;
+        !filter || filter === 'Todos' || desiredPosition === filter;
 
       return matchesSearch && matchesFilter;
     });
@@ -264,9 +268,13 @@ const RecruitmentPanel: React.FC<RecruitmentPanelProps> = ({ addToast, initialAp
   const filterOptions = useMemo(() => {
     const options = new Set<string>();
     options.add('Todos');
-    vacancies.forEach(v => options.add(v.job_title));
+    (vacancies || []).forEach(v => {
+      if (v?.job_title) options.add(v.job_title);
+    });
     // Also add positions from existing applications in case vacancies were deleted
-    applications.forEach(app => options.add(app.desired_position));
+    (applications || []).forEach(app => {
+      if (app?.desired_position) options.add(app.desired_position);
+    });
     return Array.from(options);
   }, [vacancies, applications]);
 
@@ -645,6 +653,9 @@ const RecruitmentPanel: React.FC<RecruitmentPanelProps> = ({ addToast, initialAp
                         alt={selectedApp.full_name}
                         referrerPolicy="no-referrer"
                         className="w-20 h-20 rounded-[1.5rem] object-cover shadow-lg border-2 border-slate-900"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                        }}
                       />
                     ) : (
                       <div className="w-16 h-16 rounded-[1.5rem] bg-yellow-400 flex items-center justify-center shadow-lg border-2 border-slate-900">

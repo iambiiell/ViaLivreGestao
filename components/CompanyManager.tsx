@@ -491,6 +491,16 @@ const CompanyCard = ({ company, onEdit, onDelete, isDeleting, setDeletingId }: a
                         alt={company.nome_fantasia || company.name}
                         className="w-full h-full object-contain"
                         referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.target as HTMLElement).style.display = 'none';
+                          const parent = (e.target as HTMLElement).parentElement;
+                          if (parent && !parent.querySelector('.company-fallback-icon')) {
+                            const fb = document.createElement('div');
+                            fb.className = 'company-fallback-icon text-indigo-600 flex items-center justify-center font-black text-sm uppercase';
+                            fb.innerText = (company.nome_fantasia || company.name || 'E').slice(0, 2).toUpperCase();
+                            parent.appendChild(fb);
+                          }
+                        }}
                     />
                 ) : (
                     <Building2 size={28} />

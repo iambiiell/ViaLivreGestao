@@ -771,12 +771,32 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                 <button 
                                     onClick={() => { 
                                         setEditingId(null); 
+                                        const isAllCompanies = !filterCompanyId || filterCompanyId === '' || Boolean(ignoreCompanyFilter);
+                                        let autoBus = '';
+                                        if (!isAllCompanies && filterRouteId) {
+                                            const targetCompany = companies.find(c => c.id === filterCompanyId);
+                                            const matched = vehicles.find(v => 
+                                                (v.route_id === filterRouteId || (v as any).default_route_id === filterRouteId) &&
+                                                (v.company_id === filterCompanyId || (v.company_name && targetCompany && v.company_name === targetCompany.name)) &&
+                                                v.status === 'ATIVO'
+                                            ) || vehicles.find(v => 
+                                                (v.route_id === filterRouteId || (v as any).default_route_id === filterRouteId) &&
+                                                (v.company_id === filterCompanyId || (v.company_name && targetCompany && v.company_name === targetCompany.name)) &&
+                                                v.status !== 'INATIVO'
+                                            );
+                                            if (matched) {
+                                                autoBus = matched.prefix;
+                                            }
+                                        }
                                         setFormData({ 
                                             trip_date: filterDate, 
                                             status: 'Agendada', 
                                             departure_time: slot.time, 
                                             direction: slot.direction,
                                             route_id: filterRouteId,
+                                            company_id: filterCompanyId || '',
+                                            ignore_company_filter: ignoreCompanyFilter,
+                                            bus_number: autoBus,
                                             passengers: { default: { pagantes: 0, vale_transporte: 0, imp_card: 0, gratuitos: 0 } } 
                                         }); 
                                         setIsModalOpen(true); 
@@ -1148,11 +1168,39 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                               (r.prefixo_linha || '').includes(formData.route_search.trim()) || 
                                               (r.origin || '').toUpperCase().includes(formData.route_search.trim()) || 
                                               (r.destination || '').toUpperCase().includes(formData.route_search.trim())
-                                          ).map(r => (
-                                              <button key={r.id} onClick={() => { setFormData({...formData, route_id: r.id, route_search: ''}); setActiveDropdown(null); }} className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors">
-                                                  <p className="text-xs font-black dark:text-white uppercase">{r.prefixo_linha} - {r.origin} x {r.destination}</p>
-                                              </button>
-                                          ))}
+                                          ).map(r => {
+                                              const isAllCompanies = !formData.company_id || formData.company_id === '' || Boolean(formData.ignore_company_filter);
+                                              const associatedVehicle = !isAllCompanies 
+                                                  ? (modalVehicles.find(v => (v.route_id === r.id || (v as any).default_route_id === r.id) && v.status === 'ATIVO') ||
+                                                     modalVehicles.find(v => (v.route_id === r.id || (v as any).default_route_id === r.id) && v.status !== 'INATIVO') ||
+                                                     modalVehicles.find(v => v.route_id === r.id || (v as any).default_route_id === r.id))
+                                                  : null;
+
+                                              return (
+                                                  <button 
+                                                      key={r.id} 
+                                                      onClick={() => { 
+                                                          const autoBus = associatedVehicle ? associatedVehicle.prefix : (formData.bus_number || '');
+                                                          setFormData({
+                                                              ...formData, 
+                                                              route_id: r.id, 
+                                                              route_search: '',
+                                                              bus_number: autoBus,
+                                                              bus_search: ''
+                                                          }); 
+                                                          setActiveDropdown(null); 
+                                                      }} 
+                                                      className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors flex items-center justify-between gap-2"
+                                                  >
+                                                      <p className="text-xs font-black dark:text-white uppercase">{r.prefixo_linha} - {r.origin} x {r.destination}</p>
+                                                      {associatedVehicle && (
+                                                          <span className="text-[9px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 shrink-0">
+                                                              Ônibus #{associatedVehicle.prefix}
+                                                          </span>
+                                                      )}
+                                                  </button>
+                                              );
+                                          })}
                                       </div>
                                   )}
                               </div>
@@ -1214,7 +1262,18 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                           </div>
 
                           <div className="transition-colors">
-                              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2 transition-colors">Veículo *</label>
+                              <div className="flex items-center justify-between mb-2 ml-2">
+                                  <label className="block text-[10px] font-black text-slate-400 uppercase transition-colors">Veículo *</label>
+                                  {formData.bus_number && formData.route_id && (() => {
+                                      const currentBus = vehicles.find(v => v.prefix === formData.bus_number);
+                                      const isLinked = currentBus && (currentBus.route_id === formData.route_id || (currentBus as any).default_route_id === formData.route_id);
+                                      return isLinked ? (
+                                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                              <CheckCircle2 size={10} /> Vinculado ao itinerário
+                                          </span>
+                                      ) : null;
+                                  })()}
+                              </div>
                               <div ref={busRef} className="relative">
                                   <input 
                                       type="text"
@@ -1233,13 +1292,22 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                   />
                                   {activeDropdown === 'bus' && modalVehicles && formData.bus_search && !formData.bus_number && (
                                       <div className="absolute z-[200] w-full mt-2 bg-white dark:bg-zinc-900 border-2 border-slate-100 dark:border-zinc-800 rounded-2xl shadow-2xl max-h-48 overflow-y-auto custom-scrollbar">
-                                          {modalVehicles.filter(v => 
+                                          {[...modalVehicles].sort((a, b) => {
+                                              const aLinked = formData.route_id && (a.route_id === formData.route_id || (a as any).default_route_id === formData.route_id) ? 1 : 0;
+                                              const bLinked = formData.route_id && (b.route_id === formData.route_id || (b as any).default_route_id === formData.route_id) ? 1 : 0;
+                                              return bLinked - aLinked;
+                                          }).filter(v => 
                                               !formData.bus_search.trim() ||
                                               (v.prefix || '').includes(formData.bus_search.trim()) || 
                                               (v.plate || '').toUpperCase().includes(formData.bus_search.trim())
                                           ).map(v => (
-                                              <button key={v.id} onClick={() => { setFormData({...formData, bus_number: v.prefix, bus_search: ''}); setActiveDropdown(null); }} className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors">
+                                              <button key={v.id} onClick={() => { setFormData({...formData, bus_number: v.prefix, bus_search: ''}); setActiveDropdown(null); }} className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors flex items-center justify-between">
                                                   <p className="text-xs font-black dark:text-white uppercase">#{v.prefix} - {v.plate}</p>
+                                                  {formData.route_id && (v.route_id === formData.route_id || (v as any).default_route_id === formData.route_id) && (
+                                                      <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
+                                                          Rota Vinculada
+                                                      </span>
+                                                  )}
                                               </button>
                                           ))}
                                       </div>

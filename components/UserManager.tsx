@@ -4,6 +4,7 @@ import { User, UserRole, RoleConfig, Company } from '../types';
 import { VIEW_LABELS } from '../constants';
 import { UserCircle, Pencil, X, Trash2, ArrowUpDown, UserPlus, Mail, Phone, Shield, KeyRound, UserCheck, Briefcase, Building2, Search, Save, AlertCircle, Eye, EyeOff, MapPin } from 'lucide-react';
 import { phoneMask, cpfMask, cepMask } from '../utils/masks';
+import { db } from '../services/database';
 
 interface UserManagerProps {
   users: User[];
@@ -29,6 +30,7 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
     role: 'ADMIN', 
     email: '', 
     unidade: currentUser?.unidade || '',
+    system_id: currentUser?.system_id || db.getSystemId() || undefined,
     login_acesso: '',
     senha_acesso: '',
     job_title: 'Administrador'
@@ -93,10 +95,15 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
         return;
     }
 
+    const userToSave: User = {
+      ...formData,
+      system_id: currentUser?.system_id || formData.system_id || db.getSystemId() || '43e370b2-2c60-cf5f-7886-e111e8213ffb'
+    } as User;
+
     if (editingId) {
-        onUpdateUser({ ...formData, id: editingId } as User);
+        onUpdateUser({ ...userToSave, id: editingId });
     } else {
-        onAddUser(formData as User);
+        onAddUser(userToSave);
     }
     handleCloseModal();
   };
@@ -140,7 +147,18 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
           <div key={user.id} className="bg-white dark:bg-zinc-900 p-6 rounded-3xl border border-slate-100 dark:border-zinc-800 shadow-sm space-y-4 transition-colors">
             <div className="flex items-center gap-3">
               <div className="w-12 h-12 rounded-full bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 flex items-center justify-center text-slate-300 dark:text-zinc-600 overflow-hidden shadow-sm transition-colors">
-                {user.photo_url ? <img src={user.photo_url} className="w-full h-full object-cover" alt="Foto"/> : <UserCircle size={22} />}
+                {user.photo_url ? (
+                  <img 
+                    src={user.photo_url} 
+                    className="w-full h-full object-cover" 
+                    alt="Foto"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                    }}
+                  />
+                ) : (
+                  <UserCircle size={22} />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-black text-slate-800 dark:text-zinc-100 text-xs uppercase truncate">{user.full_name || user.name}</p>
@@ -209,7 +227,18 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
                 <td className="px-8 py-5">
                     <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-slate-50 dark:bg-zinc-800 border border-slate-100 dark:border-zinc-700 flex items-center justify-center text-slate-300 dark:text-zinc-600 overflow-hidden shadow-sm transition-colors">
-                            {user.photo_url ? <img src={user.photo_url} className="w-full h-full object-cover" alt="Foto"/> : <UserCircle size={20} />}
+                            {user.photo_url ? (
+                              <img 
+                                src={user.photo_url} 
+                                className="w-full h-full object-cover" 
+                                alt="Foto"
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <UserCircle size={20} />
+                            )}
                         </div>
                         <div>
                             <p className="font-black text-slate-800 dark:text-zinc-100 text-xs uppercase transition-colors">{user.full_name || user.name}</p>

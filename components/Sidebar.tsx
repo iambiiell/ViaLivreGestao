@@ -1,12 +1,13 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutDashboard, Map, Calendar, LogOut, UsersRound, Building2, ShieldCheck, Bus, ClipboardList, MapPin, UserCircle, X, Menu, Bell, Sun, Moon, BusFront, BarChart, Wrench, Ticket, ClipboardCheck, Settings2, Timer, Banknote, Briefcase, HelpCircle, Headphones, Sparkles, ShieldAlert, Key, CreditCard, PlayCircle, DollarSign, Activity, Palette, Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle2, Pipette, Check, Layers, ChevronRight, Search, ArrowRight, User as UserIcon, AlertCircle, Pencil } from 'lucide-react';
+import { LayoutDashboard, Map, Calendar, LogOut, UsersRound, Building2, ShieldCheck, Bus, ClipboardList, MapPin, UserCircle, X, Menu, Bell, Sun, Moon, BusFront, BarChart, Wrench, Ticket, ClipboardCheck, Settings2, Timer, Banknote, Briefcase, HelpCircle, Headphones, Sparkles, ShieldAlert, Key, CreditCard, PlayCircle, DollarSign, Activity, Palette, Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle2, Pipette, Check, Layers, ChevronRight, Search, ArrowRight, User as UserIcon, AlertCircle, Pencil, Bot, Smartphone } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, User, ThemeMode, RoleConfig, SystemSettings, BusRoute, Vehicle, Notice, Trip, ImpCard } from '../types';
 import { db, DbStatus, supabase } from '../services/database';
 import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor, applyThemeVariables } from '../utils/themeHelper';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { OperationalAiAssistantModal } from './OperationalAiAssistantModal';
 
 interface SidebarProps {
   currentView: ViewState;
@@ -33,6 +34,8 @@ interface SidebarProps {
   notices?: Notice[];
   trips?: Trip[];
   onEditProfile?: (user: User) => void;
+  onToggleMobileMode?: () => void;
+  isMobileMode?: boolean;
 }
 
 const getDisplaySystemName = (settings?: SystemSettings | null): string => {
@@ -82,9 +85,12 @@ const Sidebar: React.FC<SidebarProps> = ({
   routes = [],
   notices = [],
   trips = [],
-  onEditProfile
+  onEditProfile,
+  onToggleMobileMode,
+  isMobileMode = false
 }) => {
   const [showThemePopup, setShowThemePopup] = React.useState(false);
+  const [showAiModal, setShowAiModal] = useState(false);
   const [dbStatus, setDbStatus] = useState<DbStatus>(db.getStatus());
   const [isRetryingSync, setIsRetryingSync] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<number | null>(() => {
@@ -218,6 +224,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   };
   const allMenuItems = [
     { id: 'operation-center', label: 'CENTRO OPERACIONAL', icon: PlayCircle },
+    { id: 'operational-ai', label: 'TICO (ASSISTENTE IA)', icon: Bot },
     { id: 'monitoring', label: 'MONITORAMENTO', icon: Activity },
     { id: 'dashboard', label: 'PAINEL GERAL', icon: LayoutDashboard, accessKey: 'access_dashboard' },
     { id: 'management', label: 'GESTÃO GLOBAL', icon: Briefcase, accessKey: 'access_global_management' },
@@ -246,13 +253,14 @@ const Sidebar: React.FC<SidebarProps> = ({
     { id: 'subscriptions', label: 'ASSINATURAS (MASTER)', icon: ShieldAlert },
     { id: 'my-subscription', label: 'MINHA ASSINATURA', icon: CreditCard },
     { id: 'notifications', label: 'ALERTAS E AVISOS', icon: Bell },
+    { id: 'mobile-view', label: 'VERSÃO MOBILE (412×732)', icon: Smartphone },
     { id: 'guided-tour', label: 'TOURS GUIADOS', icon: Sparkles },
     { id: 'about', label: 'SOBRE O SISTEMA', icon: HelpCircle },
   ];
 
   const filteredItems = useMemo(() => {
     return allMenuItems.filter(item => {
-      if (item.id === 'about' || item.id === 'guided-tour') return true;
+      if (item.id === 'about' || item.id === 'guided-tour' || item.id === 'mobile-view') return true;
 
       const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com';
 
@@ -287,8 +295,8 @@ const Sidebar: React.FC<SidebarProps> = ({
 
       if (isFullAdmin) return true;
 
-      // Always allow time-tracking, notices, sac, notifications, work-with-us and about for all logged-in workers
-      if (['time-tracking', 'notices', 'sac', 'notifications', 'work-with-us', 'about'].includes(item.id)) {
+      // Always allow time-tracking, notices, sac, notifications, work-with-us, about and operational-ai for all logged-in workers
+      if (['time-tracking', 'notices', 'sac', 'notifications', 'work-with-us', 'about', 'operational-ai'].includes(item.id)) {
         return true;
       }
 
@@ -451,10 +459,16 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div id="tour-logo" className="flex items-center gap-1.5 sm:gap-3">
             <div className="logo-sistema h-7 sm:h-9 flex items-center justify-center transition-all">
                 <img 
-                  src="https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png" 
+                  src={systemSettings?.system_logo || "/Logo_ViaLivre.png"} 
                   className="h-full w-auto object-contain" 
                   alt="ViaLivre Gestão" 
                   referrerPolicy="no-referrer" 
+                  onError={(e) => {
+                    const target = e.currentTarget as HTMLImageElement;
+                    if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                      target.src = '/Logo_ViaLivre.png';
+                    }
+                  }}
                 />
             </div>
             <h1 className="text-lg sm:text-xl font-black tracking-tighter text-slate-950 dark:text-white uppercase italic leading-none transition-colors">
@@ -581,7 +595,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="w-7 h-7 rounded-lg bg-slate-200 dark:bg-zinc-800 flex items-center justify-center text-slate-700 dark:text-zinc-300 font-black text-[10px] shrink-0">
                             {u.avatar_url ? (
-                              <img src={u.avatar_url} alt="" className="w-full h-full object-cover rounded-lg" referrerPolicy="no-referrer" />
+                              <img 
+                                src={u.avatar_url} 
+                                alt="" 
+                                className="w-full h-full object-cover rounded-lg" 
+                                referrerPolicy="no-referrer" 
+                                onError={(e) => {
+                                  (e.target as HTMLElement).style.display = 'none';
+                                }}
+                              />
                             ) : (
                               u.name?.charAt(0) || 'U'
                             )}
@@ -735,6 +757,27 @@ const Sidebar: React.FC<SidebarProps> = ({
           <Sparkles size={20} className="sm:w-5 sm:h-5 group-hover:scale-110 transition-transform" />
         </button>
 
+        <button 
+          id="tour-ai-assistant-btn"
+          onClick={() => setShowAiModal(true)} 
+          className="p-2 sm:p-2 text-blue-600 dark:text-blue-400 hover:bg-blue-500/10 rounded-2xl transition-all relative group" 
+          title="Tico - Assistente Operacional IA (Supabase)"
+        >
+          <Bot size={20} className="sm:w-5 sm:h-5 group-hover:scale-110 transition-transform" />
+        </button>
+
+        {/* Botão de Alternar Versão Mobile (412 × 732 px) */}
+        <button
+          id="tour-mobile-mode-btn"
+          onClick={() => onToggleMobileMode?.()}
+          className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-xs uppercase tracking-wider rounded-2xl shadow-sm hover:scale-[1.03] active:scale-95 transition-all"
+          title="Alternar para a Versão Mobile Padrão (412 × 732 px)"
+        >
+          <Smartphone size={16} />
+          <span className="hidden lg:inline text-[11px]">Mobile 412×732</span>
+          <span className="lg:hidden text-[10px]">Mobile</span>
+        </button>
+
         {/* Vale Transporte do Colaborador / Usuário Sincronizado por CPF */}
         {userVtCard && (
           <div 
@@ -763,7 +806,18 @@ const Sidebar: React.FC<SidebarProps> = ({
                 title={isAdmin ? "Clique para editar seu perfil de Administrador" : `Perfil: ${currentUser.full_name}`}
               >
                   <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl sm:rounded-2xl bg-yellow-400 flex items-center justify-center border-2 border-white dark:border-zinc-800 overflow-hidden shadow-sm transition-colors relative">
-                      {currentUser.photo_url ? <img src={currentUser.photo_url} className="w-full h-full object-cover" alt="Perfil"/> : <UserCircle size={20} className="text-white sm:w-5 sm:h-5"/>}
+                      {currentUser.photo_url ? (
+                        <img 
+                          src={currentUser.photo_url} 
+                          className="w-full h-full object-cover" 
+                          alt="Perfil"
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <UserCircle size={20} className="text-white sm:w-5 sm:h-5"/>
+                      )}
                       {isAdmin && (
                         <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity text-white">
                           <Pencil size={12} />
@@ -827,26 +881,18 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="h-16 flex items-center justify-between px-5 sm:px-6 border-b border-slate-200/80 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/50 backdrop-blur-md shrink-0">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="logo-sistema w-9 h-9 flex items-center justify-center overflow-hidden shrink-0 rounded-xl bg-yellow-400/10 dark:bg-yellow-400/20 p-1 border border-yellow-400/30">
-                    {systemSettings?.system_logo ? (
-                      <img 
-                        src={systemSettings.system_logo} 
-                        className="h-full w-auto object-contain" 
-                        alt="Logo" 
-                        referrerPolicy="no-referrer" 
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = 'none';
-                          const parent = (e.target as HTMLImageElement).parentElement;
-                          if (parent) {
-                            const span = document.createElement('span');
-                            span.className = 'text-[9px] font-black uppercase italic text-slate-900 dark:text-white';
-                            span.innerText = getDisplaySystemName(systemSettings)?.[0] || 'V';
-                            parent.appendChild(span);
-                          }
-                        }}
-                      />
-                    ) : (
-                      <BusFront size={22} className="text-yellow-500" />
-                    )}
+                    <img 
+                      src={systemSettings?.system_logo || "/Logo_ViaLivre.png"} 
+                      className="h-full w-auto object-contain" 
+                      alt="Logo" 
+                      referrerPolicy="no-referrer" 
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                          target.src = '/Logo_ViaLivre.png';
+                        }
+                      }}
+                    />
                   </div>
                   <div className="min-w-0">
                     <span className="block font-black text-[12px] tracking-tight uppercase text-slate-950 dark:text-white italic truncate leading-tight">
@@ -862,13 +908,22 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </div>
                 </div>
                 
-                <button 
-                  onClick={onClose} 
-                  className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-zinc-800/80 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors shrink-0"
-                  title="Fechar Menu"
-                >
-                  <X size={18} />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button 
+                    onClick={() => setShowThemePopup(true)} 
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-yellow-500 dark:text-zinc-400 dark:hover:text-yellow-400 bg-slate-200/50 dark:bg-zinc-800/80 hover:bg-yellow-400/20 dark:hover:bg-yellow-400/20 transition-all shrink-0 active:scale-90"
+                    title="Design e Cores (Ajustar Tema, Cores e Alto Contraste)"
+                  >
+                    {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} className="text-yellow-400" />}
+                  </button>
+                  <button 
+                    onClick={onClose} 
+                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white bg-slate-200/50 dark:bg-zinc-800/80 hover:bg-slate-200 dark:hover:bg-zinc-700 transition-colors shrink-0 active:scale-90"
+                    title="Fechar Menu"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
               </div>
 
               {/* Drag Handle Indicator for Mobile */}
@@ -887,6 +942,12 @@ const Sidebar: React.FC<SidebarProps> = ({
                       onClick={() => { 
                         if (item.id === 'guided-tour') {
                           onOpenGuidedTour?.();
+                          onClose();
+                        } else if (item.id === 'operational-ai') {
+                          setShowAiModal(true);
+                          onClose();
+                        } else if (item.id === 'mobile-view') {
+                          onToggleMobileMode?.();
                           onClose();
                         } else {
                           onChangeView(item.id as any); 
@@ -933,7 +994,15 @@ const Sidebar: React.FC<SidebarProps> = ({
                       <div className="flex items-center gap-2.5 min-w-0">
                         <div className="w-8 h-8 rounded-xl bg-yellow-400 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative">
                           {currentUser.photo_url ? (
-                            <img src={currentUser.photo_url} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                            <img 
+                              src={currentUser.photo_url} 
+                              alt="" 
+                              className="w-full h-full object-cover" 
+                              referrerPolicy="no-referrer" 
+                              onError={(e) => {
+                                (e.target as HTMLElement).style.display = 'none';
+                              }}
+                            />
                           ) : (
                             <UserCircle size={20} className="text-slate-950" />
                           )}
@@ -1439,6 +1508,11 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
       )}
     </AnimatePresence>
+
+    <OperationalAiAssistantModal
+      isOpen={showAiModal}
+      onClose={() => setShowAiModal(false)}
+    />
     </>
   );
 };

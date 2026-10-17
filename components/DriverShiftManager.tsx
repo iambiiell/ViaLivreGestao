@@ -207,7 +207,18 @@ const DriverShiftManager: React.FC<DriverShiftManagerProps> = ({
                 <div key={shift.id} className="bg-white dark:bg-zinc-900 p-6 rounded-[2rem] border border-slate-100 dark:border-zinc-800 shadow-sm flex items-center justify-between group hover:shadow-md transition-all">
                   <div className="flex items-center gap-6">
                     <div className="w-14 h-14 bg-slate-100 dark:bg-zinc-800 rounded-2xl flex items-center justify-center text-slate-400">
-                      {driver?.photo_url ? <img src={driver.photo_url} className="w-full h-full object-cover rounded-2xl" /> : <UserIcon size={24}/>}
+                      {driver?.photo_url ? (
+                        <img 
+                          src={driver.photo_url} 
+                          className="w-full h-full object-cover rounded-2xl" 
+                          alt={driver?.full_name || "Motorista"}
+                          onError={(e) => {
+                            (e.target as HTMLElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <UserIcon size={24}/>
+                      )}
                     </div>
                     <div>
                       <h3 className="font-black text-slate-800 dark:text-zinc-100 uppercase text-sm leading-tight">{driver?.full_name || driver?.name || 'Motorista não encontrado'}</h3>

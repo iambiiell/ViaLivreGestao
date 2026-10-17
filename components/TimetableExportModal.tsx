@@ -62,6 +62,8 @@ export interface TimetableExportModalProps {
     saturday: string[] | DirectionalTimes | any;
     sunday: string[] | DirectionalTimes | any;
   };
+  initialLegends?: TimeLegendEntry[];
+  onSyncLegendsWithRoute?: (legends: TimeLegendEntry[]) => void;
   addToast?: (message: string, type?: 'success' | 'error' | 'warning') => void;
 }
 
@@ -116,6 +118,8 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
   company,
   systemSettings,
   initialTimes,
+  initialLegends,
+  onSyncLegendsWithRoute,
   addToast
 }) => {
   const posterRef = useRef<HTMLDivElement>(null);
@@ -214,29 +218,44 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
   const [timeLegends, setTimeLegends] = useState<TimeLegendEntry[]>(() => {
     try {
       const saved = localStorage.getItem(`consimp_route_legends_${route.id}`);
-      if (saved) {
-        return JSON.parse(saved);
+      const fromLocal = saved ? JSON.parse(saved) : [];
+      if (initialLegends && initialLegends.length > 0) {
+        const map = new Map<string, TimeLegendEntry>();
+        initialLegends.forEach(l => map.set(l.id || `${l.day}_${l.symbol}`, l));
+        fromLocal.forEach((l: any) => {
+          if (l.symbol && !map.has(l.id || `${l.day}_${l.symbol}`)) {
+            map.set(l.id || `${l.day}_${l.symbol}`, l);
+          }
+        });
+        return Array.from(map.values());
       }
+      if (fromLocal.length > 0) return fromLocal;
     } catch (e) {
       // ignore
     }
-    return [];
+    return initialLegends || [];
   });
 
-  // Salvar legendas no localStorage
+  // Salvar legendas no localStorage e sincronizar de volta com a Grade Horária
   useEffect(() => {
     try {
       localStorage.setItem(`consimp_route_legends_${route.id}`, JSON.stringify(timeLegends));
+      onSyncLegendsWithRoute?.(timeLegends);
     } catch (e) {
       // ignore
     }
   }, [timeLegends, route.id]);
 
-  // Modal de edição / criação de legenda para horário específico
+  // Modal de edição / criação de legenda para múltiplos dias e horários
   const [isLegendModalOpen, setIsLegendModalOpen] = useState(false);
-  const [legendFormDay, setLegendFormDay] = useState<'weekdays' | 'saturday' | 'sunday'>('weekdays');
+  const [legendFormDays, setLegendFormDays] = useState<('weekdays' | 'saturday' | 'sunday')[]>(['weekdays', 'saturday']);
+  const [legendFormActiveDay, setLegendFormActiveDay] = useState<'weekdays' | 'saturday' | 'sunday'>('weekdays');
   const [legendFormDirection, setLegendFormDirection] = useState<'ida' | 'volta'>('ida');
-  const [legendFormTimes, setLegendFormTimes] = useState<string[]>([]);
+  const [legendFormTimesByDay, setLegendFormTimesByDay] = useState<Record<'weekdays' | 'saturday' | 'sunday', string[]>>({
+    weekdays: [],
+    saturday: [],
+    sunday: []
+  });
   const [legendFormCustomInput, setLegendFormCustomInput] = useState<string>('');
   const [legendFormSymbol, setLegendFormSymbol] = useState<string>('*');
   const [legendFormText, setLegendFormText] = useState<string>('');
@@ -313,14 +332,32 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
   };
 
   const handleEditLegend = (legend: TimeLegendEntry) => {
-    const tList = (legend.times && legend.times.length > 0) ? legend.times : (legend.time ? [legend.time] : []);
     setEditingLegendId(legend.id);
-    setLegendFormDay(legend.day);
-    setLegendFormDirection(legend.direction);
-    setLegendFormTimes([...tList]);
     setLegendFormSymbol(legend.symbol);
     setLegendFormText(legend.text);
+    setLegendFormDirection(legend.direction);
     setLegendFormCustomInput('');
+
+    // Reúne todos os dias onde este símbolo está cadastrado
+    const cleanSym = legend.symbol.trim().toLowerCase();
+    const relatedEntries = timeLegends.filter(l => l.symbol.trim().toLowerCase() === cleanSym);
+    const timesByDay: Record<'weekdays' | 'saturday' | 'sunday', string[]> = {
+      weekdays: [],
+      saturday: [],
+      sunday: []
+    };
+    const activeDays: ('weekdays' | 'saturday' | 'sunday')[] = [];
+
+    relatedEntries.forEach(entry => {
+      const tList = (entry.times && entry.times.length > 0) ? entry.times : (entry.time ? [entry.time] : []);
+      timesByDay[entry.day] = Array.from(new Set([...(timesByDay[entry.day] || []), ...tList])).sort();
+      if (!activeDays.includes(entry.day)) activeDays.push(entry.day);
+    });
+
+    if (activeDays.length === 0) activeDays.push(legend.day);
+    setLegendFormDays(activeDays);
+    setLegendFormActiveDay(legend.day);
+    setLegendFormTimesByDay(timesByDay);
     setIsLegendModalOpen(true);
   };
 
@@ -333,7 +370,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
     const targetDirection = direction || 'ida';
 
     if (time) {
-      // Se este horário já possui legenda, abre diretamente para edição
+      // Se este horário já possui legenda, abre diretamente para edição de múltiplos dias
       const existing = timeLegends.find(l => {
         if (l.day !== targetDay) return false;
         if (!simultaneousDepartures && l.direction !== targetDirection) return false;
@@ -347,11 +384,16 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
       }
     }
 
-    setLegendFormDay(targetDay);
+    setLegendFormDays([targetDay]);
+    setLegendFormActiveDay(targetDay);
     setLegendFormDirection(targetDirection);
     setLegendFormCustomInput('');
     setEditingLegendId(null);
-    setLegendFormTimes(time ? [time] : []);
+    setLegendFormTimesByDay({
+      weekdays: targetDay === 'weekdays' && time ? [time] : [],
+      saturday: targetDay === 'saturday' && time ? [time] : [],
+      sunday: targetDay === 'sunday' && time ? [time] : []
+    });
 
     const usedSymbols = new Set(timeLegends.map(l => l.symbol));
     const candidates = ['*', '**', '***', '(1)', '(2)', '(3)', '(A)', '(B)'];
@@ -368,23 +410,31 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
     setIsLegendModalOpen(true);
   };
 
-  const toggleLegendTime = (t: string) => {
-    setLegendFormTimes(prev => 
-      prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t].sort((a, b) => a.localeCompare(b))
-    );
+  const toggleLegendTimeForDay = (day: 'weekdays' | 'saturday' | 'sunday', t: string) => {
+    setLegendFormTimesByDay(prev => {
+      const current = prev[day] || [];
+      const updated = current.includes(t) ? current.filter(x => x !== t) : [...current, t].sort();
+      return { ...prev, [day]: updated };
+    });
   };
 
-  const handleSelectAllLegendTimes = () => {
+  const handleSelectAllLegendTimesForDay = (day: 'weekdays' | 'saturday' | 'sunday') => {
     const avTimes = simultaneousDepartures 
-      ? times[legendFormDay].ida 
+      ? times[day].ida 
       : legendFormDirection === 'ida' 
-        ? times[legendFormDay].ida 
-        : times[legendFormDay].volta;
-    setLegendFormTimes([...avTimes]);
+        ? times[day].ida 
+        : times[day].volta;
+    setLegendFormTimesByDay(prev => ({
+      ...prev,
+      [day]: [...avTimes]
+    }));
   };
 
-  const handleClearAllLegendTimes = () => {
-    setLegendFormTimes([]);
+  const handleClearAllLegendTimesForDay = (day: 'weekdays' | 'saturday' | 'sunday') => {
+    setLegendFormTimesByDay(prev => ({
+      ...prev,
+      [day]: []
+    }));
   };
 
   const handleAddCustomLegendTime = () => {
@@ -394,16 +444,25 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
       .map(s => s.trim())
       .filter(Boolean);
 
-    setLegendFormTimes(prev => {
-      const merged = Array.from(new Set([...prev, ...parts])).sort((a, b) => a.localeCompare(b));
-      return merged;
+    setLegendFormTimesByDay(prev => {
+      const current = prev[legendFormActiveDay] || [];
+      const merged = Array.from(new Set([...current, ...parts])).sort();
+      return { ...prev, [legendFormActiveDay]: merged };
     });
     setLegendFormCustomInput('');
   };
 
+  const totalSelectedLegendTimesCount = useMemo(() => {
+    return (
+      (legendFormTimesByDay.weekdays?.length || 0) +
+      (legendFormTimesByDay.saturday?.length || 0) +
+      (legendFormTimesByDay.sunday?.length || 0)
+    );
+  }, [legendFormTimesByDay]);
+
   const handleSaveLegend = () => {
-    if (legendFormTimes.length === 0) {
-      addToast?.("Selecione pelo menos um horário para aplicar a legenda.", "warning");
+    if (totalSelectedLegendTimesCount === 0) {
+      addToast?.("Selecione pelo menos um horário em algum dos dias para aplicar a legenda.", "warning");
       return;
     }
     if (!legendFormText.trim()) {
@@ -413,114 +472,46 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
 
     const cleanSymbol = legendFormSymbol.trim() || '*';
     const cleanText = legendFormText.trim();
-    const cleanTimes = Array.from(new Set(legendFormTimes.map(t => t.trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
 
     setTimeLegends(prev => {
-      let updated = [...prev];
+      // Remove entradas antigas associadas a este id ou símbolo para reconstruir limpo
+      let updated = prev.filter(l => {
+        if (editingLegendId && l.id === editingLegendId) return false;
+        if (l.symbol.trim().toLowerCase() === cleanSymbol.toLowerCase()) return false;
+        return true;
+      });
 
-      if (editingLegendId) {
-        // Atualiza a legenda existente
-        updated = updated.map(l => {
-          if (l.id === editingLegendId) {
-            return {
-              ...l,
-              day: legendFormDay,
-              direction: legendFormDirection,
-              times: cleanTimes,
-              time: cleanTimes[0] || '',
-              symbol: cleanSymbol,
-              text: cleanText
-            };
-          }
-          return l;
-        });
-
-        // Se já existia outra entrada com o mesmo símbolo, unifica para nunca duplicar
-        const dupIdx = updated.findIndex(l => 
-          l.id !== editingLegendId &&
-          l.symbol.trim().toLowerCase() === cleanSymbol.toLowerCase() &&
-          l.day === legendFormDay &&
-          (simultaneousDepartures || l.direction === legendFormDirection)
-        );
-
-        if (dupIdx >= 0) {
-          const dup = updated[dupIdx];
-          const target = updated.find(l => l.id === editingLegendId)!;
-          const merged = Array.from(new Set([...(target.times || []), ...(dup.times || [])])).sort((a, b) => a.localeCompare(b));
-          target.times = merged;
-          target.time = merged[0] || '';
-          target.text = cleanText || dup.text;
-          updated = updated.filter(l => l.id !== dup.id);
-        }
-      } else {
-        // Ao adicionar nova legenda: verifica se já existe uma com este símbolo para este dia/sentido
-        const existingIdx = updated.findIndex(l => 
-          l.symbol.trim().toLowerCase() === cleanSymbol.toLowerCase() &&
-          l.day === legendFormDay &&
-          (simultaneousDepartures || l.direction === legendFormDirection)
-        );
-
-        if (existingIdx >= 0) {
-          // Unifica os horários na legenda existente, evitando duplicar a legenda
-          const existing = updated[existingIdx];
-          const mergedTimes = Array.from(new Set([...(existing.times || []), ...cleanTimes])).sort((a, b) => a.localeCompare(b));
-          updated[existingIdx] = {
-            ...existing,
-            times: mergedTimes,
-            time: mergedTimes[0] || '',
-            symbol: cleanSymbol,
-            text: cleanText || existing.text
-          };
-        } else {
-          // Cria uma única legenda para todos os horários selecionados
-          const newEntry: TimeLegendEntry = {
-            id: `leg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            day: legendFormDay,
+      // Cria entradas para cada dia selecionado que tenha horários
+      (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+        const selected = legendFormTimesByDay[day] || [];
+        if (selected.length > 0) {
+          updated.push({
+            id: `leg_${day}_${cleanSymbol}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+            day,
             direction: legendFormDirection,
-            times: cleanTimes,
-            time: cleanTimes[0] || '',
+            times: [...selected].sort(),
+            time: selected[0] || '',
             symbol: cleanSymbol,
             text: cleanText
-          };
-          updated.push(newEntry);
+          });
         }
-      }
-
-      // Evita conflitos de símbolos removendo esses horários de outras legendas com símbolos distintos
-      const activeLegendId = editingLegendId || updated.find(l => 
-        l.symbol.trim().toLowerCase() === cleanSymbol.toLowerCase() &&
-        l.day === legendFormDay &&
-        (simultaneousDepartures || l.direction === legendFormDirection)
-      )?.id;
-
-      if (activeLegendId) {
-        updated = updated.map(l => {
-          if (l.id === activeLegendId) return l;
-          if (l.day === legendFormDay && (simultaneousDepartures || l.direction === legendFormDirection)) {
-            const rem = (l.times || []).filter(t => !cleanTimes.includes(t));
-            return {
-              ...l,
-              times: rem,
-              time: rem[0] || ''
-            };
-          }
-          return l;
-        }).filter(l => l.id === activeLegendId || (l.times && l.times.length > 0));
-      }
+      });
 
       return updated;
     });
 
-    addToast?.(`Legenda salva com sucesso para os horários selecionados!`, "success");
+    addToast?.(`Legenda salva com sucesso para todos os ${totalSelectedLegendTimesCount} horários selecionados!`, "success");
     setIsLegendModalOpen(false);
   };
 
   const handleRemoveLegend = (id: string) => {
-    setTimeLegends(prev => prev.filter(l => l.id !== id));
-    addToast?.("Legenda removida do horário.", "success");
-    if (editingLegendId === id) {
-      setIsLegendModalOpen(false);
-    }
+    setTimeLegends(prev => {
+      const target = prev.find(l => l.id === id);
+      const sym = target ? target.symbol.trim().toLowerCase() : '';
+      return prev.filter(l => l.id !== id && (sym ? l.symbol.trim().toLowerCase() !== sym : true));
+    });
+    addToast?.("Legenda removida de todos os horários.", "warning");
+    setIsLegendModalOpen(false);
   };
 
   // Populate times when modal opens or initialTimes change
@@ -727,8 +718,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
       const dataUrl = await toPng(posterRef.current, {
         pixelRatio: 3,
         cacheBust: true,
+        skipFonts: true,
         backgroundColor: '#ffffff',
-        filter: (node: HTMLElement) => {
+        filter: (node: HTMLElement | any) => {
+          if (node instanceof HTMLLinkElement && node.rel === 'stylesheet') {
+            return false;
+          }
           return !node.classList?.contains('no-export');
         }
       });
@@ -756,6 +751,8 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
     }
   };
 
+  const handleExportPng = handleDownloadPNG;
+
   // Exportação em PDF diretamente formatada para Folha de Tamanho A4 (210mm x 297mm)
   const handleDownloadPDF = async () => {
     if (!posterRef.current) return;
@@ -767,8 +764,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
       const dataUrl = await toPng(posterRef.current, {
         pixelRatio: 3,
         cacheBust: true,
+        skipFonts: true,
         backgroundColor: '#ffffff',
-        filter: (node: HTMLElement) => {
+        filter: (node: HTMLElement | any) => {
+          if (node instanceof HTMLLinkElement && node.rel === 'stylesheet') {
+            return false;
+          }
           return !node.classList?.contains('no-export');
         }
       });
@@ -1511,7 +1512,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                           alt={companyName} 
                           className="w-full h-full object-contain" 
                           referrerPolicy="no-referrer" 
-                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            const target = e.currentTarget as HTMLImageElement;
+                            if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                              target.src = '/Logo_ViaLivre.png';
+                            }
+                          }}
                         />
                       </div>
                     ) : (
@@ -1607,7 +1613,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                           alt={companyName} 
                           className="w-full h-full object-contain"
                           referrerPolicy="no-referrer"
-                          crossOrigin="anonymous"
+                          onError={(e) => {
+                            const target = e.currentTarget as HTMLImageElement;
+                            if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                              target.src = '/Logo_ViaLivre.png';
+                            }
+                          }}
                         />
                       </div>
                     ) : (
@@ -1628,13 +1639,6 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         {companyName}
                       </p>
                     </div>
-                  </div>
-
-                  {/* Identificador Padrão A4 */}
-                  <div className="hidden sm:flex flex-col items-end opacity-90">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-orange-100 bg-orange-700/60 px-2.5 py-1 rounded-md border border-orange-400/40">
-                      PADRÃO A4
-                    </span>
                   </div>
                 </div>
 
@@ -2020,78 +2024,117 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                 {/* Corpo do Formulário de Legenda */}
                 <div className="p-5 space-y-5 overflow-y-auto max-h-[75vh] custom-scrollbar">
                   {/* 1. Dia e Sentido */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 dark:bg-zinc-800/50 p-3.5 rounded-2xl border border-slate-200 dark:border-zinc-700">
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1">
-                        Dia da Operação
-                      </label>
-                      <select
-                        value={legendFormDay}
-                        onChange={(e) => {
-                          const val = e.target.value as 'weekdays' | 'saturday' | 'sunday';
-                          setLegendFormDay(val);
-                        }}
-                        className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none focus:border-amber-500"
-                      >
-                        <option value="weekdays">Segunda a Sexta (Dias Úteis)</option>
-                        <option value="saturday">Sábado</option>
-                        <option value="sunday">Domingo e Feriados</option>
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1">
-                        Sentido da Linha
-                      </label>
-                      {simultaneousDepartures ? (
-                        <div className="px-3 py-2 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold text-slate-900 dark:text-amber-200">
-                          Partidas Simultâneas (Ida e Volta)
-                        </div>
-                      ) : (
-                        <select
-                          value={legendFormDirection}
-                          onChange={(e) => {
-                            const val = e.target.value as 'ida' | 'volta';
-                            setLegendFormDirection(val);
-                          }}
-                          className="w-full px-3 py-2 bg-white dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none focus:border-amber-500"
-                        >
-                          <option value="ida">Ida (Saída de {route.origin})</option>
-                          <option value="volta">Volta (Saída de {route.destination})</option>
-                        </select>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 2. Seleção de Múltiplos Horários */}
-                  <div className="bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-700 pb-2">
+                  <div className="bg-slate-50 dark:bg-zinc-800/50 p-4 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-700 pb-2">
                       <div className="flex items-center gap-2">
-                        <ListChecks size={16} className="text-amber-500" />
+                        <Calendar size={16} className="text-amber-500" />
                         <div>
-                          <label className="text-xs font-black uppercase text-slate-800 dark:text-zinc-200 flex items-center gap-2">
-                            <span>Horários com esta Legenda</span>
-                            <span className="px-2 py-0.5 bg-amber-400 text-slate-950 rounded-full text-[10px] font-black">
-                              {legendFormTimes.length} selecionado{legendFormTimes.length === 1 ? '' : 's'}
-                            </span>
+                          <label className="text-xs font-black uppercase text-slate-800 dark:text-zinc-200">
+                            1. Dias da Operação (Selecione um ou vários)
                           </label>
                           <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                            Clique para marcar ou desmarcar os horários que realizam esta rota.
+                            Marque os dias em que deseja sincronizar esta mesma legenda.
                           </p>
                         </div>
                       </div>
 
+                      {/* Sentido */}
+                      <div>
+                        {simultaneousDepartures ? (
+                          <div className="px-3 py-1.5 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700 rounded-xl text-[11px] font-bold text-slate-900 dark:text-amber-200">
+                            Partidas Simultâneas (Ida e Volta)
+                          </div>
+                        ) : (
+                          <select
+                            value={legendFormDirection}
+                            onChange={(e) => setLegendFormDirection(e.target.value as 'ida' | 'volta')}
+                            className="px-3 py-1.5 bg-white dark:bg-zinc-800 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-bold text-slate-800 dark:text-zinc-200 outline-none focus:border-amber-500"
+                          >
+                            <option value="ida">Sentido Ida ({route.origin})</option>
+                            <option value="volta">Sentido Volta ({route.destination})</option>
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Checkboxes de Dias */}
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {[
+                        { id: 'weekdays', label: 'Segunda a Sexta (Úteis)', short: 'Dias Úteis' },
+                        { id: 'saturday', label: 'Sábados', short: 'Sábado' },
+                        { id: 'sunday', label: 'Domingos e Feriados', short: 'Domingo' }
+                      ].map(d => {
+                        const isDayActive = legendFormDays.includes(d.id as any);
+                        const count = legendFormTimesByDay[d.id as keyof typeof legendFormTimesByDay]?.length || 0;
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            onClick={() => {
+                              setLegendFormDays(prev => {
+                                if (prev.includes(d.id as any)) {
+                                  if (prev.length === 1) return prev;
+                                  return prev.filter(x => x !== d.id);
+                                } else {
+                                  return [...prev, d.id as any];
+                                }
+                              });
+                              setLegendFormActiveDay(d.id as any);
+                            }}
+                            className={`p-2.5 rounded-xl border text-left flex items-center justify-between transition-all ${
+                              isDayActive
+                                ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-xs'
+                                : 'bg-white dark:bg-zinc-800 border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-300 hover:border-amber-300'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2">
+                              {isDayActive ? <CheckSquare size={15} className="text-slate-950" /> : <Square size={15} className="text-slate-400" />}
+                              <span className="text-xs">{d.label}</span>
+                            </div>
+                            {count > 0 && (
+                              <span className="px-2 py-0.5 rounded text-[10px] font-mono font-black bg-slate-950 text-amber-300">
+                                {count}
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 2. Seleção de Múltiplos Horários por Dia */}
+                  <div className="bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-zinc-700 pb-2">
+                      {/* Abas dos dias selecionados */}
+                      <div className="flex items-center gap-1.5">
+                        {legendFormDays.map(dayKey => (
+                          <button
+                            key={dayKey}
+                            type="button"
+                            onClick={() => setLegendFormActiveDay(dayKey)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase transition-all ${
+                              legendFormActiveDay === dayKey
+                                ? 'bg-slate-950 text-amber-400 shadow-xs'
+                                : 'bg-slate-200 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-300'
+                            }`}
+                          >
+                            {dayKey === 'weekdays' ? 'Dias Úteis' : dayKey === 'saturday' ? 'Sábado' : 'Domingo'} ({legendFormTimesByDay[dayKey]?.length || 0})
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Ações rápidas */}
                       <div className="flex items-center gap-1.5">
                         <button
                           type="button"
-                          onClick={handleSelectAllLegendTimes}
+                          onClick={() => handleSelectAllLegendTimesForDay(legendFormActiveDay)}
                           className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-300 dark:border-zinc-600 rounded-lg text-[10px] font-bold text-slate-700 dark:text-zinc-300 transition-colors"
                         >
-                          Selecionar Todos
+                          Selecionar Todos ({legendFormActiveDay === 'weekdays' ? 'Úteis' : legendFormActiveDay === 'saturday' ? 'Sáb' : 'Dom'})
                         </button>
                         <button
                           type="button"
-                          onClick={handleClearAllLegendTimes}
+                          onClick={() => handleClearAllLegendTimesForDay(legendFormActiveDay)}
                           className="px-2.5 py-1 bg-white dark:bg-zinc-800 hover:bg-slate-100 dark:hover:bg-zinc-700 border border-slate-300 dark:border-zinc-600 rounded-lg text-[10px] font-bold text-slate-700 dark:text-zinc-300 transition-colors"
                         >
                           Limpar
@@ -2099,19 +2142,21 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                       </div>
                     </div>
 
-                    {/* Grade de chips clicáveis dos horários cadastrados */}
+                    {/* Grade de chips clicáveis dos horários cadastrados para o dia ativo */}
                     {(() => {
                       const avTimes = simultaneousDepartures 
-                        ? times[legendFormDay].ida 
+                        ? times[legendFormActiveDay].ida 
                         : legendFormDirection === 'ida' 
-                          ? times[legendFormDay].ida 
-                          : times[legendFormDay].volta;
+                          ? times[legendFormActiveDay].ida 
+                          : times[legendFormActiveDay].volta;
+
+                      const selectedForDay = legendFormTimesByDay[legendFormActiveDay] || [];
 
                       if (avTimes.length === 0) {
                         return (
                           <div className="p-3 bg-amber-50/60 dark:bg-amber-950/30 rounded-xl border border-dashed border-amber-300 dark:border-amber-800 text-center">
                             <p className="text-xs text-amber-800 dark:text-amber-300">
-                              Não há horários cadastrados para este dia/sentido. Digite horários avulsos abaixo.
+                              Não há horários cadastrados em {legendFormActiveDay === 'weekdays' ? 'Dias Úteis' : legendFormActiveDay === 'saturday' ? 'Sábados' : 'Domingos'}. Digite horários avulsos abaixo.
                             </p>
                           </div>
                         );
@@ -2121,12 +2166,12 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         <div className="space-y-2">
                           <div className="flex flex-wrap gap-2 p-2.5 bg-white dark:bg-zinc-900 rounded-xl border border-slate-200 dark:border-zinc-700 max-h-36 overflow-y-auto custom-scrollbar">
                             {avTimes.map(t => {
-                              const isSelected = legendFormTimes.includes(t);
+                              const isSelected = selectedForDay.includes(t);
                               return (
                                 <button
                                   type="button"
                                   key={t}
-                                  onClick={() => toggleLegendTime(t)}
+                                  onClick={() => toggleLegendTimeForDay(legendFormActiveDay, t)}
                                   className={`px-3 py-1.5 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 transition-all active:scale-95 ${
                                     isSelected
                                       ? 'bg-amber-400 text-slate-950 ring-2 ring-amber-500 shadow-sm font-black'
@@ -2147,14 +2192,14 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                       );
                     })()}
 
-                    {/* Adicionar horário avulso ou múltiplos */}
+                    {/* Adicionar horário avulso para o dia ativo */}
                     <div className="flex gap-2 items-center pt-1">
                       <input
                         type="text"
                         value={legendFormCustomInput}
                         onChange={(e) => setLegendFormCustomInput(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleAddCustomLegendTime()}
-                        placeholder="Outro horário ou múltiplos (ex: 06:30, 08:00)"
+                        placeholder={`Outro horário para ${legendFormActiveDay === 'weekdays' ? 'Dias Úteis' : legendFormActiveDay === 'saturday' ? 'Sábado' : 'Domingo'} (ex: 06:30, 08:00)`}
                         className="flex-1 px-3 py-2 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-xl text-xs font-mono font-bold text-slate-900 dark:text-zinc-100 outline-none focus:border-amber-500"
                       />
                       <button
@@ -2167,28 +2212,36 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                       </button>
                     </div>
 
-                    {/* Resumo dos horários marcados */}
-                    {legendFormTimes.length > 0 && (
-                      <div className="pt-1 flex flex-wrap items-center gap-1.5">
-                        <span className="text-[10px] font-black uppercase text-slate-400 mr-1">
-                          Selecionados:
-                        </span>
-                        {legendFormTimes.map(t => (
-                          <span
-                            key={t}
-                            className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-100 dark:bg-amber-950 text-amber-950 dark:text-amber-200 rounded-md font-mono text-[11px] font-bold border border-amber-300 dark:border-amber-700"
-                          >
-                            <span>{t}</span>
-                            <button
-                              type="button"
-                              onClick={() => toggleLegendTime(t)}
-                              className="text-amber-800 dark:text-amber-300 hover:text-red-600 ml-0.5"
-                              title="Desmarcar horário"
-                            >
-                              <X size={11} />
-                            </button>
-                          </span>
-                        ))}
+                    {/* Resumo de todos os horários marcados em todos os dias */}
+                    {totalSelectedLegendTimesCount > 0 && (
+                      <div className="pt-2 border-t border-slate-200 dark:border-zinc-700 space-y-1.5">
+                        <div className="text-[10px] font-black uppercase text-slate-500 flex items-center justify-between">
+                          <span>Horários Selecionados para Sincronização ({totalSelectedLegendTimesCount}):</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {(['weekdays', 'saturday', 'sunday'] as const).map(d => {
+                            const list = legendFormTimesByDay[d] || [];
+                            if (list.length === 0) return null;
+                            const dLabel = d === 'weekdays' ? 'Úteis' : d === 'saturday' ? 'Sáb' : 'Dom';
+                            return (
+                              <div key={d} className="flex items-center gap-1 bg-amber-100/70 dark:bg-amber-950/60 p-1 rounded-lg border border-amber-300 dark:border-amber-800">
+                                <span className="text-[9px] font-black uppercase px-1.5 py-0.5 bg-amber-400 text-slate-950 rounded">
+                                  {dLabel}
+                                </span>
+                                <div className="flex flex-wrap gap-1">
+                                  {list.map(t => (
+                                    <span key={t} className="px-1.5 py-0.5 bg-white dark:bg-zinc-800 rounded font-mono text-[10px] font-bold text-slate-800 dark:text-zinc-200 flex items-center gap-1">
+                                      <span>{t}</span>
+                                      <button type="button" onClick={() => toggleLegendTimeForDay(d, t)} className="text-red-500 hover:text-red-700">
+                                        <X size={10} />
+                                      </button>
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2445,7 +2498,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                           </span>
                           <div className="inline-flex items-center gap-2 bg-white/10 px-3 py-1.5 rounded-xl border border-yellow-400/60 shadow-xs">
                             <span className="font-mono text-sm font-black text-white">
-                              {legendFormTimes[0] || '06:30'}
+                              {legendFormTimesByDay[legendFormActiveDay]?.[0] || '06:30'}
                             </span>
                             <span className="px-2 py-0.5 bg-yellow-400 text-slate-950 font-black text-xs font-mono rounded-md shadow-xs">
                               {legendFormSymbol || '*'}
@@ -2543,7 +2596,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                       className="px-5 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-1.5 shadow-md transition-all active:scale-95"
                     >
                       <CheckCircle2 size={15} />
-                      <span>Salvar Legenda ({legendFormTimes.length} horários)</span>
+                      <span>Salvar Legenda ({totalSelectedLegendTimesCount} horários)</span>
                     </button>
                   </div>
                 </div>

@@ -63,8 +63,29 @@ const TransportCard: React.FC<TransportCardProps> = ({
                 <p className="text-white/60 text-[7px] font-bold uppercase mt-1">Nº do Cartão:</p>
                 <p className="text-white text-[10px] font-mono font-bold tracking-wider">{cardNumber}</p>
               </div>
-              <div className="w-16 h-16 rounded-full border-2 border-yellow-400 bg-white p-0.5 shadow-lg overflow-hidden">
-                <img src={photoUrl} alt="Profile" className="w-full h-full rounded-full object-cover" referrerPolicy="no-referrer" />
+              <div className="w-16 h-16 rounded-full border-2 border-yellow-400 bg-white p-0.5 shadow-lg overflow-hidden flex items-center justify-center">
+                {photoUrl ? (
+                  <img 
+                    src={photoUrl} 
+                    alt="Profile" 
+                    className="w-full h-full rounded-full object-cover" 
+                    referrerPolicy="no-referrer"
+                    onError={(e) => {
+                      (e.target as HTMLElement).style.display = 'none';
+                      const parent = (e.target as HTMLElement).parentElement;
+                      if (parent && !parent.querySelector('.card-fallback-avatar')) {
+                        const fallback = document.createElement('div');
+                        fallback.className = 'card-fallback-avatar w-full h-full rounded-full bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-sm uppercase';
+                        fallback.innerText = (name?.[0] || 'U').toUpperCase();
+                        parent.appendChild(fallback);
+                      }
+                    }}
+                  />
+                ) : (
+                  <div className="w-full h-full rounded-full bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-sm uppercase">
+                    {(name?.[0] || 'U').toUpperCase()}
+                  </div>
+                )}
               </div>
             </div>
 

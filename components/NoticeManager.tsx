@@ -83,7 +83,7 @@ const NoticeManager: React.FC<NoticeManagerProps> = ({ notices = [], currentUser
               await MockNotificationService.sendPush(col.id, notifTitle, notifMsg);
               NotificationService.sendLocalNotification(notifTitle, {
                 body: notifMsg,
-                icon: 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png'
+                icon: '/Logo_ViaLivre.png'
               });
               
               // 2. Registra o alerta no banco de notificações em tempo real

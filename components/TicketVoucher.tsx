@@ -19,12 +19,15 @@ const TicketVoucher: React.FC<TicketVoucherProps> = ({ type, lastTicket, selecte
                 <div className="flex gap-4 items-center">
                     <div className="w-20 h-20 bg-white flex items-center justify-center border-2 border-black rounded-xl overflow-hidden">
                         <img 
-                            src="/Logo_ViaLivre.png" 
-                            alt="Logo ViaLivre Gestão" 
+                            src={company?.logo_url || "/Logo_ViaLivre.png"} 
+                            alt={company?.name || "Logo ViaLivre Gestão"} 
                             className="w-[65px] h-auto object-contain"
                             referrerPolicy="no-referrer"
                             onError={(e) => {
-                                (e.target as HTMLImageElement).src = "https://picsum.photos/seed/transport/200/200";
+                                const target = e.currentTarget as HTMLImageElement;
+                                if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                                    target.src = "/Logo_ViaLivre.png";
+                                }
                             }}
                         />
                     </div>

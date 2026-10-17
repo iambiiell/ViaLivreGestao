@@ -349,7 +349,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
         newNotificationsToInsert.forEach(notif => {
           NotificationService.sendLocalNotification(notif.title || 'Alerta de Frota - ViaLivre', {
             body: notif.message,
-            icon: 'https://kkvmtqthahbcobsqmugl.supabase.co/storage/v1/object/public/assets/Logo_ViaLivre.png'
+            icon: '/Logo_ViaLivre.png'
           });
         });
       }

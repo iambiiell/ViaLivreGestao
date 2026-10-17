@@ -22,6 +22,7 @@ import { Subscription, User, ActivationKey } from '../types';
 import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
 import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
+import SubscriptionExpirationAlert from './SubscriptionExpirationAlert';
 
 interface UserSubscriptionProps {
   currentUser: User | null;
@@ -261,7 +262,7 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-20">
       {/* Header */}
-      <div className="flex items-center gap-4 mb-10">
+      <div className="flex items-center gap-4 mb-6">
         <div className="p-4 bg-slate-900 rounded-[2rem] shadow-xl border-2 border-yellow-400">
           <CreditCard size={32} className="text-yellow-400" />
         </div>
@@ -270,6 +271,12 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mt-2">Gerencie seu plano e validade do sistema</p>
         </div>
       </div>
+
+      {/* Alerta de Expiração */}
+      <SubscriptionExpirationAlert 
+        subscription={subscription} 
+        dismissible={false} 
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
         {/* Current Status Card */}

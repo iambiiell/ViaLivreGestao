@@ -1,0 +1,65 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <linearGradient id="vlBgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FACC15" />
+      <stop offset="100%" stop-color="#EAB308" />
+    </linearGradient>
+    <linearGradient id="vlBusBody" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#020617" />
+    </linearGradient>
+    <linearGradient id="vlGlass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" />
+      <stop offset="100%" stop-color="#0284C7" />
+    </linearGradient>
+  </defs>
+
+  <!-- Background rounded squircle -->
+  <rect x="16" y="16" width="480" height="480" rx="112" fill="url(#vlBgGrad)" />
+
+  <!-- Speed road stripes -->
+  <path d="M 96 424 L 416 424" stroke="#0F172A" stroke-width="12" stroke-linecap="round" opacity="0.8" />
+  <path d="M 152 446 L 360 446" stroke="#0F172A" stroke-width="8" stroke-linecap="round" opacity="0.5" />
+
+  <!-- Side Mirrors -->
+  <rect x="108" y="208" width="24" height="48" rx="8" fill="#0F172A" />
+  <rect x="114" y="216" width="12" height="32" rx="4" fill="#38BDF8" />
+  <rect x="380" y="208" width="24" height="48" rx="8" fill="#0F172A" />
+  <rect x="386" y="216" width="12" height="32" rx="4" fill="#38BDF8" />
+
+  <!-- Tires -->
+  <rect x="120" y="328" width="20" height="60" rx="10" fill="#0F172A" />
+  <rect x="372" y="328" width="20" height="60" rx="10" fill="#0F172A" />
+
+  <!-- Main Bus Body -->
+  <path d="M 136 176 C 136 148, 156 128, 184 128 L 328 128 C 356 128, 376 148, 376 176 L 376 384 L 136 384 Z" fill="url(#vlBusBody)" />
+
+  <!-- Destination Board (Letreiro) -->
+  <rect x="176" y="148" width="160" height="28" rx="6" fill="#FACC15" />
+  <rect x="186" y="154" width="140" height="16" rx="4" fill="#0F172A" />
+  <rect x="194" y="158" width="46" height="8" rx="2" fill="#FACC15" />
+  <rect x="248" y="158" width="68" height="8" rx="2" fill="#FACC15" />
+
+  <!-- Windshield (Parabrisa) -->
+  <rect x="156" y="192" width="200" height="84" rx="12" fill="url(#vlGlass)" />
+  <!-- Windshield Reflection -->
+  <polygon points="170,192 210,192 180,276 160,276" fill="#FFFFFF" opacity="0.35" />
+
+  <!-- Front Grille & Badge -->
+  <rect x="212" y="300" width="88" height="24" rx="6" fill="#334155" />
+  <path d="M 248 307 L 256 317 L 264 307" stroke="#FACC15" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" fill="none" />
+
+  <!-- Headlights -->
+  <circle cx="176" cy="312" r="18" fill="#FACC15" />
+  <circle cx="176" cy="312" r="10" fill="#FEF08A" />
+  <rect x="158" y="338" width="30" height="8" rx="4" fill="#F97316" />
+
+  <circle cx="336" cy="312" r="18" fill="#FACC15" />
+  <circle cx="336" cy="312" r="10" fill="#FEF08A" />
+  <rect x="324" y="338" width="30" height="8" rx="4" fill="#F97316" />
+
+  <!-- Bumper & License Plate -->
+  <rect x="148" y="348" width="216" height="24" rx="8" fill="#475569" />
+  <rect x="228" y="354" width="56" height="12" rx="3" fill="#FFFFFF" />
+  <rect x="228" y="354" width="56" height="4" rx="1" fill="#0284C7" />
+</svg>

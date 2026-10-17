@@ -337,8 +337,14 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
           const dataUrl = await toPng(hiddenPosterRef.current, {
             pixelRatio: 3,
             cacheBust: true,
+            skipFonts: true,
             backgroundColor: '#ffffff',
-            filter: (node: HTMLElement) => !node.classList?.contains('no-export')
+            filter: (node: HTMLElement | any) => {
+              if (node instanceof HTMLLinkElement && node.rel === 'stylesheet') {
+                return false;
+              }
+              return !node.classList?.contains('no-export');
+            }
           });
 
           // Convert base64 dataUrl to pure base64 string
@@ -702,7 +708,12 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                         alt={renderingRoute.companyName} 
                         className="w-full h-full object-contain"
                         referrerPolicy="no-referrer"
-                        crossOrigin="anonymous"
+                        onError={(e) => {
+                          const target = e.currentTarget as HTMLImageElement;
+                          if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                            target.src = '/Logo_ViaLivre.png';
+                          }
+                        }}
                       />
                     </div>
                   ) : (
@@ -722,12 +733,6 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                       {renderingRoute.companyName}
                     </p>
                   </div>
-                </div>
-
-                <div className="hidden sm:flex flex-col items-end opacity-90">
-                  <span className="text-[10px] font-black uppercase tracking-widest text-orange-100 bg-orange-700/60 px-2.5 py-1 rounded-md border border-orange-400/40">
-                    PADRÃO A4
-                  </span>
                 </div>
               </div>
 

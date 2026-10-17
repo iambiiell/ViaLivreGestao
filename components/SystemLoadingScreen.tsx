@@ -103,23 +103,18 @@ export const SystemLoadingScreen: React.FC<SystemLoadingScreenProps> = ({
             transition={{ duration: 2.6, repeat: Infinity, ease: 'easeInOut' }}
             className="w-20 h-20 bg-gradient-to-b from-slate-900 via-slate-900 to-zinc-950 rounded-2xl border-2 border-yellow-400/80 flex items-center justify-center relative overflow-hidden backdrop-blur-xl"
           >
-            {systemLogo ? (
-              <img
-                src={`${systemLogo.split('?')[0]}?t=${Date.now()}`}
-                alt="Logo"
-                className="w-14 h-14 object-contain"
-                referrerPolicy="no-referrer"
-              />
-            ) : (
-              <div className="relative">
-                <BusFront size={38} className="text-yellow-400 drop-shadow-[0_0_12px_rgba(250,204,21,0.6)]" />
-                <motion.div
-                  animate={{ opacity: [0, 1, 0] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                  className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-[0_0_8px_#34d399]"
-                />
-              </div>
-            )}
+            <img
+              src={systemLogo || "/Logo_ViaLivre.png"}
+              alt="Logo"
+              className="w-14 h-14 object-contain"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                const target = e.currentTarget as HTMLImageElement;
+                if (!target.src.endsWith('/Logo_ViaLivre.png')) {
+                  target.src = '/Logo_ViaLivre.png';
+                }
+              }}
+            />
 
             {/* Shimmer Light Reflection Sweep */}
             <div className="absolute inset-0 -translate-x-full animate-[shimmer_2.5s_infinite] bg-gradient-to-r from-transparent via-white/10 to-transparent pointer-events-none" />
