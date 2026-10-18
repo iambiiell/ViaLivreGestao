@@ -324,7 +324,7 @@ export const PreventiveMaintenanceWidget: React.FC<PreventiveMaintenanceWidgetPr
               onClick={() => setFilterMode('ALL')}
               className={`px-3 py-2 rounded-xl transition-all ${
                 filterMode === 'ALL'
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
+                  ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-sm font-black'
                   : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900'
               }`}
             >

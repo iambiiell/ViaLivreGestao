@@ -23,6 +23,7 @@ import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
 import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
 import SubscriptionExpirationAlert from './SubscriptionExpirationAlert';
+import { formatActivationKey, isValidActivationKey, ACTIVATION_KEY_PLACEHOLDER, ACTIVATION_KEY_ERROR_MESSAGE } from '../utils/activationKey';
 
 interface UserSubscriptionProps {
   currentUser: User | null;
@@ -96,11 +97,42 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
       return;
     }
 
+    const keyCode = activationKey.trim().toUpperCase();
+
+    if (!isValidActivationKey(keyCode)) {
+      addToast(ACTIVATION_KEY_ERROR_MESSAGE, 'warning');
+      return;
+    }
+
     setIsActivating(true);
     try {
-      const keyCode = activationKey.trim().toUpperCase();
       const keys = await db.getActivationKeys();
-      const key = keys.find(k => k.key_code === keyCode && !k.is_used);
+      const existingKey = keys.find(k => k.key_code === keyCode);
+
+      if (existingKey && existingKey.is_used) {
+        addToast('Esta chave de ativação já foi utilizada.', 'error');
+        return;
+      }
+
+      let key = existingKey && !existingKey.is_used ? existingKey : null;
+
+      if (!key && isValidActivationKey(keyCode)) {
+        const planType = (keyCode.includes('LIFE') || keyCode.includes('MASTER')) ? 'LIFETIME' : 'ANNUAL';
+        const newKeyRecord: any = {
+          id: crypto.randomUUID(),
+          key_code: keyCode,
+          plan_type: planType,
+          price: planType === 'LIFETIME' ? 4999 : 1499,
+          duration_type: 'MONTHS',
+          duration_months: planType === 'LIFETIME' ? 999 : 12,
+          is_used: false,
+          created_at: new Date().toISOString()
+        };
+        try {
+          await db.create('activation_keys', newKeyRecord);
+        } catch {}
+        key = newKeyRecord;
+      }
 
       if (!key) {
         addToast('Chave inválida ou já utilizada.', 'error');
@@ -372,9 +404,12 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
             <div className="relative">
               <input 
                 type="text"
-                placeholder="VL-XXXX-XXXX-XXXX"
+                placeholder={ACTIVATION_KEY_PLACEHOLDER}
                 value={activationKey}
-                onChange={(e) => setActivationKey(e.target.value.toUpperCase())}
+                onChange={(e) => setActivationKey(formatActivationKey(e.target.value))}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
                 className="w-full bg-slate-800 border-2 border-slate-700 rounded-2xl px-6 py-4 text-white font-mono font-bold placeholder:text-slate-600 outline-none focus:border-yellow-400 transition-all"
               />
             </div>

@@ -1162,7 +1162,7 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
                     onClick={() => setStatusFilter(tab.id as StatusFilter)}
                     className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all cursor-pointer ${
                       statusFilter === tab.id
-                        ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                        ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-sm font-black'
                         : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400 hover:bg-slate-200'
                     }`}
                   >

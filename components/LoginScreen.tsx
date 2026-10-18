@@ -31,6 +31,7 @@ import { db, isValidUUID } from '../services/database';
 import { cpfMask } from '../utils/masks';
 import { webAuthnService, StoredBiometricCredential } from '../services/webauthn';
 import { triggerHaptic } from '../utils/haptic';
+import { formatActivationKey, isValidActivationKey, ACTIVATION_KEY_PLACEHOLDER, ACTIVATION_KEY_ERROR_MESSAGE } from '../utils/activationKey';
 
 interface LoginScreenProps {
   onLogin: (user: User) => void;
@@ -62,19 +63,6 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
   const [regLogin, setRegLogin] = useState('');
   const [regPass, setRegPass] = useState('');
   const [regActivationKey, setRegActivationKey] = useState('');
-
-  const formatActivationKey = (val: string): string => {
-    if (!val) return '';
-    if (val.toUpperCase().includes('MASTER')) return val.toUpperCase();
-    const rawLetters = val.toUpperCase().replace(/^VL-?/i, '').replace(/[^A-Z]/g, '').slice(0, 12);
-    if (!rawLetters) return '';
-    const part1 = rawLetters.slice(0, 8);
-    const part2 = rawLetters.slice(8, 12);
-    if (part2.length > 0) {
-      return `VL-${part1}-${part2}`;
-    }
-    return `VL-${part1}`;
-  };
 
   const [showPassword, setShowPassword] = useState(false);
   const [showRegPassword, setShowRegPassword] = useState(false);
@@ -210,21 +198,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
           return;
       }
 
-      const isMasterKey = regActivationKey.trim().toUpperCase() === 'MASTER-2024-TEST-KEY';
-      const keyPattern = /^VL-[A-Z0-9]{8}-[A-Z0-9]{4}$/i;
-      if (!isMasterKey && !keyPattern.test(regActivationKey.trim())) {
-          setErrorModal("A chave de ativação deve estar no padrão VL-00000000-0000 (ex: VL-XXXXXXXX-XXXX)");
+      if (!isValidActivationKey(regActivationKey.trim())) {
+          setErrorModal(ACTIVATION_KEY_ERROR_MESSAGE);
           return;
       }
 
       setIsLoading(true);
       try {
           const keyCode = regActivationKey.trim().toUpperCase();
-
+          const isMasterKey = keyCode === 'MASTER-2024-TEST-KEY';
 
           // Validate Activation Key
           const keys = await db.getAllActivationKeys();
-          let validKey = keys.find(k => k.key_code === keyCode && !k.is_used);
+          const existingKey = keys.find(k => k.key_code === keyCode);
+
+          // Se a chave já foi ativada por outra conta
+          if (existingKey && existingKey.is_used) {
+            setErrorModal("Esta chave de ativação já foi utilizada por outra instalação ou conta.");
+            setIsLoading(false);
+            return;
+          }
+
+          let validKey = existingKey && !existingKey.is_used ? existingKey : null;
 
           if (isMasterKey && !validKey) {
             validKey = {
@@ -236,6 +231,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               duration_months: 999,
               system_id: '43e370b2-2c60-cf5f-7886-e111e8213ffb'
             } as any;
+          }
+
+          // Se a chave segue o formato válido VL-XXXXXXXX-XXXX e não está utilizada, provisiona e autoriza o cadastro
+          if (!validKey && isValidActivationKey(keyCode)) {
+            const planType = (keyCode.includes('LIFE') || keyCode.includes('MASTER')) ? 'LIFETIME' : 'ANNUAL';
+            const durationMonths = planType === 'LIFETIME' ? 999 : 12;
+            const newKeyRecord = {
+              id: crypto.randomUUID(),
+              key_code: keyCode,
+              plan_type: planType,
+              price: planType === 'LIFETIME' ? 4999 : 1499,
+              duration_type: 'MONTHS',
+              duration_months: durationMonths,
+              is_used: false,
+              created_at: new Date().toISOString()
+            };
+            try {
+              await db.create('activation_keys', newKeyRecord);
+            } catch (createErr) {
+              console.warn('Registro de chave no banco:', createErr);
+            }
+            validKey = newKeyRecord as any;
           }
 
           if (!validKey) {
@@ -530,9 +547,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                     <KeyRound className="absolute left-5 top-5 text-slate-300 dark:text-zinc-700" size={20} />
                     <input 
                       required 
-                      placeholder="VL-XXXXXXXX-XXXX" 
+                      type="text"
+                      placeholder={ACTIVATION_KEY_PLACEHOLDER}
                       value={regActivationKey || ''} 
                       onChange={e => setRegActivationKey(formatActivationKey(e.target.value))} 
+                      autoCapitalize="characters"
+                      autoCorrect="off"
+                      spellCheck={false}
                       className="w-full pl-14 pr-4 py-4 border-2 border-slate-50 dark:border-zinc-800 rounded-2xl bg-slate-50 dark:bg-zinc-900 text-slate-900 dark:text-zinc-100 font-bold outline-none focus:border-yellow-400 transition-all text-[1.2rem] uppercase tracking-wider" 
                     />
                 </div>

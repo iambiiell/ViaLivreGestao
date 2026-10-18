@@ -586,7 +586,7 @@ export const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
               onClick={() => setChartViewMode('total')}
               className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
                 chartViewMode === 'total'
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
+                  ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-sm font-black'
                   : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
               }`}
             >
@@ -596,7 +596,7 @@ export const AnalyticsPanel: React.FC<AnalyticsPanelProps> = ({
               onClick={() => setChartViewMode('detailed')}
               className={`px-3 py-1.5 rounded-xl text-[9px] font-black uppercase tracking-wider transition-all ${
                 chartViewMode === 'detailed'
-                  ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-sm'
+                  ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-sm font-black'
                   : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
               }`}
             >

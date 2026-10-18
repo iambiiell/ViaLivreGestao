@@ -378,7 +378,7 @@ const Dashboard: React.FC<DashboardProps> = ({ allTrips = [], routes = [], compa
             }}
             className={`flex-1 sm:flex-initial flex items-center justify-center gap-2 px-5 py-3 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all ${
               activeTab === 'realtime'
-                ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 shadow-md'
+                ? 'bg-white text-slate-900 border border-slate-200/80 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-md'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-zinc-800'
             }`}
           >

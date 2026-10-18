@@ -673,11 +673,84 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       .filter(Boolean) as typeof allAvailableTabs;
   }, [customShortcutIds, allAvailableTabs]);
 
+  // Dynamic bottom bar shortcuts derived from the user's customized & reordered shortcuts!
+  // Slot 1: First item in customShortcutIds (fallback to 'timetracking' Ponto)
+  // Slot 2: Second item in customShortcutIds (fallback to 'inspection' Vistoria)
+  const bottomBarSlot1 = useMemo(() => {
+    const id = customShortcutIds[0] || 'timetracking';
+    return allAvailableTabs.find(t => t.id === id) || allAvailableTabs.find(t => t.id === 'timetracking') || allAvailableTabs[0];
+  }, [customShortcutIds, allAvailableTabs]);
+
+  const bottomBarSlot2 = useMemo(() => {
+    const id = customShortcutIds[1] || 'inspection';
+    return allAvailableTabs.find(t => t.id === id) || allAvailableTabs.find(t => t.id === 'inspection') || allAvailableTabs[1];
+  }, [customShortcutIds, allAvailableTabs]);
+
+  const handleMoveShortcut = (index: number, direction: 'up' | 'down') => {
+    setCustomShortcutIds(prev => {
+      const targetIndex = direction === 'up' ? index - 1 : index + 1;
+      if (targetIndex < 0 || targetIndex >= prev.length) return prev;
+      const copy = [...prev];
+      const item = copy[index];
+      copy[index] = copy[targetIndex];
+      copy[targetIndex] = item;
+      return copy;
+    });
+  };
+
+  const handleAddShortcut = (id: string) => {
+    if (customShortcutIds.length >= 12) {
+      addToast('Você pode escolher até 12 atalhos rápidos', 'warning');
+      return;
+    }
+    setCustomShortcutIds(prev => [...prev, id]);
+    addToast('Aba adicionada aos seus atalhos!', 'info');
+  };
+
+  const handleRemoveShortcut = (id: string) => {
+    if (customShortcutIds.length <= 2) {
+      addToast('Mantenha pelo menos 2 atalhos para a barra de navegação inferior', 'warning');
+      return;
+    }
+    setCustomShortcutIds(prev => prev.filter(x => x !== id));
+  };
+
+  const handlePinToBottomSlot = (id: string, targetSlot: 0 | 1) => {
+    setCustomShortcutIds(prev => {
+      const filtered = prev.filter(x => x !== id);
+      if (targetSlot === 0) {
+        return [id, ...filtered];
+      } else {
+        const first = filtered[0] || 'timetracking';
+        const rest = filtered.slice(1);
+        return [first, id, ...rest];
+      }
+    });
+    addToast(`Aba fixada no Slot #${targetSlot + 1} da Barra Inferior!`, 'success');
+  };
+
+  const availableUnselectedTabs = useMemo(() => {
+    return allAvailableTabs.filter(tab => {
+      if (customShortcutIds.includes(tab.id)) return false;
+      if (shortcutCategoryFilter !== 'Todas') {
+        if (shortcutCategoryFilter === 'Operação' && tab.category !== 'Operacional' && tab.category !== 'Movimentação') return false;
+        if (shortcutCategoryFilter === 'Fiscal' && tab.category !== 'Fiscalização' && tab.category !== 'Relatórios') return false;
+        if (shortcutCategoryFilter === 'Pessoal' && tab.category !== 'Pessoal' && tab.category !== 'Comunicação') return false;
+        if (shortcutCategoryFilter === 'Ajuda' && tab.category !== 'Ajuda' && tab.category !== 'Sistema') return false;
+      }
+      if (shortcutSearchQuery) {
+        const q = shortcutSearchQuery.toLowerCase();
+        return tab.label.toLowerCase().includes(q) || tab.description.toLowerCase().includes(q);
+      }
+      return true;
+    });
+  }, [allAvailableTabs, customShortcutIds, shortcutCategoryFilter, shortcutSearchQuery]);
+
   const handleToggleShortcutSelection = (id: string) => {
     setCustomShortcutIds(prev => {
       if (prev.includes(id)) {
-        if (prev.length <= 4) {
-          addToast('Selecione no mínimo 4 atalhos rápidos', 'warning');
+        if (prev.length <= 2) {
+          addToast('Selecione no mínimo 2 atalhos rápidos para a barra', 'warning');
           return prev;
         }
         return prev.filter(x => x !== id);
@@ -697,7 +770,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       localStorage.setItem('vialivre_mobile_custom_shortcuts', JSON.stringify(customShortcutIds));
     } catch {}
     setIsEditingShortcuts(false);
-    addToast('Atalhos rápidos de campo atualizados com sucesso!', 'success');
+    addToast('Atalhos rápidos e barra inferior atualizados com sucesso!', 'success');
   };
 
   const handleResetShortcuts = () => {
@@ -706,6 +779,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       localStorage.setItem(storageKey, JSON.stringify(defaultShortcuts));
       localStorage.setItem('vialivre_mobile_custom_shortcuts', JSON.stringify(defaultShortcuts));
     } catch {}
+    addToast('Atalhos restaurados para o padrão da sua função.', 'info');
   };
 
   // Handlers for Ponto, Vistoria, Ocorrência, Viagens
@@ -920,10 +994,11 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       </div>
 
       {/* 2. TOP APP HEADER BAR WITH FIXED HAMBURGER, DESIGN & PALETTE BUTTONS */}
-      <div className="w-full px-4 py-2.5 flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-30 shrink-0">
+      <div id="tour-mobile-header" className="w-full px-4 py-2.5 flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-30 shrink-0">
         <div className="flex items-center gap-2.5 min-w-0">
           {/* Fixed Hamburger Trigger in Header (Touch target 44px) */}
           <button
+            id="tour-mobile-hamburger"
             onClick={() => setIsHamburgerOpen(true)}
             className="w-10 h-10 -ml-1 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-yellow-400 hover:text-slate-950 active:scale-95 transition-all shrink-0 shadow-xs"
             title="Abrir Menu de Todas as Abas"
@@ -957,8 +1032,16 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </div>
         </div>
 
-        {/* Quick Header Actions: Notifications, Sun/Moon Theme & Desktop */}
+        {/* Quick Header Actions: Notifications, Tour, Sun/Moon Theme & Desktop */}
         <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={() => startMobileGuidedTour()}
+            className="w-9 h-9 rounded-xl text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center transition-all active:scale-90"
+            title="Tour Guiado de Boas-Vindas Mobile"
+          >
+            <Sparkles size={18} />
+          </button>
+
           <button
             onClick={() => setActiveSubView(activeSubView === 'notifications' ? 'none' : 'notifications')}
             className="w-9 h-9 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center relative transition-all active:scale-90"
@@ -973,6 +1056,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </button>
 
           <button
+            id="tour-mobile-theme"
             onClick={() => setShowThemeModal(true)}
             className="w-9 h-9 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-all active:scale-90"
             title="Design e Cores (Ajustar Tema, Cores e Alto Contraste)"
@@ -982,7 +1066,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
           <button
             onClick={onSwitchToDesktop}
-            className="h-9 px-3 rounded-xl bg-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider hover:bg-yellow-300 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
+            className="h-9 px-2.5 rounded-xl bg-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider hover:bg-yellow-300 active:scale-95 transition-all shadow-sm flex items-center gap-1"
             title="Alternar para visualização Desktop"
           >
             <Monitor size={14} />
@@ -1047,13 +1131,20 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </div>
         )}
 
-        {/* SUBVIEW: EDIT QUICK SHORTCUTS MODAL (Requested explicitly) */}
+        {/* SUBVIEW: EDIT QUICK SHORTCUTS MODAL WITH DRAG-AND-DROP STUDIO (Requested explicitly) */}
         {isEditingShortcuts && (
           <div className="bg-white dark:bg-black rounded-3xl border-2 border-yellow-400 p-4 shadow-2xl space-y-3.5 animate-in fade-in zoom-in-95 duration-200 text-left">
             <div className="flex items-center justify-between pb-2.5 border-b border-slate-100 dark:border-zinc-800">
               <div className="flex items-center gap-2">
                 <SlidersHorizontal size={18} className="text-yellow-500" />
-                <h3 className="text-sm font-black uppercase text-slate-900 dark:text-white">Personalizar Ações Rápidas</h3>
+                <div>
+                  <h3 className="text-sm font-black uppercase text-slate-900 dark:text-white leading-none">
+                    Personalizar Ações Rápidas
+                  </h3>
+                  <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-bold">
+                    Arrastar e Soltar • Barra Personalizada
+                  </span>
+                </div>
               </div>
               <button 
                 onClick={() => setIsEditingShortcuts(false)} 
@@ -1063,85 +1154,228 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
               </button>
             </div>
 
-            <div className="space-y-1">
-              <p className="text-xs text-slate-700 dark:text-zinc-200 font-bold">
-                Selecione de 4 a 12 abas liberadas para ficarem fixas como atalhos diretos na tela inicial:
-              </p>
-              <div className="flex items-center justify-between text-[11px] font-black text-slate-500 dark:text-zinc-400">
-                <span>Atalhos ativos: <strong className="text-yellow-600 dark:text-yellow-400">{customShortcutIds.length}</strong> selecionados</span>
-                <span>{allAvailableTabs.length} abas liberadas</span>
+            {/* Live Bottom Nav Preview */}
+            <div className="p-3 bg-slate-50 dark:bg-zinc-900/90 rounded-2xl border border-slate-200 dark:border-zinc-800 space-y-1.5">
+              <div className="flex items-center justify-between text-[11px] font-black uppercase text-slate-700 dark:text-zinc-300">
+                <span>Sua Barra Inferior Atual</span>
+                <span className="text-[10px] text-yellow-600 dark:text-yellow-400 font-bold">Slots #1 e #2 dinâmicos</span>
               </div>
+              
+              <div className="grid grid-cols-5 gap-1.5 p-2 bg-white dark:bg-black rounded-xl border border-slate-200 dark:border-zinc-800 text-center text-[9px] font-black shadow-inner">
+                <div className="p-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500">
+                  <LayoutDashboard size={16} className="mx-auto mb-0.5" />
+                  <span>Início</span>
+                </div>
+                <div className="p-1 rounded-lg bg-yellow-400 text-slate-950 font-black shadow-xs ring-2 ring-yellow-400/40">
+                  {React.createElement(bottomBarSlot1.icon, { size: 16, className: 'mx-auto mb-0.5' })}
+                  <span className="truncate block max-w-full font-bold">{bottomBarSlot1.label.split('/')[0].split('&')[0].trim()}</span>
+                </div>
+                <div className="p-1 rounded-lg bg-slate-900 dark:bg-zinc-800 text-yellow-400">
+                  <Bus size={16} className="mx-auto mb-0.5" />
+                  <span>Operação</span>
+                </div>
+                <div className="p-1 rounded-lg bg-yellow-400 text-slate-950 font-black shadow-xs ring-2 ring-yellow-400/40">
+                  {React.createElement(bottomBarSlot2.icon, { size: 16, className: 'mx-auto mb-0.5' })}
+                  <span className="truncate block max-w-full font-bold">{bottomBarSlot2.label.split('/')[0].split('&')[0].trim()}</span>
+                </div>
+                <div className="p-1 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-500">
+                  <Menu size={16} className="mx-auto mb-0.5" />
+                  <span>Mais</span>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-medium leading-tight">
+                ⭐ Os <strong>2 primeiros atalhos</strong> da lista abaixo são fixados na sua barra inferior para toque rápido com o polegar!
+              </p>
             </div>
 
-            {/* Quick Search inside shortcuts */}
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input
-                type="text"
-                placeholder="Filtrar abas liberadas..."
-                value={shortcutSearchQuery}
-                onChange={(e) => setShortcutSearchQuery(e.target.value)}
-                className="w-full h-9 pl-8 pr-3 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none focus:border-yellow-400 text-slate-900 dark:text-white"
-              />
-              {shortcutSearchQuery && (
-                <button
-                  type="button"
-                  onClick={() => setShortcutSearchQuery('')}
-                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs"
-                >
-                  ✕
-                </button>
-              )}
-            </div>
+            {/* Active Reorderable List (Drag-and-Drop com framer-motion) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between text-xs font-black uppercase text-slate-800 dark:text-zinc-200">
+                <span>Atalhos Ativos ({customShortcutIds.length})</span>
+                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-normal">Arraste pela alça ou use ▲ ▼</span>
+              </div>
 
-            {/* List of all allowed tabs for selection */}
-            <div className="max-h-64 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-              {allAvailableTabs
-                .filter(tab => {
-                  if (!shortcutSearchQuery) return true;
-                  const q = shortcutSearchQuery.toLowerCase();
-                  return tab.label.toLowerCase().includes(q) || tab.description.toLowerCase().includes(q);
-                })
-                .map(tab => {
+              <Reorder.Group
+                axis="y"
+                values={customShortcutIds}
+                onReorder={(newOrder) => setCustomShortcutIds(newOrder)}
+                className="space-y-2 max-h-56 overflow-y-auto custom-scrollbar pr-1"
+              >
+                {customShortcutIds.map((id, index) => {
+                  const tab = allAvailableTabs.find(t => t.id === id);
+                  if (!tab) return null;
                   const Icon = tab.icon;
-                  const selectedIndex = customShortcutIds.indexOf(tab.id);
-                  const isSelected = selectedIndex !== -1;
+                  const isBottomSlot = index < 2;
+
                   return (
-                    <button
-                      key={tab.id}
-                      type="button"
-                      onClick={() => handleToggleShortcutSelection(tab.id)}
-                      className={`w-full min-h-[50px] p-2.5 rounded-2xl border-2 flex items-center justify-between transition-all active:scale-98 ${
-                        isSelected 
-                          ? 'border-yellow-400 bg-yellow-400/10 dark:bg-yellow-400/15 shadow-sm ring-1 ring-yellow-400/40' 
-                          : 'border-slate-200 dark:border-zinc-800 bg-slate-50/70 dark:bg-zinc-900/60 text-slate-700 dark:text-zinc-200 hover:border-slate-300'
+                    <Reorder.Item
+                      key={id}
+                      value={id}
+                      className={`p-2.5 rounded-2xl border-2 flex items-center justify-between gap-2 bg-white dark:bg-zinc-900 transition-shadow select-none ${
+                        isBottomSlot 
+                          ? 'border-yellow-400 shadow-sm ring-1 ring-yellow-400/30' 
+                          : 'border-slate-200 dark:border-zinc-800'
                       }`}
+                      whileDrag={{ scale: 1.03, boxShadow: '0 12px 24px rgba(0,0,0,0.3)', zIndex: 50 }}
                     >
-                      <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Drag Handle */}
+                      <div 
+                        className="p-1.5 -ml-1 text-slate-400 hover:text-yellow-600 dark:hover:text-yellow-400 cursor-grab active:cursor-grabbing touch-none shrink-0"
+                        title="Arrastar e soltar para reordenar"
+                      >
+                        <GripVertical size={18} />
+                      </div>
+
+                      {/* Icon & Label */}
+                      <div className="flex items-center gap-2.5 min-w-0 flex-1">
                         <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${tab.color}`}>
                           <Icon size={16} />
                         </div>
                         <div className="min-w-0 text-left">
-                          <p className="text-xs font-black uppercase text-slate-900 dark:text-white truncate">{tab.label}</p>
-                          <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">{tab.description}</p>
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-xs font-black uppercase text-slate-900 dark:text-white truncate">
+                              {tab.label}
+                            </span>
+                            {isBottomSlot && (
+                              <span className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-yellow-400 text-slate-950 shrink-0">
+                                ⭐ Barra #{index + 1}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                            {tab.description}
+                          </p>
                         </div>
                       </div>
 
-                      <div className={`h-6 px-2 rounded-lg flex items-center justify-center gap-1 shrink-0 transition-colors text-[10px] font-black ${
-                        isSelected ? 'bg-yellow-400 text-slate-950 font-black shadow-xs' : 'border-2 border-slate-300 dark:border-zinc-700 text-slate-400'
-                      }`}>
-                        {isSelected ? (
-                          <>
-                            <Check size={12} strokeWidth={3} />
-                            <span>#{selectedIndex + 1}</span>
-                          </>
-                        ) : (
-                          <span>+ Adicionar</span>
-                        )}
+                      {/* Quick Reorder Controls (▲ / ▼) and Remove */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => handleMoveShortcut(index, 'up')}
+                          disabled={index === 0}
+                          className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center active:scale-90"
+                          title="Mover para cima"
+                        >
+                          <ArrowUp size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMoveShortcut(index, 'down')}
+                          disabled={index === customShortcutIds.length - 1}
+                          className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 disabled:opacity-30 disabled:pointer-events-none flex items-center justify-center active:scale-90"
+                          title="Mover para baixo"
+                        >
+                          <ArrowDown size={13} />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveShortcut(id)}
+                          className="w-7 h-7 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 hover:bg-rose-600 hover:text-white flex items-center justify-center active:scale-90 transition-colors ml-0.5"
+                          title="Remover dos atalhos"
+                        >
+                          <X size={14} />
+                        </button>
                       </div>
-                    </button>
+                    </Reorder.Item>
                   );
                 })}
+              </Reorder.Group>
+            </div>
+
+            {/* Add More Functional Tabs Section (como Ponto, Escalas, Avisos...) */}
+            <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-zinc-800 text-left">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase text-slate-800 dark:text-zinc-200">
+                  Adicionar Mais Abas Liberadas
+                </span>
+                <span className="text-[10px] text-slate-500 dark:text-zinc-400">
+                  {availableUnselectedTabs.length} disponíveis
+                </span>
+              </div>
+
+              {/* Search & Categories */}
+              <div className="space-y-2">
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Filtrar abas liberadas (ex: Ponto, Escala, Avisos)..."
+                    value={shortcutSearchQuery}
+                    onChange={(e) => setShortcutSearchQuery(e.target.value)}
+                    className="w-full h-9 pl-8 pr-3 text-xs bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl outline-none focus:border-yellow-400 text-slate-900 dark:text-white"
+                  />
+                  {shortcutSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setShortcutSearchQuery('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 dark:hover:text-white text-xs"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Pills */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-[10px] font-black uppercase">
+                  {['Todas', 'Operação', 'Fiscal', 'Pessoal', 'Ajuda'].map(cat => (
+                    <button
+                      key={cat}
+                      type="button"
+                      onClick={() => setShortcutCategoryFilter(cat)}
+                      className={`px-2.5 py-1 rounded-xl transition-all shrink-0 ${
+                        shortcutCategoryFilter === cat
+                          ? 'bg-yellow-400 text-slate-950 shadow-xs'
+                          : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-400'
+                      }`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Available Unselected Tabs */}
+              <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                {availableUnselectedTabs.length === 0 ? (
+                  <p className="text-xs text-center text-slate-400 py-3">
+                    {shortcutSearchQuery ? 'Nenhuma aba encontrada com esse nome.' : 'Todas as abas liberadas já estão em seus atalhos!'}
+                  </p>
+                ) : (
+                  availableUnselectedTabs.map(tab => {
+                    const Icon = tab.icon;
+                    return (
+                      <div
+                        key={tab.id}
+                        className="p-2 rounded-xl border border-slate-200 dark:border-zinc-800 bg-slate-50/80 dark:bg-zinc-900/60 flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${tab.color}`}>
+                            <Icon size={14} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-black uppercase text-slate-900 dark:text-white truncate">
+                              {tab.label}
+                            </p>
+                            <p className="text-[9px] text-slate-500 dark:text-zinc-400 truncate">
+                              {tab.description}
+                            </p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleAddShortcut(tab.id)}
+                          className="px-2.5 py-1 rounded-lg bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black text-[10px] uppercase tracking-wider active:scale-95 transition-all shadow-xs shrink-0 flex items-center gap-1"
+                        >
+                          <Plus size={12} strokeWidth={3} />
+                          <span>Adicionar</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
 
             <div className="flex items-center gap-2 pt-2 border-t border-slate-100 dark:border-zinc-800">
@@ -1350,6 +1584,40 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         {activeTab === 'dashboard' && (
           <div className="space-y-4">
             
+            {/* Mobile Welcome Tour Onboarding Banner */}
+            {showWelcomeTourBanner && (
+              <div className="bg-gradient-to-r from-yellow-400 via-amber-400 to-yellow-500 text-slate-950 p-3.5 rounded-3xl shadow-lg flex items-center justify-between gap-3 text-left animate-in slide-in-from-top-2 duration-300">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-9 h-9 rounded-2xl bg-black/10 flex items-center justify-center shrink-0">
+                    <Sparkles size={20} className="text-slate-950" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-black uppercase tracking-tight leading-tight">Novo no ViaLivre Mobile?</p>
+                    <p className="text-[10px] font-bold text-slate-900/80 leading-tight mt-0.5">Aprenda gestos, menu e atalhos em 1 minuto.</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => {
+                      startMobileGuidedTour({
+                        onFinish: () => setShowWelcomeTourBanner(false)
+                      });
+                    }}
+                    className="px-2.5 py-1.5 rounded-xl bg-slate-950 text-yellow-400 text-[10px] font-black uppercase tracking-wider shadow-sm hover:bg-slate-900 active:scale-95 transition-all"
+                  >
+                    Iniciar Tour
+                  </button>
+                  <button
+                    onClick={() => setShowWelcomeTourBanner(false)}
+                    className="w-7 h-7 rounded-xl bg-black/10 hover:bg-black/20 text-slate-900 flex items-center justify-center transition-all"
+                    title="Dispensar"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              </div>
+            )}
+
             {/* Subscription Alert (if expiring) */}
             {subscription && (
               <SubscriptionExpirationAlert 
@@ -1358,6 +1626,34 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 dismissible={true}
               />
             )}
+
+            {/* Gesture Navigation & Thumb Tips Bar */}
+            <div 
+              id="tour-mobile-gestures"
+              className="p-3 bg-white dark:bg-zinc-900 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm flex items-center justify-between text-left"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                  <Sparkles size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-black uppercase text-slate-900 dark:text-white truncate">
+                    Navegação por Gestos & Polegares
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">
+                    Deslize para baixo para fechar gavetas e arraste atalhos.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => startMobileGuidedTour()}
+                className="px-2.5 py-1.5 rounded-xl bg-yellow-400/20 hover:bg-yellow-400 text-yellow-800 dark:text-yellow-400 hover:text-slate-950 font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 shrink-0 flex items-center gap-1"
+              >
+                <Sparkles size={12} />
+                <span>Tour</span>
+              </button>
+            </div>
 
             {/* 4 Quick KPI Summary Cards */}
             <div className="grid grid-cols-2 gap-3">
@@ -1414,9 +1710,9 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
               </div>
             </div>
 
-            {/* Ações Rápidas de Campo - User Customizable Shortcuts */}
-            <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
-              <div className="flex items-center justify-between mb-3">
+            {/* Ações Rápidas de Campo - User Customizable Shortcuts (Drag-and-Drop) */}
+            <div id="tour-mobile-quick-actions" className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200">
                     Ações Rápidas de Campo
@@ -1426,16 +1722,22 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                   </span>
                 </div>
                 
-                {/* Button to edit / customize shortcuts */}
+                {/* Button to edit / customize shortcuts with Drag & Drop */}
                 <button
                   type="button"
                   onClick={() => setIsEditingShortcuts(true)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-yellow-400 hover:text-slate-950 font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 shadow-xs"
-                  title="Personalizar atalhos de campo"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-yellow-400/20 hover:bg-yellow-400 text-yellow-800 dark:text-yellow-400 hover:text-slate-950 font-black text-[10px] uppercase tracking-wider transition-all active:scale-95 shadow-xs"
+                  title="Personalizar e Reordenar Atalhos (Drag & Drop)"
                 >
-                  <Edit3 size={12} />
-                  <span>Personalizar</span>
+                  <GripVertical size={13} />
+                  <span>Organizar</span>
                 </button>
+              </div>
+
+              {/* Subtitle explaining the bottom bar link */}
+              <div className="mb-3 px-2 py-1 bg-yellow-400/10 rounded-xl border border-yellow-400/20 flex items-center justify-between text-[9px] font-bold text-yellow-800 dark:text-yellow-400">
+                <span>⭐ Na Barra Inferior: <strong>{bottomBarSlot1.label.split('/')[0].trim()}</strong> & <strong>{bottomBarSlot2.label.split('/')[0].trim()}</strong></span>
+                <span className="text-[8px] uppercase opacity-75">1-toque</span>
               </div>
 
               {/* Dynamic Grid of Custom Shortcuts */}
@@ -2014,41 +2316,55 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       </div>
 
       {/* 5. REFINED ERGONOMIC BOTTOM SHORTCUT BAR (Thumb-Friendly, Height 70px) */}
-      <div className="w-full h-[70px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-zinc-800/90 flex items-center justify-around px-3 z-30 shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]">
-        
+      <div 
+        id="tour-mobile-bottom-nav"
+        className="w-full h-[70px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-zinc-800/90 flex items-center justify-around px-3 z-30 shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]"
+      >
         {/* Shortcut 1: Início */}
         <button
-          onClick={() => { setActiveTab('dashboard'); setActiveSubView('none'); }}
+          onClick={() => { setActiveTab('dashboard'); setActiveSubView('none'); setActiveFullView(null); }}
           className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
-            activeTab === 'dashboard' 
+            activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView
               ? 'text-yellow-600 dark:text-yellow-400 font-black' 
               : 'text-slate-500 dark:text-zinc-400 font-bold'
           }`}
         >
-          <div className={`p-1.5 rounded-xl transition-colors ${activeTab === 'dashboard' ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
-            <LayoutDashboard size={22} strokeWidth={activeTab === 'dashboard' ? 2.5 : 2} />
+          <div className={`p-1.5 rounded-xl transition-colors ${activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
+            <LayoutDashboard size={22} strokeWidth={activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView ? 2.5 : 2} />
           </div>
           <span className="text-[10px] uppercase tracking-wider mt-0.5">Início</span>
         </button>
 
-        {/* Shortcut 2: Ponto Eletrônico */}
-        <button
-          onClick={() => { setActiveTab('timetracking'); setActiveSubView('none'); }}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
-            activeTab === 'timetracking' 
-              ? 'text-yellow-600 dark:text-yellow-400 font-black' 
-              : 'text-slate-500 dark:text-zinc-400 font-bold'
-          }`}
-        >
-          <div className={`p-1.5 rounded-xl transition-colors ${activeTab === 'timetracking' ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
-            <Timer size={22} strokeWidth={activeTab === 'timetracking' ? 2.5 : 2} />
-          </div>
-          <span className="text-[10px] uppercase tracking-wider mt-0.5">Ponto</span>
-        </button>
+        {/* Shortcut 2: Personalized Slot #1 (Reordered by user via Drag & Drop, default: Ponto) */}
+        {(() => {
+          const slot = bottomBarSlot1;
+          const Icon = slot.icon;
+          const isSlotActive = activeTab === slot.id || activeSubView === slot.id || activeFullView === slot.id;
+          return (
+            <button
+              onClick={() => {
+                slot.action();
+              }}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
+                isSlotActive
+                  ? 'text-yellow-600 dark:text-yellow-400 font-black' 
+                  : 'text-slate-500 dark:text-zinc-400 font-bold'
+              }`}
+              title={slot.label}
+            >
+              <div className={`p-1.5 rounded-xl transition-colors ${isSlotActive ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
+                <Icon size={22} strokeWidth={isSlotActive ? 2.5 : 2} />
+              </div>
+              <span className="text-[10px] uppercase tracking-wider mt-0.5 truncate max-w-[62px]">
+                {slot.label.split('/')[0].split('&')[0].trim()}
+              </span>
+            </button>
+          );
+        })()}
 
         {/* Shortcut 3: Central Elevated Primary Action Button - OPERAÇÃO / VIAGEM */}
         <button
-          onClick={() => { setActiveTab('operations'); setActiveSubView('none'); }}
+          onClick={() => { setActiveTab('operations'); setActiveSubView('none'); setActiveFullView(null); }}
           className="flex flex-col items-center justify-center -translate-y-2.5 z-40 active:scale-95 transition-all group"
           title="Operação e Viagens"
         >
@@ -2060,20 +2376,32 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </span>
         </button>
 
-        {/* Shortcut 4: Vistoria 360° */}
-        <button
-          onClick={() => { setActiveTab('inspection'); setActiveSubView('none'); }}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
-            activeTab === 'inspection' 
-              ? 'text-yellow-600 dark:text-yellow-400 font-black' 
-              : 'text-slate-500 dark:text-zinc-400 font-bold'
-          }`}
-        >
-          <div className={`p-1.5 rounded-xl transition-colors ${activeTab === 'inspection' ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
-            <ClipboardCheck size={22} strokeWidth={activeTab === 'inspection' ? 2.5 : 2} />
-          </div>
-          <span className="text-[10px] uppercase tracking-wider mt-0.5">Vistoria</span>
-        </button>
+        {/* Shortcut 4: Personalized Slot #2 (Reordered by user via Drag & Drop, default: Vistoria) */}
+        {(() => {
+          const slot = bottomBarSlot2;
+          const Icon = slot.icon;
+          const isSlotActive = activeTab === slot.id || activeSubView === slot.id || activeFullView === slot.id;
+          return (
+            <button
+              onClick={() => {
+                slot.action();
+              }}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
+                isSlotActive
+                  ? 'text-yellow-600 dark:text-yellow-400 font-black' 
+                  : 'text-slate-500 dark:text-zinc-400 font-bold'
+              }`}
+              title={slot.label}
+            >
+              <div className={`p-1.5 rounded-xl transition-colors ${isSlotActive ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
+                <Icon size={22} strokeWidth={isSlotActive ? 2.5 : 2} />
+              </div>
+              <span className="text-[10px] uppercase tracking-wider mt-0.5 truncate max-w-[62px]">
+                {slot.label.split('/')[0].split('&')[0].trim()}
+              </span>
+            </button>
+          );
+        })()}
 
         {/* Shortcut 5: Menu Hamburger / Mais (Abre todas as abas) */}
         <button
@@ -2098,10 +2426,23 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
             className="absolute inset-0 bg-slate-950/70 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
           />
 
-          {/* Drawer Content */}
-          <div className="relative w-full max-h-[88%] bg-white dark:bg-black rounded-t-[36px] border-t-2 border-yellow-400 p-4 sm:p-5 shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250 z-10 text-left">
-            {/* Grab Bar */}
-            <div className="w-12 h-1.5 bg-slate-300 dark:bg-zinc-700 rounded-full mx-auto mb-2" />
+          {/* Drawer Content with gesture swipe-down to dismiss */}
+          <motion.div 
+            drag="y"
+            dragConstraints={{ top: 0, bottom: 0 }}
+            dragElastic={{ top: 0.05, bottom: 0.6 }}
+            onDragEnd={(_, info) => {
+              if (info.offset.y > 80 || info.velocity.y > 250) {
+                setIsHamburgerOpen(false);
+              }
+            }}
+            className="relative w-full max-h-[88%] bg-white dark:bg-black rounded-t-[36px] border-t-2 border-yellow-400 p-4 sm:p-5 shadow-2xl flex flex-col z-10 text-left select-none"
+          >
+            {/* Grab Bar & Gesture Dismiss Hint */}
+            <div className="w-12 h-1.5 bg-slate-300 dark:bg-zinc-700 rounded-full mx-auto mb-1 cursor-grab active:cursor-grabbing" />
+            <span className="text-[9px] text-slate-400 dark:text-zinc-500 font-bold block text-center mb-1">
+              Deslize para baixo para fechar ▾
+            </span>
 
             {/* Drawer Header */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-zinc-800 shrink-0">
@@ -2124,8 +2465,19 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 </div>
               </div>
 
-              {/* Action Buttons in Drawer Header: Sun/Moon for Design e Cores, Atalhos & Close */}
+              {/* Action Buttons in Drawer Header: Tour, Sun/Moon for Design e Cores, Atalhos & Close */}
               <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => {
+                    setIsHamburgerOpen(false);
+                    startMobileGuidedTour();
+                  }}
+                  className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-900 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
+                  title="Tour Guiado de Boas-Vindas Mobile"
+                >
+                  <Sparkles size={16} />
+                </button>
+
                 <button
                   onClick={() => setShowThemeModal(true)}
                   className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
@@ -2250,7 +2602,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <span>Desconectar</span>
               </button>
             </div>
-          </div>
+          </motion.div>
         </div>
       )}
 

@@ -7,6 +7,7 @@ import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor, applyThemeVar
 import { KeyActivationHistoryModal } from './KeyActivationHistoryModal';
 import BackupSchedulePanel from './BackupSchedulePanel';
 import SubscriptionExpirationAlert from './SubscriptionExpirationAlert';
+import { formatActivationKey, isValidActivationKey, ACTIVATION_KEY_PLACEHOLDER, ACTIVATION_KEY_ERROR_MESSAGE } from '../utils/activationKey';
 
 interface SystemConfigManagerProps {
   currentUser?: User | null;
@@ -142,12 +143,44 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ currentUser, 
   };
 
   const handleActivateKey = async () => {
-    if (!activationKey) return;
+    if (!activationKey.trim()) return;
+
+    const keyCode = activationKey.trim().toUpperCase();
+    if (!isValidActivationKey(keyCode)) {
+      addToast(ACTIVATION_KEY_ERROR_MESSAGE, 'warning');
+      return;
+    }
+
     setIsActivating(true);
     try {
       const keys = await db.getActivationKeys();
-      const key = keys.find(k => k.key_code === activationKey.trim().toUpperCase() && !k.is_used);
-      
+      const existingKey = keys.find(k => k.key_code === keyCode);
+
+      if (existingKey && existingKey.is_used) {
+        addToast('Esta chave de ativação já foi utilizada.', 'error');
+        return;
+      }
+
+      let key = existingKey && !existingKey.is_used ? existingKey : null;
+
+      if (!key && isValidActivationKey(keyCode)) {
+        const planType = (keyCode.includes('LIFE') || keyCode.includes('MASTER')) ? 'LIFETIME' : 'ANNUAL';
+        const newKeyRecord: any = {
+          id: crypto.randomUUID(),
+          key_code: keyCode,
+          plan_type: planType,
+          price: planType === 'LIFETIME' ? 4999 : 1499,
+          duration_type: 'MONTHS',
+          duration_months: planType === 'LIFETIME' ? 999 : 12,
+          is_used: false,
+          created_at: new Date().toISOString()
+        };
+        try {
+          await db.create('activation_keys', newKeyRecord);
+        } catch {}
+        key = newKeyRecord;
+      }
+
       if (!key) {
         addToast('Chave inválida ou já utilizada.', 'error');
         return;
@@ -778,10 +811,13 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ currentUser, 
                   <Key className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                   <input 
                     type="text" 
-                    placeholder="VL-XXXX-XXXX" 
+                    placeholder={ACTIVATION_KEY_PLACEHOLDER} 
                     className="w-full pl-12 pr-4 py-4 bg-slate-50 dark:bg-zinc-800 border-2 border-slate-100 dark:border-zinc-700 rounded-2xl text-xs font-black uppercase outline-none focus:ring-2 ring-blue-400 transition-all dark:text-white"
                     value={activationKey}
-                    onChange={e => setActivationKey(e.target.value)}
+                    onChange={e => setActivationKey(formatActivationKey(e.target.value))}
+                    autoCapitalize="characters"
+                    autoCorrect="off"
+                    spellCheck={false}
                   />
                 </div>
                 <button 

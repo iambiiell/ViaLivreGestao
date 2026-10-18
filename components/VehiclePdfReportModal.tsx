@@ -498,7 +498,7 @@ export const VehiclePdfReportModal: React.FC<VehiclePdfReportModalProps> = ({
                     onClick={() => setSelectedStatus(opt.id as StatusFilter)}
                     className={`px-3 py-2.5 rounded-xl text-[10px] font-black uppercase flex items-center justify-between transition-all ${
                       selectedStatus === opt.id
-                        ? 'bg-slate-900 dark:bg-zinc-100 text-white dark:text-slate-900 shadow-md scale-[1.02]'
+                        ? 'bg-white text-slate-900 border-2 border-yellow-400 dark:bg-zinc-800 dark:text-white dark:border-yellow-400 shadow-md scale-[1.02] font-black'
                         : 'bg-white dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border border-slate-200 dark:border-zinc-700 hover:border-slate-400'
                     }`}
                   >

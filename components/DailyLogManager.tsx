@@ -619,7 +619,7 @@ const DailyLogManager: React.FC<DailyLogManagerProps> = ({
                                     <button 
                                         disabled={isLoading || !manualPaymentMethod || !activeTripId || (activeRoute?.sections && activeRoute.sections.length > 0 && selectedSectionIdx === null)}
                                         onClick={handleProcessBordoSale}
-                                        className="w-full mt-8 py-5 bg-slate-900 text-white dark:bg-zinc-100 dark:text-slate-900 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-2"
+                                        className="w-full mt-8 py-5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 dark:bg-yellow-400 dark:hover:bg-yellow-300 dark:text-slate-950 rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl active:scale-95 disabled:opacity-30 disabled:grayscale transition-all flex items-center justify-center gap-2"
                                     >
                                         {isLoading ? <Loader2 className="animate-spin" size={20}/> : <Send size={20}/>}
                                         Processar Recebimento Bordo

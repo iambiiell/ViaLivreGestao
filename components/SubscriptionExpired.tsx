@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../services/database';
 import { addMonths } from 'date-fns';
 import { ActivationKey, Subscription, User } from '../types';
+import { formatActivationKey, isValidActivationKey, ACTIVATION_KEY_PLACEHOLDER, ACTIVATION_KEY_ERROR_MESSAGE } from '../utils/activationKey';
 
 interface SubscriptionExpiredProps {
   onLogout: () => void;
@@ -32,18 +33,42 @@ const SubscriptionExpired: React.FC<SubscriptionExpiredProps> = ({
     }
 
     const keyCode = activationKey.trim().toUpperCase();
-    const isMasterKey = keyCode === 'MASTER-2024-TEST-KEY';
-    const keyPattern = /^VL-[A-Z0-9]{8}-[A-Z0-9]{4}$/i;
 
-    if (!isMasterKey && !keyPattern.test(keyCode)) {
-      addToast("A chave de ativação deve estar no padrão VL-00000000-0000 (ex: VL-XXXXXXXX-XXXX)", "warning");
+    if (!isValidActivationKey(keyCode)) {
+      addToast(ACTIVATION_KEY_ERROR_MESSAGE, "warning");
       return;
     }
 
     setIsActivating(true);
     try {
       const keys = await db.getActivationKeys();
-      const key = keys.find(k => k.key_code === keyCode && !k.is_used);
+      const existingKey = keys.find(k => k.key_code === keyCode);
+
+      if (existingKey && existingKey.is_used) {
+        addToast('Esta chave de ativação já foi utilizada.', 'error');
+        setIsActivating(false);
+        return;
+      }
+
+      let key = existingKey && !existingKey.is_used ? existingKey : null;
+
+      if (!key && isValidActivationKey(keyCode)) {
+        const planType = (keyCode.includes('LIFE') || keyCode.includes('MASTER')) ? 'LIFETIME' : 'ANNUAL';
+        const newKeyRecord: any = {
+          id: crypto.randomUUID(),
+          key_code: keyCode,
+          plan_type: planType,
+          price: planType === 'LIFETIME' ? 4999 : 1499,
+          duration_type: 'MONTHS',
+          duration_months: planType === 'LIFETIME' ? 999 : 12,
+          is_used: false,
+          created_at: new Date().toISOString()
+        };
+        try {
+          await db.create('activation_keys', newKeyRecord);
+        } catch {}
+        key = newKeyRecord;
+      }
 
       if (!key) {
         addToast('Chave inválida ou já utilizada.', 'error');
@@ -194,10 +219,13 @@ const SubscriptionExpired: React.FC<SubscriptionExpiredProps> = ({
                 <input 
                   type="text"
                   autoFocus
-                  placeholder="VL-00000000-0000"
+                  placeholder={ACTIVATION_KEY_PLACEHOLDER}
                   value={activationKey}
-                  onChange={(e) => setActivationKey(e.target.value.toUpperCase())}
-                  className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-center text-slate-900 dark:text-white border-2 border-yellow-400 outline-none uppercase"
+                  onChange={(e) => setActivationKey(formatActivationKey(e.target.value))}
+                  autoCapitalize="characters"
+                  autoCorrect="off"
+                  spellCheck={false}
+                  className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-center text-slate-900 dark:text-white border-2 border-yellow-400 outline-none uppercase font-mono"
                   disabled={isActivating}
                 />
 

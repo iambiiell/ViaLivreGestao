@@ -25,6 +25,8 @@ import {
   getCleanSupabaseConfig 
 } from './supabaseClient';
 import { safeLocalStorage } from '../utils/storage';
+import { pontoIndexedDB } from './pontoIndexedDB';
+export { pontoIndexedDB };
 export type RealtimeChannel = any;
 
 const SAFE_DEFAULT_SB_URL = 'https://xyzapbchpquycfcqxioz.supabase.co';
@@ -274,6 +276,62 @@ const getLocalData = <T>(table: TableName): T[] => {
         const bsParsed = JSON.parse(bsRaw);
         if (Array.isArray(bsParsed)) rawList = bsParsed;
       }
+    }
+    if (table === 'activation_keys' && rawList.length === 0) {
+      const defaultKeys = [
+        {
+          id: '00000000-0000-4000-a000-000000000001',
+          key_code: 'MASTER-2024-TEST-KEY',
+          plan_type: 'LIFETIME',
+          price: 0,
+          duration_months: 999,
+          duration_type: 'MONTHS',
+          is_used: false,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: '00000000-0000-4000-a000-000000000002',
+          key_code: 'VL-84920194-4921',
+          plan_type: 'ANNUAL',
+          price: 1490,
+          duration_months: 12,
+          duration_type: 'MONTHS',
+          is_used: false,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: '00000000-0000-4000-a000-000000000003',
+          key_code: 'VL-A1B2C3D4-5E6F',
+          plan_type: 'LIFETIME',
+          price: 4990,
+          duration_months: 999,
+          duration_type: 'MONTHS',
+          is_used: false,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: '00000000-0000-4000-a000-000000000004',
+          key_code: 'VL-12345678-ABCD',
+          plan_type: 'SEMI_ANNUAL',
+          price: 790,
+          duration_months: 6,
+          duration_type: 'MONTHS',
+          is_used: false,
+          created_at: new Date().toISOString()
+        },
+        {
+          id: '00000000-0000-4000-a000-000000000005',
+          key_code: 'VL-SYS-PROV-2026',
+          plan_type: 'ANNUAL',
+          price: 1490,
+          duration_months: 12,
+          duration_type: 'MONTHS',
+          is_used: false,
+          created_at: new Date().toISOString()
+        }
+      ];
+      rawList = defaultKeys;
+      setLocalData('activation_keys', defaultKeys);
     }
 
     if (rawList.length > 0) {
@@ -979,11 +1037,18 @@ export const db = {
       const { data, error } = await query;
       if (!error && data) {
         setLocalData('time_tracking', data);
+        // Sincronizar cache seguro no IndexedDB
+        pontoIndexedDB.cacheTimeEntries(data as TimeEntry[]).catch(() => {});
         return data as TimeEntry[];
       }
     } catch (err) {
       console.warn('Falha na busca de ponto remoto:', err);
     }
+    // Tenta IndexedDB primeiro, depois localStorage
+    try {
+      const idbEntries = await pontoIndexedDB.getCachedTimeEntries(userId);
+      if (idbEntries.length > 0) return idbEntries;
+    } catch {}
     const local = getLocalData<TimeEntry>('time_tracking');
     return userId ? local.filter(e => (e as any).user_id === userId) : local;
   },

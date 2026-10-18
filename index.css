@@ -216,10 +216,23 @@
   }
 
   /* Inputs e seletores */
-  .dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+  html:not(.dark) input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html:not(.dark) select,
+  html:not(.dark) textarea {
+    background-color: #ffffff !important;
+    color: #0f172a !important;
+    border-color: #e2e8f0 !important;
+  }
+
+  html:not(.dark) input::placeholder,
+  html:not(.dark) textarea::placeholder {
+    color: #64748b !important;
+  }
+
+  .dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   .dark select,
   .dark textarea,
-  html.dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]),
+  html.dark input:not([type="color"]):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
   html.dark select,
   html.dark textarea {
     background-color: #121215 !important;
@@ -353,9 +366,9 @@
     background: rgba(241, 245, 249, 0.70) !important;
   }
 
-  :root:not(.glass-disabled) .dark .bg-zinc-800:not(button):not(input),
-  :root:not(.glass-disabled) .dark .bg-zinc-800\/50:not(button):not(input),
-  :root:not(.glass-disabled) .dark .bg-zinc-900\/30:not(button):not(input),
+  :root.dark:not(.glass-disabled) .bg-zinc-800:not(button):not(input),
+  :root.dark:not(.glass-disabled) .bg-zinc-800\/50:not(button):not(input),
+  :root.dark:not(.glass-disabled) .bg-zinc-900\/30:not(button):not(input),
   html.glass-enabled.dark .bg-zinc-800:not(button):not(input),
   html.glass-enabled.dark .bg-zinc-800\/50:not(button):not(input) {
     background: rgba(39, 39, 42, 0.65) !important;
@@ -476,9 +489,9 @@
     border-color: rgba(226, 232, 240, 0.6) !important;
   }
 
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
   html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
   html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-b:not(.bg-slate-900):not(.bg-red-500),
   html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-b:not(.bg-slate-900):not(.bg-red-500) {
@@ -530,9 +543,9 @@
     border-color: rgba(226, 232, 240, 0.6) !important;
   }
 
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900),
   html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] > div.border-t:not(.bg-slate-900),
   html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] > div.border-t:not(.bg-slate-900),
   html.glass-enabled.dark .fixed.inset-0 [class*="rounded-3xl"] > div.border-t:not(.bg-slate-900) {
@@ -551,12 +564,12 @@
     border-color: rgba(226, 232, 240, 0.6) !important;
   }
 
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-900:not(button):not(input):not(select),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-800:not(button):not(input):not(select),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-900:not(button):not(input):not(select),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-800:not(button):not(input):not(select),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-900:not(button):not(input):not(select),
-  :root:not(.glass-disabled) .dark .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-800:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] .bg-zinc-900:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="max-w-"] .bg-zinc-800:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-900:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-800:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-900:not(button):not(input):not(select),
+  :root.dark:not(.glass-disabled) .fixed.inset-0 [class*="rounded-3xl"] .bg-zinc-800:not(button):not(input):not(select),
   html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-900:not(button):not(input):not(select),
   html.glass-enabled.dark .fixed.inset-0 [class*="max-w-"] .bg-zinc-800:not(button):not(input):not(select),
   html.glass-enabled.dark .fixed.inset-0 [class*="rounded-[3rem]"] .bg-zinc-900:not(button):not(input):not(select),
@@ -603,10 +616,10 @@
   :root.dark .text-slate-500,
   :root.dark .text-zinc-400,
   :root.dark .text-zinc-500,
-  :root:not(.glass-disabled) .dark .text-zinc-400,
-  :root:not(.glass-disabled) .dark .text-zinc-500,
-  :root:not(.glass-disabled) .dark .text-slate-400,
-  :root:not(.glass-disabled) .dark .text-slate-500,
+  :root.dark:not(.glass-disabled) .text-zinc-400,
+  :root.dark:not(.glass-disabled) .text-zinc-500,
+  :root.dark:not(.glass-disabled) .text-slate-400,
+  :root.dark:not(.glass-disabled) .text-slate-500,
   html.glass-enabled.dark .text-zinc-400,
   html.glass-enabled.dark .text-zinc-500,
   html.glass-enabled.dark .text-slate-400,
@@ -621,8 +634,8 @@
   html.dark .text-zinc-300,
   :root.dark .text-slate-300,
   :root.dark .text-zinc-300,
-  :root:not(.glass-disabled) .dark .text-zinc-300,
-  :root:not(.glass-disabled) .dark .text-slate-300,
+  :root.dark:not(.glass-disabled) .text-zinc-300,
+  :root.dark:not(.glass-disabled) .text-slate-300,
   html.glass-enabled.dark .text-zinc-300,
   html.glass-enabled.dark .text-slate-300 {
     color: #f1f5f9 !important;
@@ -640,41 +653,69 @@
     color: #ffffff !important;
   }
 
-  /* Form Inputs and Selects within Glass Surfaces for maximum legibility */
-  :root:not(.glass-disabled) input,
-  :root:not(.glass-disabled) select,
-  :root:not(.glass-disabled) textarea,
-  html.glass-enabled input,
-  html.glass-enabled select,
-  html.glass-enabled textarea {
-    background: rgba(255, 255, 255, 0.90) !important;
-    color: #020617 !important;
+  /* Form Inputs, Selects, Textareas: Fundo Branco + Texto Escuro no modo claro; Fundo Preto + Texto Claro no modo escuro */
+  :root:not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  :root:not(.dark) select,
+  :root:not(.dark) textarea,
+  html:not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  html:not(.dark) select,
+  html:not(.dark) textarea,
+  :root:not(.glass-disabled):not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  :root:not(.glass-disabled):not(.dark) select,
+  :root:not(.glass-disabled):not(.dark) textarea,
+  html.glass-enabled:not(.dark) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  html.glass-enabled:not(.dark) select,
+  html.glass-enabled:not(.dark) textarea {
+    background: #ffffff !important;
+    background-color: #ffffff !important;
+    color: #0f172a !important;
     font-weight: 700 !important;
   }
 
-  :root:not(.glass-disabled) .dark input,
-  :root:not(.glass-disabled) .dark select,
-  :root:not(.glass-disabled) .dark textarea,
-  html.glass-enabled.dark input,
+  :root.dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  :root.dark select,
+  :root.dark textarea,
+  html.dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  html.dark select,
+  html.dark textarea,
+  :root.dark:not(.glass-disabled) input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  :root.dark:not(.glass-disabled) select,
+  :root.dark:not(.glass-disabled) textarea,
+  html.glass-enabled.dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
   html.glass-enabled.dark select,
-  html.glass-enabled.dark textarea {
-    background: rgba(24, 24, 27, 0.85) !important;
+  html.glass-enabled.dark textarea,
+  .dark input:not([type="checkbox"]):not([type="radio"]):not([type="color"]):not([type="range"]),
+  .dark select,
+  .dark textarea {
+    background: #121215 !important;
+    background-color: #121215 !important;
     color: #ffffff !important;
     font-weight: 700 !important;
+    border-color: #27272a !important;
   }
 
-  :root:not(.glass-disabled) input::placeholder,
-  :root:not(.glass-disabled) textarea::placeholder,
-  html.glass-enabled input::placeholder,
-  html.glass-enabled textarea::placeholder {
+  :root:not(.dark) input::placeholder,
+  :root:not(.dark) textarea::placeholder,
+  html:not(.dark) input::placeholder,
+  html:not(.dark) textarea::placeholder,
+  :root:not(.glass-disabled):not(.dark) input::placeholder,
+  :root:not(.glass-disabled):not(.dark) textarea::placeholder,
+  html.glass-enabled:not(.dark) input::placeholder,
+  html.glass-enabled:not(.dark) textarea::placeholder {
     color: #64748b !important;
     font-weight: 600 !important;
   }
 
-  :root:not(.glass-disabled) .dark input::placeholder,
-  :root:not(.glass-disabled) .dark textarea::placeholder,
+  :root.dark input::placeholder,
+  :root.dark textarea::placeholder,
+  html.dark input::placeholder,
+  html.dark textarea::placeholder,
+  :root.dark:not(.glass-disabled) input::placeholder,
+  :root.dark:not(.glass-disabled) textarea::placeholder,
   html.glass-enabled.dark input::placeholder,
-  html.glass-enabled.dark textarea::placeholder {
+  html.glass-enabled.dark textarea::placeholder,
+  .dark input::placeholder,
+  .dark textarea::placeholder {
     color: #94a3b8 !important;
     font-weight: 600 !important;
   }
@@ -687,7 +728,7 @@
     box-shadow: 0 16px 45px -10px rgba(0, 0, 0, 0.15), 0 0 0 1.5px rgba(255, 255, 255, 0.8);
   }
 
-  :root:not(.glass-disabled) .dark .glass-overlay-box,
+  :root.dark:not(.glass-disabled) .glass-overlay-box,
   html.glass-enabled.dark .glass-overlay-box {
     box-shadow: 0 20px 55px -10px rgba(0, 0, 0, 0.6), 0 0 0 1.5px rgba(255, 255, 255, 0.16);
   }

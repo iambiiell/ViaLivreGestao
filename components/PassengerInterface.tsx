@@ -2005,8 +2005,8 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                                 <h3 className="font-black uppercase italic text-center">{rechargeCard?.name || ''} {rechargeCard?.surname || ''}</h3>
                                 <div className="p-4 bg-white rounded-2xl text-center"><p className="text-[10px] font-black uppercase text-slate-400">Saldo Atual</p><p className="text-2xl font-black">R$ {(Number(rechargeCard?.balance) || 0).toFixed(2)}</p></div>
                                 <div className="space-y-4">
-                                    <input type="text" className="w-full py-4 text-center text-2xl font-black bg-slate-900 text-yellow-400 rounded-2xl outline-none" value={rechargeAmount} onChange={e => setRechargeAmount(formatCurrencyRTL(e.target.value))} />
-                                    <button onClick={handleRecharge} className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-xs">Confirmar Recarga</button>
+                                    <input type="text" className="w-full py-4 text-center text-2xl font-black bg-white dark:bg-zinc-900 text-slate-900 dark:text-yellow-400 border-2 border-slate-900/10 dark:border-zinc-700 rounded-2xl outline-none" value={rechargeAmount} onChange={e => setRechargeAmount(formatCurrencyRTL(e.target.value))} />
+                                    <button onClick={handleRecharge} className="w-full py-4 bg-slate-900 dark:bg-yellow-400 text-white dark:text-slate-900 rounded-2xl font-black uppercase text-xs">Confirmar Recarga</button>
                                 </div>
                             </motion.div>
                         )}

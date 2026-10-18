@@ -1,7 +1,7 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { Trip, BusRoute, Company, User, PassengerDetails, TicketSale, IssueReport, DriverLog } from '../types';
-import { FileText, Search, Building2, UserCircle, Download, Printer, TrendingUp, DollarSign, X, Clock, MapPin, Bus, ShieldAlert, CheckCircle2, AlertTriangle, ArrowRight, Wallet, History, Users, Loader2, Calendar, ClipboardList, Wrench, BarChart as BarChartIcon, LayoutGrid } from 'lucide-react';
+import { FileText, Search, Building2, UserCircle, Download, Printer, TrendingUp, DollarSign, X, Clock, MapPin, Bus, ShieldAlert, CheckCircle2, AlertTriangle, ArrowRight, Wallet, History, Users, Loader2, Calendar, ClipboardList, Wrench, BarChart as BarChartIcon, LayoutGrid, PieChart as PieChartIcon, BarChart3, Layers, Award, Route as RouteIcon, Briefcase } from 'lucide-react';
 import { db } from '../services/database';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, PieChart, Pie, Cell } from 'recharts';
 import SchedulePoster from './SchedulePoster';
@@ -21,6 +21,7 @@ interface ReportManagerProps {
 }
 
 const COLORS = ['#FACC15', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#F43F5E', '#14B8A6'];
+const CHART_PALETTE = ['#EAB308', '#10B981', '#3B82F6', '#8B5CF6', '#EC4899', '#06B6D4', '#F97316', '#14B8A6', '#6366F1', '#84CC16'];
 
 const formatDateBr = (dateStr: string) => formatDate(dateStr);
 const formatDateTimeBr = (dateStr: string) => formatDateTime(dateStr);
@@ -42,6 +43,10 @@ const ReportManager: React.FC<ReportManagerProps> = ({ trips = [], routes = [], 
   const [isDownloadModalOpen, setIsDownloadModalOpen] = useState(false);
   const [downloadPeriod, setDownloadPeriod] = useState({ start: '', end: '' });
   const [allTicketSales, setAllTicketSales] = useState<TicketSale[]>([]);
+
+  // States for Interactive Recharts Revenue Analytics
+  const [revenueDimension, setRevenueDimension] = useState<'line' | 'category' | 'driver' | 'daily'>('line');
+  const [revenueChartType, setRevenueChartType] = useState<'bar' | 'pie'>('bar');
   const detailedReportRef = useRef<HTMLDivElement>(null);
   const dossierRef = useRef<HTMLDivElement>(null);
 
@@ -259,6 +264,107 @@ const ReportManager: React.FC<ReportManagerProps> = ({ trips = [], routes = [], 
       });
       return { pax, rev, trips: filteredData.length };
   }, [filteredData, routes]);
+
+  // Comprehensive calculation for recharts daily revenue by line or collaborator category
+  const revenueChartData = useMemo(() => {
+    let totalRevenue = 0;
+    const lineMap: Record<string, { name: string; value: number; count: number; pax: number }> = {};
+    const categoryMap: Record<string, { name: string; value: number; count: number; pax: number }> = {
+      'Motoristas': { name: 'Motoristas', value: 0, count: 0, pax: 0 },
+      'Fiscais de Pátio': { name: 'Fiscais de Pátio', value: 0, count: 0, pax: 0 },
+      'Cobradores': { name: 'Cobradores', value: 0, count: 0, pax: 0 },
+      'Outros Operacionais': { name: 'Outros Operacionais', value: 0, count: 0, pax: 0 },
+    };
+    const driverMap: Record<string, { name: string; value: number; count: number; pax: number }> = {};
+    const dailyMap: Record<string, { name: string; date: string; value: number; count: number; pax: number }> = {};
+
+    filteredData.forEach(t => {
+      const rev = calculateRevenue(t).total;
+      totalRevenue += rev;
+
+      let paxCount = 0;
+      Object.values(t.passengers || {}).forEach(p => {
+        const pd = p as PassengerDetails;
+        paxCount += (pd.pagantes || 0) + (pd.vale_transporte || 0) + (pd.imp_card || 0) + (pd.gratuitos || 0);
+      });
+
+      // 1. Agrupamento por Linha / Rota
+      const route = routes.find(r => r.id === t.route_id);
+      const lineKey = route ? (route.prefixo_linha ? `[${route.prefixo_linha}] ${route.destination}` : `${route.origin} ➔ ${route.destination}`) : 'Linha Geral';
+      if (!lineMap[lineKey]) {
+        lineMap[lineKey] = { name: lineKey, value: 0, count: 0, pax: 0 };
+      }
+      lineMap[lineKey].value += rev;
+      lineMap[lineKey].count += 1;
+      lineMap[lineKey].pax += paxCount;
+
+      // 2. Agrupamento por Categoria de Colaborador (Motoristas vs Fiscais vs Cobradores)
+      const userMatch = users.find(u => u.name === t.driver_name || u.full_name === t.driver_name || u.id === t.driver_id);
+      let cat = 'Motoristas';
+      if (t.conductor_name || t.conductor_id) {
+        cat = 'Cobradores';
+      } else if (t.fiscal_id || t.fiscal_name || userMatch?.role === 'FISCAL') {
+        cat = 'Fiscais de Pátio';
+      } else if (userMatch?.role === 'DRIVER') {
+        cat = 'Motoristas';
+      }
+      if (!categoryMap[cat]) {
+        categoryMap[cat] = { name: cat, value: 0, count: 0, pax: 0 };
+      }
+      categoryMap[cat].value += rev;
+      categoryMap[cat].count += 1;
+      categoryMap[cat].pax += paxCount;
+
+      // 3. Agrupamento por Motorista / Colaborador Individual
+      const driverKey = t.driver_name || 'Motorista Não Identificado';
+      if (!driverMap[driverKey]) {
+        driverMap[driverKey] = { name: driverKey, value: 0, count: 0, pax: 0 };
+      }
+      driverMap[driverKey].value += rev;
+      driverMap[driverKey].count += 1;
+      driverMap[driverKey].pax += paxCount;
+
+      // 4. Agrupamento Diário Cronológico
+      const dayKey = t.trip_date || 'Data';
+      if (!dailyMap[dayKey]) {
+        dailyMap[dayKey] = { name: formatDateBr(dayKey), date: dayKey, value: 0, count: 0, pax: 0 };
+      }
+      dailyMap[dayKey].value += rev;
+      dailyMap[dayKey].count += 1;
+      dailyMap[dayKey].pax += paxCount;
+    });
+
+    const linesList = Object.values(lineMap).sort((a, b) => b.value - a.value);
+    const categoryList = Object.values(categoryMap).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+    const driversList = Object.values(driverMap).sort((a, b) => b.value - a.value).slice(0, 10);
+    const dailyList = Object.values(dailyMap).sort((a, b) => a.date.localeCompare(b.date));
+
+    let currentList: { name: string; value: number; count: number; pax: number }[] = [];
+    switch (revenueDimension) {
+      case 'line':
+        currentList = linesList;
+        break;
+      case 'category':
+        currentList = categoryList.length > 0 ? categoryList : [{ name: 'Motoristas Operacionais', value: totalRevenue, count: filteredData.length, pax: stats.pax }];
+        break;
+      case 'driver':
+        currentList = driversList;
+        break;
+      case 'daily':
+        currentList = dailyList;
+        break;
+    }
+
+    return {
+      totalRevenue,
+      currentList,
+      linesList,
+      categoryList,
+      driversList,
+      dailyList,
+      topItem: currentList[0] || null
+    };
+  }, [filteredData, routes, users, revenueDimension, stats.pax]);
 
   const getPunctualityStatus = (trip: Trip) => {
     if (!trip.actual_start_time) return { label: 'Não Iniciada', color: 'text-slate-400' };
@@ -508,6 +614,305 @@ const ReportManager: React.FC<ReportManagerProps> = ({ trips = [], routes = [], 
                         <DollarSign className="text-emerald-500 opacity-20" size={32}/>
                     </div>
                 </div>
+            </div>
+
+            {/* Interactive Recharts Analytics: Daily Revenue by Line or Collaborator Category */}
+            <div className="bg-white dark:bg-zinc-900 p-6 md:p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm transition-colors space-y-6">
+              {/* Header & Controls */}
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-100 dark:border-zinc-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-12 h-12 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                    {revenueChartType === 'bar' ? <BarChart3 size={24} /> : <PieChartIcon size={24} />}
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black uppercase italic tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
+                      <span>Visualização Gráfica de Faturamento</span>
+                      <span className="text-[9px] font-black not-italic px-2.5 py-0.5 rounded-full bg-yellow-400 text-slate-950 uppercase">
+                        Recharts
+                      </span>
+                    </h3>
+                    <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold">
+                      Faturamento diário segmentado por linha ou categoria de colaborador
+                    </p>
+                  </div>
+                </div>
+
+                {/* Dimension & Chart Type Toggles */}
+                <div className="flex flex-wrap items-center gap-2.5">
+                  {/* Dimension selector */}
+                  <div className="flex items-center bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl border border-slate-200/60 dark:border-zinc-700/60 text-[10px] font-black uppercase">
+                    <button
+                      type="button"
+                      onClick={() => setRevenueDimension('line')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueDimension === 'line'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Faturamento consolidado por linha/itinerário"
+                    >
+                      <RouteIcon size={13} />
+                      <span>Por Linha</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRevenueDimension('category')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueDimension === 'category'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Faturamento por categoria de colaborador (Motoristas, Fiscais, Cobradores)"
+                    >
+                      <Briefcase size={13} />
+                      <span>Por Categoria</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRevenueDimension('driver')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueDimension === 'driver'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Faturamento por colaborador individual"
+                    >
+                      <Users size={13} />
+                      <span>Por Colaborador</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRevenueDimension('daily')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueDimension === 'daily'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Evolução diária cronológica do faturamento"
+                    >
+                      <Calendar size={13} />
+                      <span>Evolução Diária</span>
+                    </button>
+                  </div>
+
+                  {/* Chart Type Toggle */}
+                  <div className="flex items-center bg-slate-100 dark:bg-zinc-800 p-1 rounded-2xl border border-slate-200/60 dark:border-zinc-700/60 text-[10px] font-black uppercase">
+                    <button
+                      type="button"
+                      onClick={() => setRevenueChartType('bar')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueChartType === 'bar'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Gráfico de Barras"
+                    >
+                      <BarChart3 size={14} />
+                      <span>Barras</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setRevenueChartType('pie')}
+                      className={`px-3 py-2 rounded-xl transition-all flex items-center gap-1.5 ${
+                        revenueChartType === 'pie'
+                          ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                      title="Gráfico de Pizza / Donut"
+                    >
+                      <PieChartIcon size={14} />
+                      <span>Pizza</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Metrics Strip */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-zinc-800">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Faturamento Filtrado</span>
+                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400 block mt-0.5">
+                    R$ {revenueChartData.totalRevenue.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-zinc-800">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">
+                    {revenueDimension === 'line' ? 'Linha Mais Rentável' : revenueDimension === 'category' ? 'Categoria Destaque' : revenueDimension === 'driver' ? 'Top Colaborador' : 'Dia com Maior Faturamento'}
+                  </span>
+                  <span className="text-xs font-black text-slate-800 dark:text-zinc-100 truncate block mt-1" title={revenueChartData.topItem?.name || '-'}>
+                    {revenueChartData.topItem?.name || '-'}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-zinc-800">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Maior Receita no Segmento</span>
+                  <span className="text-lg font-black text-yellow-600 dark:text-yellow-400 block mt-0.5">
+                    R$ {(revenueChartData.topItem?.value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+                <div className="p-4 rounded-2xl bg-slate-50 dark:bg-zinc-800/60 border border-slate-100 dark:border-zinc-800">
+                  <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider block">Total de Segmentos</span>
+                  <span className="text-lg font-black text-slate-900 dark:text-white block mt-0.5">
+                    {revenueChartData.currentList.length} grupo(s)
+                  </span>
+                </div>
+              </div>
+
+              {/* Chart Canvas & Legend List */}
+              {revenueChartData.currentList.length === 0 ? (
+                <div className="p-12 text-center rounded-3xl bg-slate-50 dark:bg-zinc-800/40 border-2 border-dashed border-slate-200 dark:border-zinc-800">
+                  <BarChart3 className="mx-auto text-slate-300 dark:text-zinc-600 mb-2" size={40} />
+                  <p className="text-xs font-black uppercase text-slate-400">Nenhum registro de faturamento para os filtros selecionados.</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-center">
+                  {/* Recharts Canvas */}
+                  <div className={`w-full min-w-0 ${revenueChartType === 'pie' ? 'lg:col-span-7 h-[360px]' : 'lg:col-span-8 h-[360px]'}`}>
+                    <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                      {revenueChartType === 'bar' ? (
+                        <BarChart 
+                          data={revenueChartData.currentList}
+                          margin={{ top: 20, right: 20, left: 10, bottom: 45 }}
+                        >
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(156, 163, 175, 0.2)" />
+                          <XAxis 
+                            dataKey="name" 
+                            fontSize={10} 
+                            fontWeight="bold"
+                            tickLine={false}
+                            stroke="#9ca3af"
+                            interval={0}
+                            angle={-20}
+                            textAnchor="end"
+                            height={55}
+                          />
+                          <YAxis 
+                            fontSize={10} 
+                            fontWeight="bold"
+                            tickLine={false}
+                            stroke="#9ca3af"
+                            tickFormatter={(val) => `R$ ${val >= 1000 ? `${(val / 1000).toFixed(1)}k` : val}`}
+                          />
+                          <Tooltip 
+                            formatter={(val: any) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Faturamento']}
+                            labelFormatter={(lbl) => `${lbl}`}
+                            contentStyle={{
+                              backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                              borderColor: '#3f3f46',
+                              borderRadius: '1rem',
+                              color: '#fff',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+                            }}
+                            itemStyle={{ color: '#FACC15' }}
+                          />
+                          <Bar 
+                            dataKey="value" 
+                            radius={[8, 8, 0, 0]}
+                          >
+                            {revenueChartData.currentList.map((entry, index) => (
+                              <Cell key={`bar-${index}`} fill={CHART_PALETTE[index % CHART_PALETTE.length]} />
+                            ))}
+                          </Bar>
+                        </BarChart>
+                      ) : (
+                        <PieChart>
+                          <Pie
+                            data={revenueChartData.currentList}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={65}
+                            outerRadius={115}
+                            paddingAngle={3}
+                            dataKey="value"
+                            nameKey="name"
+                          >
+                            {revenueChartData.currentList.map((entry, index) => (
+                              <Cell 
+                                key={`pie-${index}`} 
+                                fill={CHART_PALETTE[index % CHART_PALETTE.length]} 
+                                stroke="rgba(0,0,0,0.15)"
+                                strokeWidth={2}
+                              />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            formatter={(val: any) => [`R$ ${Number(val).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, 'Faturamento']}
+                            contentStyle={{
+                              backgroundColor: 'rgba(24, 24, 27, 0.95)',
+                              borderColor: '#3f3f46',
+                              borderRadius: '1rem',
+                              color: '#fff',
+                              fontSize: '11px',
+                              fontWeight: 'bold',
+                              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)'
+                            }}
+                            itemStyle={{ color: '#FACC15' }}
+                          />
+                        </PieChart>
+                      )}
+                    </ResponsiveContainer>
+                  </div>
+
+                  {/* Side Breakdown & Share Legend */}
+                  <div className={`w-full min-w-0 ${revenueChartType === 'pie' ? 'lg:col-span-5' : 'lg:col-span-4'}`}>
+                    <div className="bg-slate-50 dark:bg-zinc-800/40 p-4 rounded-3xl border border-slate-100 dark:border-zinc-800 space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-slate-200/60 dark:border-zinc-700/60">
+                        <span className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 tracking-wider">
+                          Detalhamento de Participação
+                        </span>
+                        <span className="text-[10px] font-black uppercase text-yellow-600 dark:text-yellow-400">
+                          {revenueDimension === 'line' ? 'Linhas' : revenueDimension === 'category' ? 'Categorias' : revenueDimension === 'driver' ? 'Colaboradores' : 'Datas'}
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 max-h-[280px] overflow-y-auto pr-1 no-scrollbar">
+                        {revenueChartData.currentList.map((item, idx) => {
+                          const pct = revenueChartData.totalRevenue > 0 
+                            ? ((item.value / revenueChartData.totalRevenue) * 100).toFixed(1) 
+                            : '0.0';
+                          const color = CHART_PALETTE[idx % CHART_PALETTE.length];
+
+                          return (
+                            <div 
+                              key={idx}
+                              className="p-2.5 rounded-2xl bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800/80 flex items-center justify-between gap-3 shadow-2xs hover:scale-[1.01] transition-transform"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div 
+                                  className="w-3 h-3 rounded-full shrink-0 shadow-xs" 
+                                  style={{ backgroundColor: color }}
+                                />
+                                <div className="min-w-0 text-left">
+                                  <p className="text-xs font-black uppercase text-slate-900 dark:text-zinc-100 truncate">
+                                    {item.name}
+                                  </p>
+                                  <p className="text-[9px] text-slate-400 dark:text-zinc-500 font-bold">
+                                    {item.count} viagem(ns) • {item.pax} pax
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <p className="text-xs font-black text-emerald-600 dark:text-emerald-400">
+                                  R$ {item.value.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </p>
+                                <span className="text-[9px] font-black text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded-md">
+                                  {pct}%
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="bg-white dark:bg-zinc-950 rounded-[2.5rem] shadow-sm border border-slate-100 dark:border-zinc-800 overflow-hidden transition-colors">

@@ -681,7 +681,7 @@ export const AuditLogManager: React.FC<AuditLogManagerProps> = ({ currentUser, a
               <button
                 type="button"
                 onClick={() => setSelectedLog(null)}
-                className="px-6 py-3 bg-slate-900 dark:bg-white text-white dark:text-slate-900 rounded-xl font-black uppercase text-xs tracking-wider"
+                className="px-6 py-3 bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 hover:bg-slate-100 dark:hover:bg-zinc-700 rounded-xl font-black uppercase text-xs tracking-wider transition-all"
               >
                 Fechar Detalhes
               </button>

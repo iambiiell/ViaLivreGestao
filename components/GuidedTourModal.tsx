@@ -154,7 +154,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
                 onClick={() => setActiveTab('tours')}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
                   activeTab === 'tours'
-                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md'
+                    ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-md font-black'
                     : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 dark:text-zinc-400'
                 }`}
               >
@@ -165,7 +165,7 @@ export const GuidedTourModal: React.FC<GuidedTourModalProps> = ({
                 onClick={() => setActiveTab('shortcuts')}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-2 ${
                   activeTab === 'shortcuts'
-                    ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-md'
+                    ? 'bg-white text-slate-900 border border-slate-200/90 dark:bg-zinc-800 dark:text-white dark:border-zinc-700 shadow-md font-black'
                     : 'text-slate-500 hover:bg-slate-100 dark:hover:bg-zinc-800 dark:text-zinc-400'
                 }`}
               >
