@@ -54,7 +54,9 @@ const initialForm: Partial<BusRoute> = {
   route_type: 'URBANO',
   payment_type: 'QUALQUER_UM',
   payment_methods_accepted: ['DINHEIRO', 'PIX', 'CREDITO', 'DEBITO'],
-  estimated_travel_time_text: ''
+  estimated_travel_time_text: '',
+  empresa_autuante: '',
+  empresa_autuante_id: ''
 };
 
 const RouteManager: React.FC<RouteManagerProps> = ({ 
@@ -912,7 +914,13 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       addToast("Os campos de Rodoviária e Plataforma são obrigatórios para rotas rodoviárias/intermunicipais.", "error");
       return;
     }
-    const route = { ...formData } as BusRoute;
+    const selectedAutuante = companies.find(c => c.id === (formData.empresa_autuante_id || formData.company_id));
+    const autuanteName = selectedAutuante?.nome_fantasia || selectedAutuante?.name || formData.empresa_autuante || '';
+    const route = { 
+      ...formData,
+      empresa_autuante_id: formData.empresa_autuante_id || formData.company_id,
+      empresa_autuante: autuanteName
+    } as BusRoute;
     if (editingId) {
       onUpdateRoute({ ...route, id: editingId });
     } else {
@@ -1091,7 +1099,12 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                   <div className="h-12 min-w-fit px-4 bg-slate-900 text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl border-2 border-slate-800 shrink-0">{route.prefixo_linha}</div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-black dark:text-white uppercase italic leading-tight break-words">{route.origin} x {route.destination}</h3>
-                    <p className="text-[8px] font-black text-slate-400 uppercase">{route.route_type}</p>
+                    <p className="text-[8px] font-black text-slate-400 uppercase flex items-center flex-wrap gap-1">
+                      <span>{route.route_type}</span>
+                      {route.empresa_autuante && (
+                        <span className="text-amber-600 dark:text-amber-400 font-bold">• Autuante: {route.empresa_autuante}</span>
+                      )}
+                    </p>
                     {route.origin_station_platform && route.destination_station_platform && (
                       <p className="text-[9px] font-bold text-yellow-600 dark:text-yellow-400 mt-1 uppercase">
                         Plat: {route.origin_station_platform} ➔ {route.destination_station_platform}
@@ -1241,13 +1254,56 @@ const RouteManager: React.FC<RouteManagerProps> = ({
             <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1 bg-white dark:bg-zinc-950">
                 {activeTab === 'geral' && (
                     <div className="space-y-6 animate-in fade-in">
-                        {/* primeira linha: Empresa Operadora */}
-                        <div className="w-full">
-                            <label className="block text-[10px] font-black text-black dark:text-white uppercase mb-1 ml-2">Empresa Operadora *</label>
-                            <select className="w-full px-5 py-4 border-2 border-yellow-400 rounded-2xl font-bold bg-slate-50 dark:bg-zinc-900 dark:text-white" value={formData.company_id || ''} onChange={e => setFormData({...formData, company_id: e.target.value})}>
-                                <option value="">Selecione a empresa...</option>
-                                {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                            </select>
+                        {/* primeira linha: Empresa Operadora e Empresa Autuante na Rota */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div>
+                                <label className="block text-[10px] font-black text-black dark:text-white uppercase mb-1 ml-2">Empresa Operadora *</label>
+                                <select 
+                                    className="w-full px-5 py-4 border-2 border-yellow-400 rounded-2xl font-bold bg-slate-50 dark:bg-zinc-900 dark:text-white outline-none focus:ring-2 ring-yellow-400" 
+                                    value={formData.company_id || ''} 
+                                    onChange={e => {
+                                        const cId = e.target.value;
+                                        const comp = companies.find(c => c.id === cId);
+                                        const autuanteIsSameOrEmpty = !formData.empresa_autuante_id || formData.empresa_autuante_id === formData.company_id;
+                                        setFormData({
+                                            ...formData, 
+                                            company_id: cId,
+                                            empresa_autuante_id: autuanteIsSameOrEmpty ? cId : formData.empresa_autuante_id,
+                                            empresa_autuante: autuanteIsSameOrEmpty ? (comp?.name || comp?.nome_fantasia || '') : formData.empresa_autuante
+                                        });
+                                    }}
+                                >
+                                    <option value="">Selecione a empresa operadora...</option>
+                                    {companies.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                            </div>
+
+                            <div>
+                                <div className="flex items-center justify-between mb-1 ml-2">
+                                    <label className="text-[10px] font-black text-black dark:text-white uppercase">Empresa Autuante na Rota *</label>
+                                    <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-tight">Fiscalização / Responsável</span>
+                                </div>
+                                <select 
+                                    className="w-full px-5 py-4 border-2 border-yellow-400 rounded-2xl font-bold bg-slate-50 dark:bg-zinc-900 dark:text-white outline-none focus:ring-2 ring-yellow-400" 
+                                    value={formData.empresa_autuante_id || formData.company_id || ''} 
+                                    onChange={e => {
+                                        const autuanteId = e.target.value;
+                                        const comp = companies.find(c => c.id === autuanteId);
+                                        setFormData({
+                                            ...formData, 
+                                            empresa_autuante_id: autuanteId,
+                                            empresa_autuante: comp?.name || comp?.nome_fantasia || ''
+                                        });
+                                    }}
+                                >
+                                    <option value="">Selecione a empresa autuante...</option>
+                                    {companies.map(c => (
+                                        <option key={c.id} value={c.id}>
+                                            {c.name} {c.id === formData.company_id ? '(Mesma da Operadora)' : ''}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
                         </div>
 
                         {/* segunda linha: Cód. Linha, Tipo de Estrada/Serviço e Tempo de Viagem */}

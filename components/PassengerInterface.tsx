@@ -1319,7 +1319,20 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                       <button onClick={() => setShowCardModal(false)} className="p-2 bg-slate-900 text-white rounded-xl"><X size={24}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-8 space-y-8 flex flex-col items-center custom-scrollbar">
-                      <TransportCard name={`${loggedInCard.name} ${loggedInCard.surname}`} cardNumber={loggedInCard.card_number} photoUrl={loggedInCard.photo_url} category={loggedInCard.type.toUpperCase()} />
+                      <TransportCard 
+                        card={loggedInCard}
+                        company={(companies || []).find(c => c.id === loggedInCard.company_id) || companies[0]}
+                        settings={systemSettings}
+                        name={`${loggedInCard.name} ${loggedInCard.surname}`} 
+                        cardNumber={loggedInCard.card_number} 
+                        internalCode={loggedInCard.internal_code}
+                        photoUrl={loggedInCard.photo_url} 
+                        category={loggedInCard.type.toUpperCase()} 
+                        city={loggedInCard.address_city}
+                        state={loggedInCard.address_state}
+                        viewMode="front"
+                        interactiveFlip={true}
+                      />
                       
                       <div className="w-full space-y-4">
                           <div className="p-6 bg-slate-50 dark:bg-zinc-800 rounded-[2rem] border-2 border-slate-100 dark:border-zinc-700 text-center space-y-4">

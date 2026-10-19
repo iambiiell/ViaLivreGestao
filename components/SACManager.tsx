@@ -1,12 +1,12 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Search, Plus, CreditCard, User, MapPin, Phone, Mail, Calendar, Camera, FileText, ShieldCheck, ArrowRight, Loader2, Save, X, Trash2, History, DollarSign, UserPlus, Fingerprint, Eye, Sparkles, Download, Upload, SmartphoneNfc } from 'lucide-react';
+import { Search, Plus, CreditCard, User, MapPin, Phone, Mail, Calendar, Camera, FileText, ShieldCheck, ArrowRight, Loader2, Save, X, Trash2, History, DollarSign, UserPlus, Fingerprint, Eye, Sparkles, Download, Upload, SmartphoneNfc, Building2, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { ImpCard, ImpCardType, ImpCardRecharge, ImpCardPaymentMethod } from '../types';
+import { ImpCard, ImpCardType, ImpCardRecharge, ImpCardPaymentMethod, Company, SystemSettings } from '../types';
 import { db } from '../services/database';
 import { cpfMask, phoneMask, cepMask, validateCPF } from '../utils/masks';
 import { fetchAddress } from '../services/cep';
-import TransportCard from './TransportCard';
+import TransportCard, { generateCardInternalCode, generateCardNumber10Digits } from './TransportCard';
 import { GoogleGenAI } from "@google/genai";
 import { formatDate } from '../utils/dateFormatter';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
@@ -18,6 +18,9 @@ interface SACManagerProps {
 const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
   const [activeTab, setActiveTab] = useState<'consult' | 'register' | 'recharge'>('consult');
   const [cards, setCards] = useState<ImpCard[]>([]);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [showCompanySelectModal, setShowCompanySelectModal] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCard, setSelectedCard] = useState<ImpCard | null>(null);
@@ -34,6 +37,8 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
   // Form state
   const [formData, setFormData] = useState<Partial<ImpCard>>({
     type: 'Vale Transporte',
+    internal_code: generateCardInternalCode(),
+    card_number: generateCardNumber10Digits('Vale Transporte'),
     balance: 0,
     medico_ficha_preenchida: false,
     pericia_realizada: false,
@@ -47,28 +52,59 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
   const loadCards = async () => {
     setIsLoading(true);
     try {
-      const data = await db.getImpCards();
-      setCards(data || []);
+      const [cardsData, companiesData, settingsData] = await Promise.all([
+        db.getImpCards(),
+        db.getCompanies().catch(() => []),
+        db.getSystemSettings().catch(() => [])
+      ]);
+      setCards(cardsData || []);
+      setCompanies(companiesData || []);
+      if (settingsData && settingsData.length > 0) {
+        setSystemSettings(settingsData[0]);
+      }
     } catch (error) {
-      addToast("Erro ao carregar cartões.", "error");
+      addToast("Erro ao carregar dados do SAC.", "error");
     } finally {
       setIsLoading(false);
     }
   };
 
   const generateCardNumber = (type: ImpCardType) => {
-    const prefix = type === 'Vale Transporte' ? '10' : 
-                   type === 'Idoso' ? '20' : 
-                   type === 'Escolar' ? '30' : '40';
-    const random = Math.floor(10000000 + Math.random() * 90000000);
-    return `${prefix}.${random}`;
+    return generateCardNumber10Digits(type);
+  };
+
+  const handleStartNewCard = () => {
+    if (companies.length > 1) {
+      setShowCompanySelectModal(true);
+    } else {
+      selectCompanyForNewCard(companies[0]?.id);
+    }
+  };
+
+  const selectCompanyForNewCard = (companyId?: string) => {
+    const comp = companies.find(c => c.id === companyId) || companies[0];
+    setShowCompanySelectModal(false);
+    setFormData({
+      type: 'Vale Transporte',
+      company_id: comp?.id || '',
+      company_name: comp?.name || comp?.nome_fantasia || '',
+      company_logo: comp?.logo_url || '',
+      internal_code: generateCardInternalCode(),
+      card_number: generateCardNumber10Digits('Vale Transporte'),
+      balance: 0,
+      medico_ficha_preenchida: false,
+      pericia_realizada: false,
+      beneficio_liberado: false
+    });
+    setActiveTab('register');
   };
 
   const handleTypeChange = (type: ImpCardType) => {
     setFormData(prev => ({
       ...prev,
       type,
-      card_number: generateCardNumber(type)
+      card_number: generateCardNumber10Digits(type),
+      internal_code: prev.internal_code || generateCardInternalCode()
     }));
   };
 
@@ -96,12 +132,24 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
     setIsSaving(true);
     try {
       let savedCard: ImpCard | null = null;
+      const selectedCompany = companies.find(c => c.id === formData.company_id) || companies[0];
       if (formData.id) {
-        savedCard = await db.update('imp_cards', formData as ImpCard);
+        savedCard = await db.update('imp_cards', {
+          ...formData,
+          company_id: formData.company_id || selectedCompany?.id || '',
+          company_name: formData.company_name || selectedCompany?.name || selectedCompany?.nome_fantasia || '',
+          company_logo: formData.company_logo || selectedCompany?.logo_url || '',
+          internal_code: formData.internal_code || generateCardInternalCode()
+        } as ImpCard);
         addToast("Cadastro atualizado com sucesso!");
       } else {
         const newCard = {
           ...formData,
+          company_id: formData.company_id || selectedCompany?.id || '',
+          company_name: formData.company_name || selectedCompany?.name || selectedCompany?.nome_fantasia || '',
+          company_logo: formData.company_logo || selectedCompany?.logo_url || '',
+          internal_code: formData.internal_code || generateCardInternalCode(),
+          card_number: formData.card_number || generateCardNumber10Digits(formData.type || 'Vale Transporte'),
           balance: formData.balance || 0,
           created_at: new Date().toISOString()
         };
@@ -362,10 +410,7 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
             Consulta
           </button>
           <button 
-            onClick={() => {
-              setActiveTab('register');
-              setFormData({ type: 'Vale Transporte', card_number: generateCardNumber('Vale Transporte'), balance: 0 });
-            }}
+            onClick={handleStartNewCard}
             className={`px-6 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'register' ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-yellow-400 shadow-md' : 'text-slate-400'}`}
           >
             Novo Cadastro
@@ -558,12 +603,40 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                     <button className="absolute bottom-4 right-4 p-4 bg-yellow-400 text-slate-900 rounded-2xl shadow-xl border-2 border-slate-900 opacity-0 group-hover:opacity-100 transition-all"><Upload size={20}/></button>
                   </div>
 
-                  <div className="scale-[0.65] origin-top-left">
+                  {/* Empresa Selecionada com opção de troca */}
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Empresa Concessionária</span>
+                      {companies.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowCompanySelectModal(true)}
+                          className="text-[9px] font-black text-amber-600 dark:text-yellow-400 uppercase hover:underline"
+                        >
+                          Alterar Empresa
+                        </button>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white uppercase">
+                      <Building2 size={16} className="text-yellow-500 shrink-0" />
+                      <span className="truncate">{formData.company_name || companies.find(c => c.id === formData.company_id)?.name || 'Empresa Padrão'}</span>
+                    </div>
+                  </div>
+
+                  <div className="scale-[0.70] origin-top-left -mr-32">
                     <TransportCard 
+                      card={formData}
+                      company={companies.find(c => c.id === formData.company_id)}
+                      settings={systemSettings}
                       name={`${formData.name || '---'} ${formData.surname || ''}`}
-                      cardNumber={formData.card_number || '00.00000000'}
+                      cardNumber={formData.card_number || '1084920158'}
+                      internalCode={formData.internal_code || 'VT89K2A1'}
                       photoUrl={formData.photo_url}
                       category={formData.type?.toUpperCase()}
+                      city={formData.address_city}
+                      state={formData.address_state}
+                      viewMode="front"
+                      interactiveFlip={true}
                     />
                   </div>
                 </div>
@@ -1006,34 +1079,129 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
               initial={{ opacity: 0, scale: 0.9, y: 20 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
-              className="bg-white dark:bg-zinc-900 w-full max-w-3xl rounded-[3rem] shadow-2xl overflow-hidden border-2 border-slate-100 dark:border-zinc-800 flex flex-col max-h-[90vh]"
+              className="bg-white dark:bg-zinc-900 w-full max-w-5xl rounded-[3rem] shadow-2xl overflow-hidden border-2 border-slate-100 dark:border-zinc-800 flex flex-col max-h-[92vh]"
             >
-              <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+              <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-950">
                 <div>
-                  <h3 className="text-xl font-black uppercase italic text-slate-900 dark:text-white">Visualização do Cartão</h3>
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Layout Digital do ImpCard</p>
+                  <h3 className="text-xl font-black uppercase italic text-slate-900 dark:text-white">Visualização do Cartão (Frente & Verso)</h3>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Layout Digital Oficial • 1011px x 638px</p>
                 </div>
-                <button onClick={() => setIsPreviewOpen(false)} className="p-3 bg-slate-100 dark:bg-zinc-800 rounded-2xl hover:bg-red-500 hover:text-white transition-all"><X size={20}/></button>
+                <button onClick={() => setIsPreviewOpen(false)} className="p-3 bg-white dark:bg-zinc-800 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><X size={20}/></button>
               </div>
 
-              <div className="p-12 flex flex-col items-center justify-center min-h-[400px] gap-8 overflow-y-auto custom-scrollbar">
-                {/* Live Preview using TransportCard */}
-                <div className="scale-75 sm:scale-100 origin-center">
+              <div className="p-8 flex flex-col items-center justify-center min-h-[450px] gap-8 overflow-y-auto custom-scrollbar">
+                {/* Live Preview using TransportCard with Front & Back */}
+                <div className="scale-75 sm:scale-95 origin-center">
                   <TransportCard 
-                    name={`${selectedCard.name} ${selectedCard.surname}`}
+                    card={selectedCard}
+                    company={companies.find(c => c.id === selectedCard.company_id)}
+                    settings={systemSettings}
+                    name={`${selectedCard.name} ${selectedCard.surname || ''}`}
                     cardNumber={selectedCard.card_number}
+                    internalCode={selectedCard.internal_code}
                     photoUrl={selectedCard.photo_url}
                     category={selectedCard.type}
+                    city={selectedCard.address_city}
+                    state={selectedCard.address_state}
+                    viewMode="both"
                   />
                 </div>
               </div>
 
-              <div className="p-8 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
+              <div className="p-8 bg-slate-50 dark:bg-zinc-800/50 border-t border-slate-100 dark:border-zinc-800 flex justify-between items-center">
+                <span className="text-[10px] font-black uppercase text-slate-400">
+                  Cartão Nº: <strong className="text-slate-900 dark:text-white font-mono">{selectedCard.card_number}</strong>
+                </span>
                 <button 
                   onClick={() => setIsPreviewOpen(false)}
                   className="px-12 py-4 bg-yellow-400 text-slate-900 rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl border-2 border-slate-900 hover:scale-105 transition-all"
                 >
                   Fechar Visualização
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* MODAL OBRIGATÓRIO DE SELEÇÃO DE EMPRESA ANTES DE CADASTRAR */}
+      <AnimatePresence>
+        {showCompanySelectModal && (
+          <div className="fixed inset-0 bg-slate-900/70 dark:bg-black/80 z-[250] flex items-center justify-center p-4 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="bg-white dark:bg-zinc-950 w-full max-w-xl rounded-[2.5rem] shadow-2xl border-4 border-yellow-400 overflow-hidden flex flex-col"
+            >
+              <div className="p-8 border-b border-slate-100 dark:border-zinc-800 bg-slate-50 dark:bg-zinc-900 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-yellow-400 text-slate-950 rounded-2xl shadow">
+                    <Building2 size={24} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-black uppercase italic text-slate-900 dark:text-white">
+                      Selecione a Empresa Emissora
+                    </h3>
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                      Obrigatório para iniciar o cadastro do cartão
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowCompanySelectModal(false)}
+                  className="p-2.5 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-500 hover:text-slate-950 dark:hover:text-white transition-all"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-8 space-y-4 max-h-[60vh] overflow-y-auto custom-scrollbar">
+                <p className="text-xs text-slate-600 dark:text-zinc-300 font-bold">
+                  Há mais de uma empresa cadastrada no sistema. Selecione qual empresa concessionária emitirá este cartão de transporte:
+                </p>
+
+                <div className="grid grid-cols-1 gap-3">
+                  {companies.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => selectCompanyForNewCard(c.id)}
+                      className="p-5 rounded-2xl border-2 border-slate-200 dark:border-zinc-800 hover:border-yellow-400 dark:hover:border-yellow-400 bg-slate-50 dark:bg-zinc-900 flex items-center justify-between text-left transition-all hover:scale-[1.01] active:scale-98 shadow-sm group"
+                    >
+                      <div className="flex items-center gap-4">
+                        {c.logo_url ? (
+                          <img src={c.logo_url} alt={c.name} className="h-10 w-16 object-contain rounded-lg" />
+                        ) : (
+                          <div className="w-10 h-10 rounded-xl bg-yellow-400 text-slate-950 flex items-center justify-center font-black">
+                            <Building2 size={20} />
+                          </div>
+                        )}
+                        <div>
+                          <p className="text-sm font-black text-slate-900 dark:text-white uppercase group-hover:text-amber-600 dark:group-hover:text-yellow-400 transition-colors">
+                            {c.name}
+                          </p>
+                          {c.nome_fantasia && (
+                            <p className="text-[10px] font-bold text-slate-400 uppercase">{c.nome_fantasia}</p>
+                          )}
+                          {c.cnpj && (
+                            <p className="text-[9px] font-mono text-slate-400">CNPJ: {c.cnpj}</p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-zinc-800 group-hover:bg-yellow-400 group-hover:text-slate-950 flex items-center justify-center transition-colors">
+                        <Check size={16} />
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 bg-slate-50 dark:bg-zinc-900 border-t border-slate-100 dark:border-zinc-800 flex justify-end">
+                <button
+                  onClick={() => setShowCompanySelectModal(false)}
+                  className="px-6 py-3 rounded-xl text-xs font-black uppercase text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                >
+                  Cancelar
                 </button>
               </div>
             </motion.div>

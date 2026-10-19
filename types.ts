@@ -136,6 +136,8 @@ export interface BusRoute {
   service_class?: string;
   exibir_codigo_letreiro?: boolean;
   letreiro_cor_preview?: 'AMBAR' | 'BRANCO';
+  empresa_autuante?: string;
+  empresa_autuante_id?: string;
 }
 
 export interface Occurrence {
@@ -678,6 +680,28 @@ export interface SystemSettings {
   description?: string;
   backup_schedule_config?: any;
   maintenance_km_threshold?: number;
+  vt_card_settings?: { [companyId: string]: VtCardCompanySettings };
+  vt_system_name?: string;
+  vt_slogan?: string;
+  vt_display_website?: string;
+  vt_sac_name?: string;
+  vt_sac_phone?: string;
+  vt_sac_hours?: string;
+  vt_front_bg_url?: string;
+  vt_back_bg_url?: string;
+  vt_qr_code_url?: string;
+}
+
+export interface VtCardCompanySettings {
+  system_name?: string; // ex: "S.B.U. IntegraVias"
+  slogan?: string; // ex: "Movendo pessoas, conectando cidades!"
+  display_website?: string; // ex: "vialivregestao.netlify.app"
+  sac_name?: string; // ex: "SAC Central do Usuário"
+  sac_phone?: string; // ex: "(11) 4004-0000 / 0800 123 4567"
+  sac_hours?: string; // ex: "Segunda a Sexta, das 06:00 às 22:00"
+  front_background_url?: string; // 1011px x 638px
+  back_background_url?: string; // 1011px x 638px
+  qr_code_destination?: string; // ex: "https://vialivregestao.netlify.app"
 }
 
 export interface Skin {
@@ -775,6 +799,10 @@ export interface JobVacancy {
 export interface ImpCard {
   id: string;
   system_id?: string;
+  company_id?: string;
+  company_name?: string;
+  company_logo?: string;
+  internal_code?: string; // 8 caracteres alfanuméricos gerados automaticamente
   type: ImpCardType;
   card_number: string;
   photo_url?: string;

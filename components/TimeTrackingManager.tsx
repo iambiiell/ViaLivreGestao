@@ -4,10 +4,12 @@ import {
   Timer, Clock, Play, Coffee, LogOut, CheckCircle2, Calendar, Search, 
   Loader2, AlertTriangle, TrendingUp, UserCheck, Plus, Edit3, Trash2, 
   FileText, ShieldCheck, RefreshCw, X, Save, MessageSquareText, Check, 
-  HelpCircle, AlertCircle, CalendarDays, History, Filter, Printer, Download
+  HelpCircle, AlertCircle, CalendarDays, History, Filter, Printer, Download,
+  Database, Wifi, WifiOff
 } from 'lucide-react';
 import { db, supabase } from '../services/database';
 import { NotificationService } from '../services/NotificationService';
+import { pontoIndexedDB } from '../services/pontoIndexedDB';
 
 interface TimeTrackingManagerProps {
   currentUser: User | null;
@@ -31,6 +33,8 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncTime, setLastSyncTime] = useState<string>('');
+  const [isOnline, setIsOnline] = useState<boolean>(typeof navigator !== 'undefined' ? navigator.onLine : true);
+  const [pendingPunchesCount, setPendingPunchesCount] = useState<number>(0);
   
   // Período e Filtros de Histórico
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('month');
@@ -95,20 +99,52 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
 
   const targetUserId = targetUser?.id || currentUser?.id || '';
 
-  // Carregar dados de ponto diretamente do Supabase Cloud (Single Source of Truth)
+  // Carregar dados de ponto diretamente com persistência IndexedDB (Offline-First)
   const loadEntries = useCallback(async (silent = false) => {
     if (!silent) {
       setIsLoading(true);
     }
     try {
-      const data = await db.fetchAll<TimeEntry>('time_tracking' as any);
-      const userEntries = targetUserId ? data.filter(e => e.user_id === targetUserId) : data;
-      setEntries(userEntries);
+      let resolvedEntries: TimeEntry[] = [];
+      
+      // 1. Tentar ler primeiro do cache local IndexedDB
+      try {
+        const idbCached = await pontoIndexedDB.getCachedTimeEntries(targetUserId);
+        if (idbCached && idbCached.length > 0) {
+          resolvedEntries = idbCached;
+        }
+      } catch (err) {
+        console.warn('[Ponto] Falha ao ler cache IndexedDB:', err);
+      }
+
+      // 2. Se online, consultar nuvem
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        const cloudData = await db.getTimeEntries(targetUserId);
+        if (cloudData && cloudData.length > 0) {
+          resolvedEntries = cloudData;
+        }
+      }
+
+      setEntries(resolvedEntries);
+
+      // Atualizar contagem de batidas pendentes no IndexedDB
+      try {
+        const pendingCount = await pontoIndexedDB.getPendingPunchesCount();
+        setPendingPunchesCount(pendingCount);
+      } catch {}
+
       setLastSyncTime(new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       console.error("Erro ao carregar histórico de ponto:", e);
+      // Fallback para IndexedDB
+      try {
+        const idbFallback = await pontoIndexedDB.getCachedTimeEntries(targetUserId);
+        if (idbFallback.length > 0) {
+          setEntries(idbFallback);
+        }
+      } catch {}
       if (!silent) {
-        addToast("Erro ao carregar histórico de ponto do servidor.", "error");
+        addToast("Modo Offline: Histórico de ponto carregado do armazenamento local IndexedDB.", "info");
       }
     } finally {
       setIsLoading(false);
@@ -119,10 +155,17 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
     setIsSyncing(true);
     try {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
+        const res = await pontoIndexedDB.syncPendingPunches();
         await db.syncPendingActions();
+        if (res.syncedCount > 0) {
+          addToast(`${res.syncedCount} registro(s) offline do IndexedDB sincronizado(s) com a nuvem!`, "success");
+        } else {
+          addToast("Registros de ponto sincronizados com a nuvem!", "success");
+        }
+      } else {
+        addToast("Sem conexão. Seus registros estão salvos com segurança no IndexedDB.", "warning");
       }
       await loadEntries(false);
-      addToast("Registros de ponto sincronizados com a nuvem!", "success");
     } catch (e) {
       console.warn("Erro ao sincronizar manualmente:", e);
       addToast("Erro ao sincronizar com o servidor.", "error");
@@ -143,11 +186,30 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
       loadEntries(true);
     };
 
+    const handleOnline = async () => {
+      setIsOnline(true);
+      try {
+        const res = await pontoIndexedDB.syncPendingPunches();
+        if (res.syncedCount > 0) {
+          addToast(`Conexão restabelecida! ${res.syncedCount} marcação(ões) offline sincronizada(s) automaticamente com a nuvem.`, "success");
+        }
+      } catch (err) {
+        console.warn('Erro ao sincronizar no retorno de sinal:', err);
+      }
+      loadEntries(true);
+    };
+
+    const handleOffline = () => {
+      setIsOnline(false);
+      addToast("Conexão perdida. Modo de persistência local IndexedDB ativado.", "warning");
+    };
+
     window.addEventListener('vialivre-timetracking-updated' as any, handleTimeTrackingUpdated);
     window.addEventListener('vialivre-refresh-data' as any, handleTimeTrackingUpdated);
     window.addEventListener('vialivre-sync-complete' as any, handleTimeTrackingUpdated);
     window.addEventListener('focus', handleWindowFocus);
-    window.addEventListener('online', handleTimeTrackingUpdated);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
     // Assinatura Realtime Direta no Supabase para a tabela time_tracking
     let channel: any = null;
@@ -167,23 +229,58 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
       window.removeEventListener('vialivre-refresh-data' as any, handleTimeTrackingUpdated);
       window.removeEventListener('vialivre-sync-complete' as any, handleTimeTrackingUpdated);
       window.removeEventListener('focus', handleWindowFocus);
-      window.removeEventListener('online', handleTimeTrackingUpdated);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
       if (channel) {
         supabase.removeChannel(channel);
       }
     };
-  }, [targetUserId, loadEntries]);
+  }, [targetUserId, loadEntries, addToast]);
 
-  // Ações de Ponto em Tempo Real com Validação Estrita de Duplicidade e Transição
+  // Ações de Ponto em Tempo Real com Validação Estrita e Persistência no IndexedDB
   const handleClockAction = async (action: 'clock_in' | 'break_start' | 'break_end' | 'clock_out') => {
     if (!targetUser) return;
     setIsProcessing(true);
     const nowTime = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const today = getLocalDateStr();
     
+    const actionLabels: Record<string, string> = {
+      clock_in: 'Entrada',
+      break_start: 'Saída Intervalo',
+      break_end: 'Retorno Intervalo',
+      clock_out: 'Fim de Expediente'
+    };
+    const actionLabel = actionLabels[action] || 'Marcação de Ponto';
+
     try {
-      const allDbEntries = await db.fetchAll<TimeEntry>('time_tracking' as any);
-      const userTodayEntries = allDbEntries.filter(e => e.user_id === targetUser.id && e.date === today);
+      // 1. CAMADA DE PERSISTÊNCIA LOCAL (IndexedDB) - Gravado imediatamente
+      try {
+        await pontoIndexedDB.recordPunchOffline({
+          userId: targetUser.id,
+          userName: targetUser.full_name || targetUser.name,
+          userRole: targetUser.role,
+          systemId: currentUser?.system_id || 'sys-vialivre-default',
+          date: today,
+          time: nowTime,
+          action: action,
+          actionLabel: actionLabel
+        });
+        const pCount = await pontoIndexedDB.getPendingPunchesCount();
+        setPendingPunchesCount(pCount);
+      } catch (idbErr) {
+        console.warn('Falha na gravação primária do IndexedDB:', idbErr);
+      }
+
+      // Se estiver offline, encerra com aviso informativo
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        addToast(`${actionLabel} gravada no IndexedDB local! Sincronização automática assim que a internet retornar.`, "info");
+        await loadEntries(true);
+        setIsProcessing(false);
+        return;
+      }
+
+      const allDbEntries = await db.getTimeEntries(targetUser.id);
+      const userTodayEntries = allDbEntries.filter(e => e.date === today);
       let activeEntry = userTodayEntries[0] || currentEntry;
 
       if (action === 'clock_in') {

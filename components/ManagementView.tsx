@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database } from 'lucide-react';
-import { PayrollRubric, RoleConfig, ViewState, SystemSettings, User } from '../types';
+import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database, CreditCard, Building2, Globe, Phone, Clock, Image as ImageIcon, QrCode as QrCodeIcon, Sparkles, ExternalLink } from 'lucide-react';
+import { PayrollRubric, RoleConfig, ViewState, SystemSettings, User, Company, VtCardCompanySettings, ImpCard } from '../types';
 import { db, supabase } from '../services/database';
 import { VIEW_LABELS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
 import BackupSchedulePanel from './BackupSchedulePanel';
+import TransportCard from './TransportCard';
 
 const SHIFTS = ['6x1', '5x1', '5x2', '12x36'];
 
@@ -43,10 +44,24 @@ const ACCESSIBLE_VIEWS: ViewState[] = [
 ];
 
 const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; currentUser: User | null }> = ({ addToast, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics' | 'backup'>('roles');
+  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics' | 'backup' | 'vt_data'>('roles');
   const [rubrics, setRubrics] = useState<PayrollRubric[]>([]);
   const [roles, setRoles] = useState<RoleConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedVtCompanyId, setSelectedVtCompanyId] = useState<string>('');
+  const [vtForm, setVtForm] = useState<VtCardCompanySettings>({
+    system_name: '',
+    slogan: '',
+    display_website: '',
+    sac_name: '',
+    sac_phone: '',
+    sac_hours: '',
+    front_background_url: '',
+    back_background_url: '',
+    qr_code_destination: ''
+  });
+  const [isSavingVt, setIsSavingVt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -65,13 +80,15 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
-        const [rubricsData, rolesData, settingsData] = await Promise.all([
+        const [rubricsData, rolesData, settingsData, companiesData] = await Promise.all([
             db.getRubrics(),
             db.getRoleConfigs(),
-            db.getSystemSettings()
+            db.getSystemSettings(),
+            db.getCompanies().catch(() => [])
         ]);
         setRubrics((rubricsData || []).sort((a, b) => a.name.localeCompare(b.name)));
         setRoles((rolesData || []).sort((a, b) => a.name.localeCompare(b.name)));
+        setCompanies(companiesData || []);
         if (settingsData && settingsData.length > 0) {
           setSettings(settingsData[0]);
         } else {
@@ -91,6 +108,80 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
     });
     return () => sub.unsubscribe();
   }, [loadData]);
+
+  // Sincronizar empresa selecionada padrão
+  useEffect(() => {
+    if (companies.length > 0 && !selectedVtCompanyId) {
+      setSelectedVtCompanyId(companies[0].id);
+    }
+  }, [companies, selectedVtCompanyId]);
+
+  // Carregar dados de VT do formulário quando a empresa ou settings mudam
+  useEffect(() => {
+    const comp = companies.find(c => c.id === selectedVtCompanyId);
+    const compSettings = selectedVtCompanyId && settings?.vt_card_settings ? settings.vt_card_settings[selectedVtCompanyId] : undefined;
+    setVtForm({
+      system_name: compSettings?.system_name || (comp?.name ? `S.B.U. ${comp.name}` : settings?.vt_system_name || 'S.B.U. IntegraVias'),
+      slogan: compSettings?.slogan || settings?.vt_slogan || 'Movendo pessoas, conectando cidades!',
+      display_website: compSettings?.display_website || settings?.vt_display_website || 'vialivregestao.netlify.app',
+      sac_name: compSettings?.sac_name || settings?.vt_sac_name || 'SAC Central do Usuário',
+      sac_phone: compSettings?.sac_phone || settings?.vt_sac_phone || '(11) 4004-0000 / 0800 700 8090',
+      sac_hours: compSettings?.sac_hours || settings?.vt_sac_hours || 'Segunda a Sexta, das 06:00 às 22:00',
+      front_background_url: compSettings?.front_background_url || settings?.vt_front_bg_url || '',
+      back_background_url: compSettings?.back_background_url || settings?.vt_back_bg_url || '',
+      qr_code_destination: compSettings?.qr_code_destination || settings?.vt_qr_code_url || 'https://vialivregestao.netlify.app'
+    });
+  }, [selectedVtCompanyId, settings, companies]);
+
+  const handleSaveVtSettings = async () => {
+    setIsSavingVt(true);
+    try {
+      const currentVtSettings = settings?.vt_card_settings || {};
+      const updatedCardSettings = {
+        ...currentVtSettings,
+        ...(selectedVtCompanyId ? { [selectedVtCompanyId]: vtForm } : {})
+      };
+
+      const updatedSettings: SystemSettings = {
+        ...(settings || { id: 'default', registration_pattern: 'FLX-000' }),
+        vt_card_settings: updatedCardSettings,
+        vt_system_name: vtForm.system_name,
+        vt_slogan: vtForm.slogan,
+        vt_display_website: vtForm.display_website,
+        vt_sac_name: vtForm.sac_name,
+        vt_sac_phone: vtForm.sac_phone,
+        vt_sac_hours: vtForm.sac_hours,
+        vt_front_bg_url: vtForm.front_background_url,
+        vt_back_bg_url: vtForm.back_background_url,
+        vt_qr_code_url: vtForm.qr_code_destination
+      };
+
+      if (settings?.id && settings.id !== 'default') {
+        await db.update('system_settings', updatedSettings);
+      } else {
+        const existing = await db.fetchAll<SystemSettings>('system_settings');
+        if (existing && existing.length > 0) {
+          await db.update('system_settings', { ...existing[0], ...updatedSettings });
+        } else {
+          await db.create('system_settings', updatedSettings);
+        }
+      }
+
+      setSettings(updatedSettings);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('vialivre_system_settings', JSON.stringify(updatedSettings));
+        window.dispatchEvent(new CustomEvent('vialivre-system-settings-updated', { detail: updatedSettings }));
+        window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
+      }
+
+      addToast("Configurações do Cartão de Vale Transporte salvas com sucesso no banco de dados!", "success");
+    } catch (e) {
+      console.error("Erro ao salvar configurações do Vale Transporte:", e);
+      addToast("Erro ao persistir configurações na tabela system_settings.", "error");
+    } finally {
+      setIsSavingVt(false);
+    }
+  };
 
   const handleSaveRole = async () => {
     if (!editingRole?.name) return addToast("Preencha o nome do cargo.", "warning");
@@ -222,6 +313,9 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 <button onClick={() => setActiveTab('rubrics')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'rubrics' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>Tabela de Rubricas</button>
                 <button onClick={() => setActiveTab('backup')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'backup' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
                     <Database size={13} /> Backups Automáticos
+                </button>
+                <button onClick={() => setActiveTab('vt_data')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'vt_data' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
+                    <CreditCard size={13} /> Dados Vale Transporte
                 </button>
             </div>
         </div>
@@ -357,11 +451,293 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 )}
             </div>
         </div>
-      ) : (
+      ) : activeTab === 'backup' ? (
         <BackupSchedulePanel 
           currentUser={currentUser} 
           addToast={addToast} 
         />
+      ) : (
+        /* ABA DADOS VALE TRANSPORTE */
+        <div className="space-y-8 animate-in fade-in">
+          {/* BARRA SUPERIOR DE CONTROLE MULTI-TENANT */}
+          <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6 p-8 bg-white dark:bg-zinc-900 rounded-[2.5rem] border-2 border-yellow-400 shadow-md">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-slate-900 dark:bg-yellow-400 text-yellow-400 dark:text-slate-950 flex items-center justify-center font-black shadow-lg">
+                <CreditCard size={28} />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase text-amber-600 dark:text-yellow-400 tracking-widest block">
+                  Customização Institucional Multi-Tenant
+                </span>
+                <h3 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white uppercase italic">
+                  Configurações do Cartão Vale Transporte
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mt-0.5">
+                  Dados impressos no cartão físico/digital, SAC e QR Code lidos diretamente da tabela <code className="text-yellow-600 dark:text-yellow-400 font-mono">system_settings</code>.
+                </p>
+              </div>
+            </div>
+
+            {/* SELETOR DE EMPRESA MULTI-TENANT & SALVAR */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full lg:w-auto">
+              <div className="flex-1 sm:w-64">
+                <label className="text-[9px] font-black text-slate-400 uppercase ml-2 mb-1 block">Empresa a Customizar:</label>
+                <select
+                  value={selectedVtCompanyId}
+                  onChange={e => setSelectedVtCompanyId(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs text-slate-900 dark:text-white outline-none focus:ring-2 ring-yellow-400"
+                >
+                  {companies.length > 0 ? (
+                    companies.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.name} {c.nome_fantasia ? `(${c.nome_fantasia})` : ''}
+                      </option>
+                    ))
+                  ) : (
+                    <option value="">Nenhuma empresa cadastrada</option>
+                  )}
+                </select>
+              </div>
+
+              <div className="sm:pt-5">
+                <button
+                  onClick={handleSaveVtSettings}
+                  disabled={isSavingVt}
+                  className="w-full sm:w-auto px-8 py-3.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 rounded-2xl font-black uppercase text-xs tracking-wider shadow-xl border-2 border-slate-950 flex items-center justify-center gap-2 hover:scale-105 active:scale-95 transition-all shrink-0 disabled:opacity-50"
+                >
+                  {isSavingVt ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                  <span>Gravar no Banco</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* GRID FORMULÁRIO DE CUSTOMIZAÇÃO & PREVIEW AO VIVO */}
+          <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
+            {/* COLUNA ESQUERDA: FORMULÁRIO */}
+            <div className="xl:col-span-6 space-y-6">
+              {/* BLOCO 1: IDENTIDADE DO CARTÃO */}
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800">
+                  <Sparkles size={20} className="text-yellow-500" />
+                  <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider">
+                    1. Identidade Institucional no Cartão
+                  </h4>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Nome do Sistema no Cartão (Frente) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: S.B.U. IntegraVias"
+                      value={vtForm.system_name || ''}
+                      onChange={e => setVtForm({ ...vtForm, system_name: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Exibido em destaque na frente do cartão logo abaixo do tipo de cadastro.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Lema / Slogan do Cartão (Frente) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Movendo pessoas, conectando cidades!"
+                      value={vtForm.slogan || ''}
+                      onChange={e => setVtForm({ ...vtForm, slogan: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Exibido alinhado à direita na frente do cartão.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Site de Exibição no Cartão (Verso) *
+                    </label>
+                    <div className="relative">
+                      <Globe size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-cyan-500" />
+                      <input
+                        type="text"
+                        placeholder="Ex: vialivregestao.netlify.app"
+                        value={vtForm.display_website || ''}
+                        onChange={e => setVtForm({ ...vtForm, display_website: e.target.value })}
+                        className="w-full pl-11 pr-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOCO 2: DADOS COMPLETOS DO SAC */}
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800">
+                  <Phone size={20} className="text-emerald-500" />
+                  <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider">
+                    2. Dados do SAC (Rodapé do Verso)
+                  </h4>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Nome do SAC *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: SAC Central do Usuário"
+                      value={vtForm.sac_name || ''}
+                      onChange={e => setVtForm({ ...vtForm, sac_name: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                        Telefone do SAC *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: (11) 4004-0000 / 0800 700 8090"
+                        value={vtForm.sac_phone || ''}
+                        onChange={e => setVtForm({ ...vtForm, sac_phone: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                        Horários de Atendimento *
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Seg a Sex das 06:00 às 22:00"
+                        value={vtForm.sac_hours || ''}
+                        onChange={e => setVtForm({ ...vtForm, sac_hours: e.target.value })}
+                        className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOCO 3: IMAGENS DE FUNDO & QR CODE */}
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="flex items-center gap-3 pb-3 border-b border-slate-100 dark:border-zinc-800">
+                  <ImageIcon size={20} className="text-purple-500" />
+                  <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider">
+                    3. Imagens de Fundo (1011px x 638px) & QR Code
+                  </h4>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      URL da Imagem de Fundo da Frente (1011px x 638px)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://exemplo.com/fundo-cartao-frente.jpg"
+                      value={vtForm.front_background_url || ''}
+                      onChange={e => setVtForm({ ...vtForm, front_background_url: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Deixe em branco para usar o layout padrão institucional em amarelo ouro.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      URL da Imagem de Fundo do Verso (1011px x 638px)
+                    </label>
+                    <input
+                      type="url"
+                      placeholder="https://exemplo.com/fundo-cartao-verso.jpg"
+                      value={vtForm.back_background_url || ''}
+                      onChange={e => setVtForm({ ...vtForm, back_background_url: e.target.value })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Deixe em branco para usar o fundo escuro padrão de alta segurança.</p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Link de Destino do QR Code *
+                    </label>
+                    <div className="relative">
+                      <QrCodeIcon size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-yellow-500" />
+                      <input
+                        type="url"
+                        placeholder="https://vialivregestao.netlify.app/canais-bilhetagem"
+                        value={vtForm.qr_code_destination || ''}
+                        onChange={e => setVtForm({ ...vtForm, qr_code_destination: e.target.value })}
+                        className="w-full pl-11 pr-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      />
+                    </div>
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Ao escanear o QR Code no verso do cartão, o usuário é direcionado a este link.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* COLUNA DIREITA: LIVE PREVIEW DO CARTÃO (FRENTE E VERSO) */}
+            <div className="xl:col-span-6 space-y-6">
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border-2 border-slate-100 dark:border-zinc-800 shadow-sm flex flex-col items-center">
+                <div className="w-full flex items-center justify-between pb-6 border-b border-slate-100 dark:border-zinc-800 mb-6">
+                  <div>
+                    <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider flex items-center gap-2">
+                      <CreditCard size={18} className="text-yellow-500" />
+                      Prévia do Cartão em Tempo Real
+                    </h4>
+                    <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                      Frente & Verso Institucional (Proporção 1011px x 638px)
+                    </p>
+                  </div>
+                  <span className="px-3 py-1 bg-yellow-400 text-slate-950 rounded-xl font-black text-[9px] uppercase shadow">
+                    Live Preview
+                  </span>
+                </div>
+
+                {/* COMPONENTE TRANSPORT CARD LIVE */}
+                <div className="w-full overflow-x-auto custom-scrollbar py-4 flex justify-center">
+                  <TransportCard
+                    company={companies.find(c => c.id === selectedVtCompanyId) || { name: 'Vialivre' }}
+                    settings={{
+                      ...settings,
+                      vt_card_settings: {
+                        ...(settings?.vt_card_settings || {}),
+                        [selectedVtCompanyId]: vtForm
+                      }
+                    }}
+                    name="MARIA EDUARDA SILVA"
+                    cardNumber="1084920158"
+                    internalCode="VT89K2A1"
+                    category="ESCOLAR"
+                    city="Campinas"
+                    state="SP"
+                    viewMode="both"
+                    scale={0.92}
+                  />
+                </div>
+
+                {/* INFORMAÇÕES DE INTEGRAÇÃO MULTI-TENANT */}
+                <div className="w-full mt-6 p-6 rounded-3xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center gap-2 text-yellow-600 dark:text-yellow-400 font-black text-xs uppercase">
+                    <ShieldCheck size={16} />
+                    <span>Conformidade Multi-Tenant & Supabase</span>
+                  </div>
+                  <ul className="text-[10px] text-slate-600 dark:text-zinc-300 font-bold space-y-1.5 list-disc pl-4">
+                    <li>Cada empresa cadastrada possui seus próprios dados impressos no cartão de forma autônoma.</li>
+                    <li>O painel Web e o aplicativo móvel <strong>ViaLivre Mobile</strong> leem simultaneamente esses dados da tabela <code className="text-yellow-600 dark:text-yellow-400">system_settings</code>.</li>
+                    <li>Resolução nativa configurada para impressão gráfica nos padrões <code className="text-yellow-600 dark:text-yellow-400">1011px x 638px</code>.</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* MODAL DE EDIÇÃO DE CARGO */}

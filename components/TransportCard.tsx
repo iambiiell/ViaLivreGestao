@@ -1,108 +1,411 @@
+import React, { useState, useEffect, useMemo } from 'react';
+import { Bus, Wifi, Phone, Globe, Shield, QrCode as QrCodeIcon, RefreshCw, Sparkles, Building2 } from 'lucide-react';
+import QRCode from 'qrcode';
+import { ImpCard, Company, SystemSettings, VtCardCompanySettings } from '../types';
 
-import React from 'react';
-import { Bus, CreditCard, QrCode, Ticket, Wifi } from 'lucide-react';
-
-interface TransportCardProps {
+export interface TransportCardProps {
+  card?: Partial<ImpCard> | null;
+  company?: Partial<Company> | null;
+  settings?: Partial<SystemSettings> | null;
+  // Overrides diretos para retrocompatibilidade
   name?: string;
   cardNumber?: string;
+  internalCode?: string;
   photoUrl?: string;
-  validity?: string;
   category?: string;
+  city?: string;
+  state?: string;
+  viewMode?: 'front' | 'back' | 'both';
+  interactiveFlip?: boolean;
+  scale?: number;
+  className?: string;
 }
 
-const TransportCard: React.FC<TransportCardProps> = ({
-  name = "MARIA EDUARDA SILVA",
-  cardNumber = "1234 5678 9012 3456",
-  photoUrl = "https://picsum.photos/seed/maria/200",
-  validity = "12/2026",
-  category = "COMUM"
+export const generateCardInternalCode = (): string => {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  let res = '';
+  for (let i = 0; i < 8; i++) {
+    res += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return res;
+};
+
+export const generateCardNumber10Digits = (type: string = 'Vale Transporte'): string => {
+  const prefix = type.toLowerCase().includes('vale') ? '10' :
+                 type.toLowerCase().includes('idoso') ? '20' :
+                 type.toLowerCase().includes('escolar') ? '30' : '40';
+  const random8 = Math.floor(10000000 + Math.random() * 90000000).toString();
+  return `${prefix}${random8}`.substring(0, 10);
+};
+
+export const TransportCard: React.FC<TransportCardProps> = ({
+  card,
+  company,
+  settings,
+  name: propName,
+  cardNumber: propCardNumber,
+  internalCode: propInternalCode,
+  photoUrl: propPhotoUrl,
+  category: propCategory,
+  city: propCity,
+  state: propState,
+  viewMode = 'front',
+  interactiveFlip = true,
+  scale = 1,
+  className = ''
 }) => {
-  return (
-    <div id="transport-card" className="w-[450px] h-[280px] rounded-[24px] overflow-hidden shadow-2xl font-sans flex flex-col relative bg-white border border-slate-200 select-none">
-      {/* Top Section (Yellow) */}
-      <div className="h-[35%] bg-[#FFD700] flex flex-col items-center justify-center text-white">
-        <h1 className="text-2xl font-black tracking-[0.2em] leading-none mb-1 drop-shadow-sm">VALE TRANSPORTE</h1>
-        <p className="text-[9px] font-bold tracking-[0.1em] uppercase opacity-90">Sistema Integrado de Mobilidade</p>
-      </div>
+  const [currentSide, setCurrentSide] = useState<'front' | 'back'>(viewMode === 'back' ? 'back' : 'front');
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('');
 
-      {/* Bottom Section (Navy) */}
-      <div className="h-[65%] bg-[#000080] p-5 relative flex flex-col justify-between">
-        <div className="flex justify-between items-start">
-          {/* Left Side: Chip and VT Logo */}
-          <div className="space-y-4">
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-9 bg-gradient-to-br from-yellow-200 via-yellow-500 to-yellow-700 rounded-md border border-yellow-900/20 relative overflow-hidden shadow-inner">
-                <div className="absolute inset-0 grid grid-cols-3 grid-rows-2 gap-px opacity-30">
-                  <div className="border-r border-b border-black/20"></div>
-                  <div className="border-r border-b border-black/20"></div>
-                  <div className="border-b border-black/20"></div>
-                  <div className="border-r border-black/20"></div>
-                  <div className="border-r border-black/20"></div>
-                  <div></div>
-                </div>
-              </div>
-              <Wifi size={20} className="text-yellow-400 rotate-90" />
-            </div>
+  // Identificar empresa vinculada (pelo card ou passada diretamente)
+  const resolvedCompanyId = card?.company_id || company?.id;
 
-            <div className="flex items-center gap-2">
-              <div className="bg-yellow-400 p-1.5 rounded-lg">
-                <Bus size={20} className="text-[#000080]" />
-              </div>
-              <div className="text-white leading-none">
-                <p className="text-[10px] font-black italic">VT</p>
-                <p className="text-[8px] font-bold uppercase tracking-tighter">Vale Transporte</p>
-              </div>
-            </div>
+  // Obter configurações customizadas da empresa (multi-tenant) a partir de system_settings
+  const companyVtSettings: VtCardCompanySettings | undefined = useMemo(() => {
+    if (resolvedCompanyId && settings?.vt_card_settings && settings.vt_card_settings[resolvedCompanyId]) {
+      return settings.vt_card_settings[resolvedCompanyId];
+    }
+    return undefined;
+  }, [resolvedCompanyId, settings]);
+
+  // Resolução dos dados institucionais
+  const companyName = company?.name || company?.nome_fantasia || card?.company_name || 'Vialivre';
+  const systemName = companyVtSettings?.system_name || settings?.vt_system_name || `S.B.U. ${companyName}`;
+  const slogan = companyVtSettings?.slogan || settings?.vt_slogan || 'Movendo pessoas, conectando cidades!';
+  const displayWebsite = companyVtSettings?.display_website || settings?.vt_display_website || 'vialivregestao.netlify.app';
+  const sacName = companyVtSettings?.sac_name || settings?.vt_sac_name || 'SAC Central do Usuário';
+  const sacPhone = companyVtSettings?.sac_phone || settings?.vt_sac_phone || '(11) 4004-0000 / 0800 700 8090';
+  const sacHours = companyVtSettings?.sac_hours || settings?.vt_sac_hours || 'Segunda a Sexta, das 06:00 às 22:00';
+  const frontBgUrl = companyVtSettings?.front_background_url || settings?.vt_front_bg_url || '';
+  const backBgUrl = companyVtSettings?.back_background_url || settings?.vt_back_bg_url || '';
+  const qrCodeDestination = companyVtSettings?.qr_code_destination || settings?.vt_qr_code_url || (displayWebsite.startsWith('http') ? displayWebsite : `https://${displayWebsite}`);
+
+  // Dados do usuário / cartão
+  const fullName = useMemo(() => {
+    if (propName) return propName.toUpperCase();
+    if (card?.name) {
+      return `${card.name} ${card.surname || ''}`.trim().toUpperCase();
+    }
+    return 'MARIA EDUARDA SILVA';
+  }, [propName, card]);
+
+  const rawCardNumber = propCardNumber || card?.card_number || '1084920158';
+  // Formatar número de 10 algarismos (ex: 1084920158 -> 10.84920158 ou apenas dígitos)
+  const cleanCardNumber = rawCardNumber.replace(/\D/g, '').padEnd(10, '0').substring(0, 10);
+
+  const internalCode = propInternalCode || card?.internal_code || 'VT89K2A1';
+  const userCategory = (propCategory || card?.type || 'VALE TRANSPORTE').toUpperCase();
+  const userCity = propCity || card?.address_city || 'Campinas';
+  const userState = propState || card?.address_state || 'SP';
+  const photoUrl = propPhotoUrl || card?.photo_url || '';
+  const companyLogo = company?.logo_url || card?.company_logo || '';
+
+  // Gerar QR Code
+  useEffect(() => {
+    let isMounted = true;
+    QRCode.toDataURL(qrCodeDestination, {
+      margin: 1,
+      width: 140,
+      color: {
+        dark: '#0f172a',
+        light: '#ffffff'
+      }
+    }).then(url => {
+      if (isMounted) setQrCodeDataUrl(url);
+    }).catch(err => {
+      console.warn('Erro ao gerar QRCode do Cartão:', err);
+    });
+    return () => { isMounted = false; };
+  }, [qrCodeDestination]);
+
+  // Se o viewMode for estritamente 'front' ou 'back', sincroniza
+  useEffect(() => {
+    if (viewMode === 'front' || viewMode === 'back') {
+      setCurrentSide(viewMode);
+    }
+  }, [viewMode]);
+
+  // Dimensões padrão oficiais: 1011px x 638px (proporção ~1.585)
+  // Base visual em container de 505.5px x 319px (escala 0.5 da resolução de impressão)
+  const cardWidth = 506;
+  const cardHeight = 320;
+
+  // RENDERIZAÇÃO DA FRENTE DO CARTÃO
+  const renderFront = () => (
+    <div
+      style={{
+        width: `${cardWidth}px`,
+        height: `${cardHeight}px`,
+        backgroundImage: frontBgUrl ? `url("${frontBgUrl}")` : undefined,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+      className={`relative rounded-[24px] overflow-hidden shadow-2xl border-2 border-slate-900/10 dark:border-white/10 select-none flex flex-col justify-between p-6 ${
+        !frontBgUrl ? 'bg-gradient-to-br from-yellow-400 via-amber-400 to-amber-500 text-slate-950' : 'text-white'
+      }`}
+    >
+      {/* Overlay sutil para garantir contraste e legibilidade institucional */}
+      {frontBgUrl && (
+        <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[0.5px] pointer-events-none" />
+      )}
+
+      {/* PARTE SUPERIOR: Tipo de cadastro correspondente */}
+      <div className="relative z-10">
+        <div className="flex items-center justify-between">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-950 text-yellow-400 font-black text-[11px] uppercase tracking-[0.2em] shadow-md border border-yellow-400/30">
+            <Sparkles size={12} className="text-yellow-400" />
+            <span>{userCategory}</span>
           </div>
-
-          {/* Right Side: Photo and Info */}
-          <div className="flex flex-col items-end gap-3">
-            <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-white text-[11px] font-black uppercase tracking-tight">{name}</p>
-                <p className="text-white/60 text-[7px] font-bold uppercase mt-1">Nº do Cartão:</p>
-                <p className="text-white text-[10px] font-mono font-bold tracking-wider">{cardNumber}</p>
-              </div>
-              <div className="w-16 h-16 rounded-full border-2 border-yellow-400 bg-white p-0.5 shadow-lg overflow-hidden flex items-center justify-center">
-                {photoUrl ? (
-                  <img 
-                    src={photoUrl} 
-                    alt="Profile" 
-                    className="w-full h-full rounded-full object-cover" 
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLElement).style.display = 'none';
-                      const parent = (e.target as HTMLElement).parentElement;
-                      if (parent && !parent.querySelector('.card-fallback-avatar')) {
-                        const fallback = document.createElement('div');
-                        fallback.className = 'card-fallback-avatar w-full h-full rounded-full bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-sm uppercase';
-                        fallback.innerText = (name?.[0] || 'U').toUpperCase();
-                        parent.appendChild(fallback);
-                      }
-                    }}
-                  />
-                ) : (
-                  <div className="w-full h-full rounded-full bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-sm uppercase">
-                    {(name?.[0] || 'U').toUpperCase()}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-yellow-400 px-3 py-1.5 rounded-md flex gap-4 shadow-md">
-              <div>
-                <p className="text-[6px] font-black text-[#000080]/60 uppercase">Validade</p>
-                <p className="text-[9px] font-black text-[#000080]">{validity}</p>
-              </div>
-              <div className="w-px h-full bg-[#000080]/20"></div>
-              <div>
-                <p className="text-[6px] font-black text-[#000080]/60 uppercase">Categoria</p>
-                <p className="text-[9px] font-black text-[#000080]">{category}</p>
-              </div>
-            </div>
+          <div className="flex items-center gap-2">
+            <Wifi size={22} className="text-slate-950 dark:text-white rotate-90 opacity-90 drop-shadow" />
+            <span className="text-[9px] font-black uppercase tracking-widest opacity-80">NFC / CONTACTLESS</span>
           </div>
         </div>
 
+        {/* ABAIXO: Nome personalizado do sistema configurado pelo administrador */}
+        <h1 className="text-2xl md:text-[26px] font-black uppercase tracking-tight italic mt-2 drop-shadow-sm leading-tight text-slate-950 dark:text-white">
+          {systemName}
+        </h1>
+
+        {/* LINHA DIVISÓRIA */}
+        <div className="w-full h-1 bg-slate-950/20 dark:bg-white/30 my-2 rounded-full" />
+
+        {/* LOGO ABAIXO DA LINHA: Município e Estado de cadastro do usuário */}
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-zinc-100 flex items-center gap-1">
+            <span className="w-2 h-2 rounded-full bg-slate-950 dark:bg-yellow-400 inline-block" />
+            {userCity} - {userState}
+          </p>
+
+          {/* LADO DIREITO: Lema personalizado */}
+          <p className="text-[10px] font-bold uppercase tracking-wider text-right italic text-slate-800 dark:text-zinc-200 max-w-[240px] truncate" title={slogan}>
+            "{slogan}"
+          </p>
+        </div>
+      </div>
+
+      {/* PARTE INFERIOR DA FRENTE: Chip Smartcard + Foto/Avatar do Usuário */}
+      <div className="relative z-10 flex items-end justify-between mt-auto pt-4">
+        {/* Chip EMV Dourado Metálico */}
+        <div className="space-y-1">
+          <div className="w-14 h-10 bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-600 rounded-lg border border-amber-900/40 relative overflow-hidden shadow-md">
+            <div className="absolute inset-0 grid grid-cols-3 grid-rows-2 gap-px opacity-40">
+              <div className="border-r border-b border-black/40"></div>
+              <div className="border-r border-b border-black/40"></div>
+              <div className="border-b border-black/40"></div>
+              <div className="border-r border-black/40"></div>
+              <div className="border-r border-black/40"></div>
+              <div></div>
+            </div>
+            <div className="absolute inset-1 border border-black/20 rounded"></div>
+          </div>
+          <span className="text-[8px] font-mono font-black uppercase opacity-75 tracking-wider block">CHIP SMARTPASS</span>
+        </div>
+
+        {/* Foto do Usuário / Avatar */}
+        <div className="flex items-center gap-3">
+          <div className="text-right">
+            <p className="text-[9px] font-bold text-slate-800 dark:text-zinc-200 uppercase">Titular do Benefício</p>
+            <p className="text-xs font-black uppercase tracking-tight text-slate-950 dark:text-white max-w-[200px] truncate">
+              {fullName}
+            </p>
+          </div>
+          <div className="w-16 h-16 rounded-2xl border-2 border-slate-950/30 dark:border-white/40 bg-white p-0.5 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
+            {photoUrl ? (
+              <img
+                src={photoUrl}
+                alt={fullName}
+                className="w-full h-full rounded-xl object-cover"
+                referrerPolicy="no-referrer"
+                onError={(e) => {
+                  (e.target as HTMLElement).style.display = 'none';
+                }}
+              />
+            ) : (
+              <div className="w-full h-full rounded-xl bg-slate-900 text-yellow-400 flex items-center justify-center font-black text-xl uppercase">
+                {fullName.charAt(0) || 'U'}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  // RENDERIZAÇÃO DO VERSO DO CARTÃO
+  const renderBack = () => (
+    <div
+      style={{
+        width: `${cardWidth}px`,
+        height: `${cardHeight}px`,
+        backgroundImage: backBgUrl ? `url("${backBgUrl}")` : undefined,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center'
+      }}
+      className={`relative rounded-[24px] overflow-hidden shadow-2xl border-2 border-slate-900/20 dark:border-zinc-800 select-none flex flex-col justify-between p-5 ${
+        !backBgUrl ? 'bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white' : 'text-white'
+      }`}
+    >
+      {/* Overlay sutil para garantir contraste caso haja foto de fundo */}
+      {backBgUrl && (
+        <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[0.5px] pointer-events-none" />
+      )}
+
+      {/* 1. NO TOPO: Logo da empresa selecionada */}
+      <div className="relative z-10 flex items-center justify-between pb-2 border-b border-white/15">
+        <div className="flex items-center gap-3">
+          {companyLogo ? (
+            <img
+              src={companyLogo}
+              alt={companyName}
+              className="h-9 max-w-[140px] object-contain drop-shadow"
+              onError={(e) => {
+                (e.target as HTMLElement).style.display = 'none';
+              }}
+            />
+          ) : (
+            <div className="flex items-center gap-2 px-3 py-1 bg-yellow-400 text-slate-950 rounded-xl font-black text-xs uppercase shadow">
+              <Building2 size={16} />
+              <span>{companyName}</span>
+            </div>
+          )}
+          <span className="text-[10px] font-black uppercase text-yellow-400 tracking-wider">
+            Operadora & Concessionária
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-[9px] font-mono font-bold tracking-widest text-slate-300">
+          <Shield size={12} className="text-yellow-400" />
+          <span>AUTÊNTICO</span>
+        </div>
+      </div>
+
+      {/* 2. CÓDIGO INTERNO + NOME COMPLETO + NÚMERO DE IDENTIFICAÇÃO (10 ALGARISMOS) + AVISO LEGAL */}
+      <div className="relative z-10 grid grid-cols-12 gap-3 my-auto items-center">
+        {/* Bloco de identificação do usuário */}
+        <div className="col-span-7 space-y-1">
+          {/* Acima do nome: código interno gerado automaticamente (8 caracteres alfanuméricos) */}
+          <div className="flex items-center gap-2">
+            <span className="text-[8px] font-bold text-yellow-400 uppercase tracking-widest">CÓDIGO INTERNO:</span>
+            <span className="text-xs font-mono font-black text-yellow-300 px-2 py-0.5 rounded bg-yellow-400/15 border border-yellow-400/30">
+              {internalCode}
+            </span>
+          </div>
+
+          {/* Logo após o código interno: Nome Completo do usuário */}
+          <p className="text-sm font-black uppercase text-white tracking-tight leading-tight pt-1">
+            {fullName}
+          </p>
+
+          {/* Abaixo do nome: número de identificação composto por 10 algarismos */}
+          <div className="flex items-center gap-1.5 pt-0.5">
+            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Nº DO CARTÃO:</span>
+            <span className="text-[13px] font-mono font-black tracking-[0.18em] text-white">
+              {cleanCardNumber}
+            </span>
+          </div>
+        </div>
+
+        {/* Alinhado à direita: Aviso legal */}
+        <div className="col-span-5 text-right pl-2 border-l border-white/15">
+          <p className="text-[7.5px] leading-tight font-bold text-slate-300 uppercase italic">
+            "ESTE CARTÃO É DE USO PESSOAL E INTRANSFERÍVEL. Em caso de perda, roubo, furto ou extravio, solicite imediatamente o bloqueio do cartão."
+          </p>
+        </div>
+      </div>
+
+      {/* 3. PARTE INFERIOR: QR Code + Informações e Serviços + Canais + Site configurado */}
+      <div className="relative z-10 pt-2 border-t border-white/15 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          {/* QR Code */}
+          <div className="w-14 h-14 bg-white p-1 rounded-xl shadow-lg border border-white/20 shrink-0 flex items-center justify-center">
+            {qrCodeDataUrl ? (
+              <img src={qrCodeDataUrl} alt="QR Code Bilhetagem" className="w-full h-full object-contain" />
+            ) : (
+              <QrCodeIcon size={32} className="text-slate-900" />
+            )}
+          </div>
+
+          {/* Informações e Serviços */}
+          <div className="space-y-0.5 text-left">
+            <p className="text-[9px] font-black text-yellow-400 uppercase tracking-wider">
+              INFORMAÇÕES E SERVIÇOS
+            </p>
+            <p className="text-[8px] font-bold text-slate-300 flex items-center gap-1">
+              <Phone size={10} className="text-yellow-400 shrink-0" />
+              <span>Escaneie o Qr Code e acesse os canais de bilhetagem</span>
+            </p>
+            <p className="text-[8px] font-bold text-slate-300 flex items-center gap-1">
+              <Globe size={10} className="text-cyan-400 shrink-0" />
+              <span className="font-mono text-cyan-300">{displayWebsite}</span>
+            </p>
+          </div>
+        </div>
+      </div>
+
+      {/* 4. RODAPÉ DO VERSO: Dados customizados do SAC (Nome, Telefone, Horários) */}
+      <div className="relative z-10 pt-1.5 mt-1 border-t border-white/10 flex items-center justify-between text-[7.5px] font-bold text-slate-400">
+        <span className="text-slate-200 uppercase">{sacName}</span>
+        <span className="text-yellow-300">{sacPhone}</span>
+        <span className="text-slate-300 truncate max-w-[180px]">{sacHours}</span>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className={`inline-flex flex-col items-center gap-3 ${className}`}>
+      {/* Botões interativos de alternância Frente / Verso */}
+      {interactiveFlip && viewMode === 'front' && (
+        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-2xl shadow-inner border border-slate-200 dark:border-zinc-700">
+          <button
+            type="button"
+            onClick={() => setCurrentSide('front')}
+            className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+              currentSide === 'front'
+                ? 'bg-yellow-400 text-slate-950 shadow-md scale-100'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white'
+            }`}
+          >
+            Frente do Cartão
+          </button>
+          <button
+            type="button"
+            onClick={() => setCurrentSide('back')}
+            className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+              currentSide === 'back'
+                ? 'bg-slate-900 text-yellow-400 shadow-md scale-100'
+                : 'text-slate-600 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white'
+            }`}
+          >
+            Verso do Cartão
+          </button>
+        </div>
+      )}
+
+      {/* Container do Cartão com escala configurável */}
+      <div
+        id="transport-card-container"
+        style={{
+          transform: scale !== 1 ? `scale(${scale})` : undefined,
+          transformOrigin: 'top center'
+        }}
+        className="transition-transform duration-200"
+      >
+        {viewMode === 'both' ? (
+          <div className="flex flex-col xl:flex-row gap-6 items-center justify-center">
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest text-center">Frente</p>
+              {renderFront()}
+            </div>
+            <div>
+              <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest text-center">Verso</p>
+              {renderBack()}
+            </div>
+          </div>
+        ) : currentSide === 'front' ? (
+          renderFront()
+        ) : (
+          renderBack()
+        )}
       </div>
     </div>
   );

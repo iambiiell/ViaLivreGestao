@@ -25,6 +25,8 @@ import {
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
 import { db } from '../services/database';
+import TransportCard from './TransportCard';
+import { SystemSettings, Company } from '../types';
 
 interface MobileAppHubModalProps {
   isOpen: boolean;
@@ -46,6 +48,23 @@ export const MobileAppHubModal: React.FC<MobileAppHubModalProps> = ({
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
   const [isExportingZip, setIsExportingZip] = useState(false);
   const [selectedMobileView, setSelectedMobileView] = useState<'passenger' | 'driver' | 'card' | 'scanner'>('passenger');
+  const [systemSettings, setSystemSettings] = useState<SystemSettings | null>(null);
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [selectedPreviewCompanyId, setSelectedPreviewCompanyId] = useState<string>('');
+
+  useEffect(() => {
+    db.getSystemSettings().then(res => {
+      if (res && res.length > 0) setSystemSettings(res[0]);
+    }).catch(() => {});
+    db.getCompanies().then(res => {
+      if (res) {
+        setCompanies(res);
+        if (res.length > 0 && !selectedPreviewCompanyId) {
+          setSelectedPreviewCompanyId(res[0].id);
+        }
+      }
+    }).catch(() => {});
+  }, []);
 
   // Detect PWA install prompt
   useEffect(() => {
@@ -192,18 +211,21 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 export default function App() {
   const [tab, setTab] = useState<'linhas' | 'cartao' | 'ponto'>('linhas');
+  const [cardSide, setCardSide] = useState<'front' | 'back'>('front');
   const [routes, setRoutes] = useState<any[]>([]);
+  const [systemSettings, setSystemSettings] = useState<any>(null);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [userCard, setUserCard] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    loadRoutes();
+    loadData();
     
     // Escuta atualizações em tempo real disparadas pelo painel ViaLivre Gestão
     const channel = supabase
       .channel('vialivre-mobile-sync')
-      .on('broadcast', { event: 'vialivre_mobile_event' }, (payload) => {
-        console.log('Atualização do ViaLivre Gestão recebida:', payload);
-        loadRoutes();
+      .on('broadcast', { event: 'vialivre_mobile_event' }, () => {
+        loadData();
       })
       .subscribe();
 
@@ -212,20 +234,65 @@ export default function App() {
     };
   }, []);
 
-  const loadRoutes = async () => {
+  const loadData = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      // 1. Leitura direta da tabela system_settings do Supabase
+      const { data: settingsData } = await supabase
+        .from('system_settings')
+        .select('*')
+        .limit(1);
+      if (settingsData && settingsData.length > 0) {
+        setSystemSettings(settingsData[0]);
+      }
+
+      // 2. Empresas cadastradas
+      const { data: companiesData } = await supabase
+        .from('companies')
+        .select('*');
+      if (companiesData) setCompanies(companiesData);
+
+      // 3. Linhas ativas
+      const { data: routesData } = await supabase
         .from('routes')
         .select('*')
         .order('name');
-      if (data) setRoutes(data);
+      if (routesData) setRoutes(routesData);
+
+      // 4. Cartão de Vale Transporte do Usuário
+      const { data: cardsData } = await supabase
+        .from('imp_cards')
+        .select('*')
+        .limit(1);
+      if (cardsData && cardsData.length > 0) {
+        setUserCard(cardsData[0]);
+      }
     } catch (e) {
-      console.warn('Erro ao carregar linhas:', e);
+      console.warn('Erro ao carregar dados do Supabase:', e);
     } finally {
       setLoading(false);
     }
   };
+
+  // Resolução multi-tenant dos dados do cartão a partir de system_settings
+  const company = companies.find(c => c.id === userCard?.company_id) || companies[0] || { name: 'Vialivre' };
+  const companyVtSettings = userCard?.company_id && systemSettings?.vt_card_settings ? systemSettings.vt_card_settings[userCard.company_id] : undefined;
+
+  const systemName = companyVtSettings?.system_name || systemSettings?.vt_system_name || ('S.B.U. ' + (company.name || 'IntegraVias'));
+  const slogan = companyVtSettings?.slogan || systemSettings?.vt_slogan || 'Movendo pessoas, conectando cidades!';
+  const displayWebsite = companyVtSettings?.display_website || systemSettings?.vt_display_website || 'vialivregestao.netlify.app';
+  const sacName = companyVtSettings?.sac_name || systemSettings?.vt_sac_name || 'SAC Central do Usuário';
+  const sacPhone = companyVtSettings?.sac_phone || systemSettings?.vt_sac_phone || '(11) 4004-0000 / 0800 700 8090';
+  const sacHours = companyVtSettings?.sac_hours || systemSettings?.vt_sac_hours || 'Segunda a Sexta, das 06:00 às 22:00';
+  const frontBgUrl = companyVtSettings?.front_background_url || systemSettings?.vt_front_bg_url || '';
+  const backBgUrl = companyVtSettings?.back_background_url || systemSettings?.vt_back_bg_url || '';
+
+  const userCategory = (userCard?.type || 'ESCOLAR').toUpperCase();
+  const userName = userCard?.name ? (userCard.name + ' ' + (userCard.surname || '')).trim().toUpperCase() : 'MARIA EDUARDA SILVA';
+  const internalCode = userCard?.internal_code || 'VT89K2A1';
+  const rawCardNumber = (userCard?.card_number || '1084920158').replace(/\\D/g, '').padEnd(10, '0').substring(0, 10);
+  const userCity = userCard?.address_city || 'Campinas';
+  const userState = userCard?.address_state || 'SP';
 
   return (
     <SafeAreaView style={styles.container}>
@@ -271,7 +338,7 @@ export default function App() {
               <View style={styles.card}>
                 <Text style={styles.cardTitle}>Nenhuma linha carregada no momento</Text>
                 <Text style={styles.cardSub}>Toque abaixo para sincronizar com o servidor.</Text>
-                <TouchableOpacity style={styles.actionBtn} onPress={loadRoutes}>
+                <TouchableOpacity style={styles.actionBtn} onPress={loadData}>
                   <Text style={styles.actionBtnText}>Sincronizar Linhas</Text>
                 </TouchableOpacity>
               </View>
@@ -283,6 +350,11 @@ export default function App() {
                     <Text style={styles.cardTitle}>{r.name}</Text>
                   </View>
                   <Text style={styles.cardSub}>Tarifa: R$ {Number(r.fare || 4.5).toFixed(2)}</Text>
+                  {r.empresa_autuante && (
+                    <Text style={[styles.cardSub, { color: '#f59e0b', fontWeight: 'bold', marginTop: 2 }]}>
+                      • Autuante: {r.empresa_autuante}
+                    </Text>
+                  )}
                 </View>
               ))
             )}
@@ -290,12 +362,107 @@ export default function App() {
         )}
 
         {tab === 'cartao' && (
-          <View>
-            <View style={styles.cardGold}>
-              <Text style={styles.goldTitle}>Cartão ViaLivre Digital</Text>
-              <Text style={styles.goldNumber}>•••• •••• •••• 8842</Text>
-              <Text style={styles.goldBalance}>Saldo: R$ 48,50</Text>
+          <View style={styles.cardSection}>
+            <View style={styles.flipTabBar}>
+              <TouchableOpacity 
+                style={[styles.flipBtn, cardSide === 'front' && styles.flipBtnActive]}
+                onPress={() => setCardSide('front')}
+              >
+                <Text style={[styles.flipBtnText, cardSide === 'front' && styles.flipBtnTextActive]}>Frente do Cartão</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.flipBtn, cardSide === 'back' && styles.flipBtnActive]}
+                onPress={() => setCardSide('back')}
+              >
+                <Text style={[styles.flipBtnText, cardSide === 'back' && styles.flipBtnTextActive]}>Verso do Cartão</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* RENDERIZAÇÃO DO CARTÃO: FRENTE OU VERSO */}
+            {cardSide === 'front' ? (
+              <View style={[styles.cardContainer, styles.cardFront]}>
+                {/* Parte Superior: Tipo de cadastro correspondente */}
+                <View style={styles.cardTopRow}>
+                  <View style={styles.categoryBadge}>
+                    <Text style={styles.categoryBadgeText}>{userCategory}</Text>
+                  </View>
+                  <Text style={styles.nfcText}>NFC / CONTACTLESS</Text>
+                </View>
+
+                {/* Abaixo: Nome personalizado do sistema configurado pelo administrador */}
+                <Text style={styles.systemNameText}>{systemName}</Text>
+
+                {/* Linha Divisória */}
+                <View style={styles.dividerLine} />
+
+                {/* Logo abaixo da linha: Município e Estado + Lema no lado direito */}
+                <View style={styles.cardSubRow}>
+                  <Text style={styles.locationText}>{userCity} - {userState}</Text>
+                  <Text style={styles.sloganText}>"{slogan}"</Text>
+                </View>
+
+                {/* Parte inferior da frente: Chip + Titular */}
+                <View style={styles.cardBottomRow}>
+                  <View style={styles.chipMock}>
+                    <Text style={styles.chipText}>SMARTPASS</Text>
+                  </View>
+                  <View style={{ alignItems: 'flex-end' }}>
+                    <Text style={styles.userLabelText}>TITULAR DO BENEFÍCIO</Text>
+                    <Text style={styles.userNameText}>{userName}</Text>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <View style={[styles.cardContainer, styles.cardBack]}>
+                {/* 1. No topo: Logo da empresa selecionada */}
+                <View style={styles.backTopRow}>
+                  <View style={styles.companyBadge}>
+                    <Text style={styles.companyBadgeText}>{company.name || 'VIALIVRE'}</Text>
+                  </View>
+                  <Text style={styles.authenticBadge}>AUTÊNTICO</Text>
+                </View>
+
+                {/* 2. Código interno + Nome Completo + Número de 10 algarismos + Aviso Legal */}
+                <View style={styles.backMiddleRow}>
+                  <View style={{ flex: 1.2 }}>
+                    <Text style={styles.internalCodeLabel}>CÓDIGO INTERNO: <Text style={styles.internalCodeVal}>{internalCode}</Text></Text>
+                    <Text style={styles.backUserName}>{userName}</Text>
+                    <Text style={styles.backCardNumber}>Nº {rawCardNumber}</Text>
+                  </View>
+                  <View style={styles.legalBox}>
+                    <Text style={styles.legalNotice}>
+                      ESTE CARTÃO É DE USO PESSOAL E INTRANSFERÍVEL. Em caso de perda, roubo, furto ou extravio, solicite imediatamente o bloqueio do cartão.
+                    </Text>
+                  </View>
+                </View>
+
+                {/* 3. QR Code + Informações e Serviços + Canais + Site */}
+                <View style={styles.backQrRow}>
+                  <View style={styles.qrPlaceholder}>
+                    <Text style={styles.qrText}>QR</Text>
+                  </View>
+                  <View style={{ flex: 1, marginLeft: 10 }}>
+                    <Text style={styles.servicesTitle}>INFORMAÇÕES E SERVIÇOS</Text>
+                    <Text style={styles.servicesLine}>📞 Escaneie o Qr Code e acesse os canais de bilhetagem</Text>
+                    <Text style={styles.servicesWeb}>🌐 {displayWebsite}</Text>
+                  </View>
+                </View>
+
+                {/* 4. Rodapé do verso: Dados customizados do SAC */}
+                <View style={styles.sacFooter}>
+                  <Text style={styles.sacNameText}>{sacName}</Text>
+                  <Text style={styles.sacPhoneText}>{sacPhone}</Text>
+                  <Text style={styles.sacHoursText}>{sacHours}</Text>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.balanceCard}>
+              <Text style={styles.balanceLabel}>Saldo Disponível</Text>
+              <Text style={styles.balanceValue}>R$ {Number(userCard?.balance || 54.00).toFixed(2)}</Text>
+              <Text style={styles.balanceCardNumber}>Nº {rawCardNumber}</Text>
+            </View>
+
             <TouchableOpacity 
               style={styles.actionBtn}
               onPress={() => Alert.alert('Recarga Pix', 'QR Code de recarga gerado com sucesso.')}
@@ -307,11 +474,11 @@ export default function App() {
 
         {tab === 'ponto' && (
           <View style={styles.card}>
-            <Text style={styles.cardTitle}>Ponto Eletrônico Mobile</Text>
-            <Text style={styles.cardSub}>Geolocalização ativada para registro de escala e jornada.</Text>
+            <Text style={styles.cardTitle}>Ponto Eletrônico Mobile (Offline / Online)</Text>
+            <Text style={styles.cardSub}>Persistência local com sincronização automática com ViaLivre Gestão.</Text>
             <TouchableOpacity 
               style={[styles.actionBtn, { backgroundColor: '#10b981' }]}
-              onPress={() => Alert.alert('Ponto Registrado', 'Entrada registrada com sucesso via GPS.')}
+              onPress={() => Alert.alert('Ponto Registrado', 'Ponto registrado e armazenado offline/online com sucesso.')}
             >
               <Text style={styles.actionBtnText}>REGISTRAR PONTO AGORA</Text>
             </TouchableOpacity>
@@ -337,15 +504,59 @@ const styles = StyleSheet.create({
   content: { flex: 1, padding: 16 },
   sectionTitle: { color: '#facc15', fontSize: 12, fontWeight: '900', textTransform: 'uppercase', marginBottom: 12 },
   card: { backgroundColor: '#1e293b', borderRadius: 16, padding: 16, marginBottom: 12 },
-  cardGold: { backgroundColor: '#ca8a04', borderRadius: 16, padding: 20, marginBottom: 16 },
-  goldTitle: { color: '#fff', fontSize: 14, fontWeight: '900', textTransform: 'uppercase' },
-  goldNumber: { color: '#fef08a', fontSize: 16, fontWeight: '700', marginVertical: 12, letterSpacing: 2 },
-  goldBalance: { color: '#fff', fontSize: 22, fontWeight: '900' },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 6 },
   routeBadge: { backgroundColor: '#facc15', color: '#000', fontSize: 11, fontWeight: '900', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 4 },
   cardTitle: { color: '#fff', fontSize: 14, fontWeight: '700' },
   cardSub: { color: '#94a3b8', fontSize: 12 },
-  actionBtn: { backgroundColor: '#facc15', padding: 14, borderRadius: 12, alignItems: 'center', marginTop: 12 },
+  cardSection: { alignItems: 'center', width: '100%' },
+  flipTabBar: { flexDirection: 'row', backgroundColor: '#1e293b', borderRadius: 12, padding: 3, marginBottom: 14, width: '100%' },
+  flipBtn: { flex: 1, paddingVertical: 8, alignItems: 'center', borderRadius: 10 },
+  flipBtnActive: { backgroundColor: '#facc15' },
+  flipBtnText: { color: '#94a3b8', fontSize: 10, fontWeight: '800', textTransform: 'uppercase' },
+  flipBtnTextActive: { color: '#000' },
+  cardContainer: { width: '100%', borderRadius: 20, padding: 16, minHeight: 220, justifyContent: 'space-between', marginBottom: 16 },
+  cardFront: { backgroundColor: '#eab308' },
+  cardBack: { backgroundColor: '#0f172a', borderWidth: 1, borderColor: '#334155' },
+  cardTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  categoryBadge: { backgroundColor: '#0f172a', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 },
+  categoryBadgeText: { color: '#facc15', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  nfcText: { color: '#000', fontSize: 8, fontWeight: '800' },
+  systemNameText: { color: '#0f172a', fontSize: 18, fontWeight: '900', textTransform: 'uppercase', fontStyle: 'italic', marginTop: 6 },
+  dividerLine: { height: 2, backgroundColor: 'rgba(0,0,0,0.15)', marginVertical: 6, borderRadius: 2 },
+  cardSubRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  locationText: { color: '#1e293b', fontSize: 9, fontWeight: '900', textTransform: 'uppercase' },
+  sloganText: { color: '#334155', fontSize: 8, fontWeight: '700', fontStyle: 'italic', maxWidth: 140, textAlign: 'right' },
+  cardBottomRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 16 },
+  chipMock: { width: 36, height: 26, backgroundColor: '#f59e0b', borderRadius: 4, borderWidth: 1, borderColor: '#b45309', justifyContent: 'center', alignItems: 'center' },
+  chipText: { fontSize: 5, fontWeight: '900', color: '#000' },
+  userLabelText: { fontSize: 7, fontWeight: '800', color: '#334155' },
+  userNameText: { fontSize: 11, fontWeight: '900', color: '#0f172a', textTransform: 'uppercase' },
+  backTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: 'rgba(255,255,255,0.1)', paddingBottom: 6 },
+  companyBadge: { backgroundColor: '#facc15', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6 },
+  companyBadgeText: { color: '#000', fontSize: 10, fontWeight: '900', textTransform: 'uppercase' },
+  authenticBadge: { color: '#94a3b8', fontSize: 8, fontWeight: '800', letterSpacing: 1 },
+  backMiddleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginVertical: 8 },
+  internalCodeLabel: { fontSize: 7, color: '#facc15', fontWeight: '800' },
+  internalCodeVal: { fontSize: 10, color: '#fef08a', fontWeight: '900', letterSpacing: 1 },
+  backUserName: { color: '#fff', fontSize: 12, fontWeight: '900', textTransform: 'uppercase', marginTop: 2 },
+  backCardNumber: { color: '#fff', fontSize: 11, fontWeight: '800', letterSpacing: 2, marginTop: 2 },
+  legalBox: { flex: 0.9, borderLeftWidth: 1, borderLeftColor: 'rgba(255,255,255,0.1)', paddingLeft: 6 },
+  legalNotice: { color: '#94a3b8', fontSize: 6.5, fontStyle: 'italic', textAlign: 'right' },
+  backQrRow: { flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 6 },
+  qrPlaceholder: { width: 38, height: 38, backgroundColor: '#fff', borderRadius: 6, justifyContent: 'center', alignItems: 'center' },
+  qrText: { color: '#000', fontSize: 10, fontWeight: '900' },
+  servicesTitle: { color: '#facc15', fontSize: 8, fontWeight: '900' },
+  servicesLine: { color: '#cbd5e1', fontSize: 6.5, fontWeight: '600', marginTop: 1 },
+  servicesWeb: { color: '#38bdf8', fontSize: 6.5, fontWeight: '700', marginTop: 1 },
+  sacFooter: { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.1)', paddingTop: 4, marginTop: 6 },
+  sacNameText: { color: '#e2e8f0', fontSize: 6.5, fontWeight: '700' },
+  sacPhoneText: { color: '#facc15', fontSize: 6.5, fontWeight: '800' },
+  sacHoursText: { color: '#94a3b8', fontSize: 6.5 },
+  balanceCard: { backgroundColor: '#1e293b', borderRadius: 16, padding: 16, width: '100%', marginBottom: 12 },
+  balanceLabel: { color: '#94a3b8', fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  balanceValue: { color: '#facc15', fontSize: 24, fontWeight: '900', marginTop: 2 },
+  balanceCardNumber: { color: '#64748b', fontSize: 10, fontFamily: 'monospace', marginTop: 2 },
+  actionBtn: { backgroundColor: '#facc15', padding: 14, borderRadius: 12, alignItems: 'center', width: '100%' },
   actionBtnText: { color: '#000', fontSize: 12, fontWeight: '900', textTransform: 'uppercase' }
 });
 `, [activeSystemId]);
@@ -803,14 +1014,49 @@ const styles = StyleSheet.create({
                     )}
 
                     {selectedMobileView === 'card' && (
-                      <div className="space-y-3">
-                        <div className="p-3 rounded-xl bg-gradient-to-br from-amber-500 to-yellow-600 text-slate-950 shadow-md">
-                          <span className="text-[9px] font-black uppercase tracking-wider">Cartão Vale Transporte</span>
-                          <p className="text-sm font-black mt-2">R$ 54,00</p>
-                          <p className="text-[8px] font-mono mt-1 opacity-80">VL-8829-4401</p>
+                      <div className="space-y-3 flex flex-col items-center w-full">
+                        {companies.length > 1 && (
+                          <div className="w-full">
+                            <label className="text-[9px] font-black text-yellow-400 uppercase tracking-wider block mb-1">
+                              Empresa Concessionária (Multi-tenant):
+                            </label>
+                            <select 
+                              className="w-full px-3 py-2 bg-slate-800 text-white rounded-xl text-xs font-bold border border-slate-700 outline-none focus:ring-1 ring-yellow-400"
+                              value={selectedPreviewCompanyId || companies[0]?.id || ''}
+                              onChange={e => setSelectedPreviewCompanyId(e.target.value)}
+                            >
+                              {companies.map(c => (
+                                <option key={c.id} value={c.id}>
+                                  {c.name} {c.nome_fantasia ? `(${c.nome_fantasia})` : ''}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                        <div className="w-full flex justify-center overflow-hidden py-1">
+                          <TransportCard
+                            scale={0.52}
+                            settings={systemSettings}
+                            company={companies.find(c => c.id === selectedPreviewCompanyId) || companies[0] || { name: 'Vialivre' }}
+                            name={currentUser?.name || "MARIA EDUARDA SILVA"}
+                            cardNumber="1084920158"
+                            internalCode="VT89K2A1"
+                            category="VALE TRANSPORTE"
+                            city="Campinas"
+                            state="SP"
+                            viewMode="front"
+                            interactiveFlip={true}
+                          />
                         </div>
-                        <button className="w-full py-2 bg-yellow-400 text-slate-950 rounded-xl font-black text-[10px] uppercase shadow">
-                          Recarregar com PIX
+                        <div className="w-full p-2.5 rounded-xl bg-slate-800/80 border border-slate-700 flex justify-between items-center text-white">
+                          <div>
+                            <span className="text-[8px] uppercase text-slate-400 font-bold block">Saldo Disponível</span>
+                            <span className="text-sm font-black text-yellow-400">R$ 54,00</span>
+                          </div>
+                          <span className="text-[9px] font-mono text-slate-300">Nº 1084920158</span>
+                        </div>
+                        <button className="w-full py-2 bg-yellow-400 text-slate-950 rounded-xl font-black text-[10px] uppercase shadow active:scale-95 transition-all">
+                          Recarregar Cartão com PIX
                         </button>
                       </div>
                     )}
