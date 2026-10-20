@@ -22,7 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import { db } from '../services/database';
+import { db, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/database';
 
 interface MobileSyncModalProps {
   isOpen: boolean;
@@ -62,9 +62,9 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
       appName: 'ViaLivre Gestão & Mobile Gateway',
       mobileAppTarget: 'ViaLivre Mobile',
       version: '1.5.0',
-      supabaseUrl: 'https://xyzapbchpquycfcqxioz.supabase.co',
-      supabaseAnonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emFwYmNocHF1eWNmY3F4aW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NTI2MzcsImV4cCI6MjEwNzQyODYzN30.b3cEUOfR9ZTEF7Y3r1cLnIfvGE8kxvmVnm8p69jiSnI',
-      systemId: systemId || 'sys-vialivre-default',
+      supabaseUrl: SUPABASE_URL,
+      supabaseAnonKey: SUPABASE_ANON_KEY,
+      systemId: systemId || '44d472ca-9311-45e1-9297-c442e016e1a6',
       apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
       realtimeChannels: [],
       publicPassengerTables: [],
@@ -457,7 +457,7 @@ EXPO_PUBLIC_SYSTEM_ID=${activeSystemId}`}
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Provedor de Nuvem:</span>
                   <span className="text-xs font-mono text-slate-900 dark:text-white">
-                    xyzapbchpquycfcqxioz.supabase.co
+                    {SUPABASE_URL.replace('https://', '')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

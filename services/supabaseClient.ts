@@ -6,17 +6,17 @@
 import { createClient } from '@supabase/supabase-js';
 
 export function getCleanSupabaseConfig() {
-  const defaultUrl = 'https://xyzapbchpquycfcqxioz.supabase.co';
+  const defaultUrl = 'https://kkvmtqthahbcobsqmugl.supabase.co';
   const defaultKey =
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emFwYmNocHF1eWNmY3F4aW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NTI2MzcsImV4cCI6MjEwNzQyODYzN30.b3cEUOfR9ZTEF7Y3r1cLnIfvGE8kxvmVnm8p69jiSnI';
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtrdm10cXRoYWhiY29ic3FtdWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MDM0MDUsImV4cCI6MjA4NDI3OTQwNX0.cYc8Qx8bpZFoxZ6RR-kgrE12l-4wDQx2MGcWBPvd24g';
 
   let rawUrl =
     (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_SUPABASE_URL) ||
     (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_URL) ||
     defaultUrl;
 
-  // Ignore previous obsolete database URL if present in container env
-  if (typeof rawUrl === 'string' && rawUrl.includes('kkvmtqthahbcobsqmugl')) {
+  // Ignore broken database URL if present (xyzapbchpquycfcqxioz has infinite recursion error 42P17)
+  if (typeof rawUrl === 'string' && rawUrl.includes('xyzapbchpquycfcqxioz')) {
     rawUrl = defaultUrl;
   }
 
@@ -40,11 +40,10 @@ export function getCleanSupabaseConfig() {
     (typeof process !== 'undefined' && process.env?.VITE_SUPABASE_ANON_KEY) ||
     defaultKey;
 
-  // Ignore previous obsolete key from old project if present in container env
+  // Ignore broken key from old project if present
   if (
     typeof rawKey === 'string' &&
-    (rawKey.includes('kkvmtqthahbcobsqmugl') ||
-      rawKey.includes('cYc8Qx8bpZFoxZ6RR-kgrE12l-4wDQx2MGcWBPvd24g'))
+    rawKey.includes('b3cEUOfR9ZTEF7Y3r1cLnIfvGE8kxvmVnm8p69jiSnI')
   ) {
     rawKey = defaultKey;
   }

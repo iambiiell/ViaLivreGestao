@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database, CreditCard, Building2, Globe, Phone, Clock, Image as ImageIcon, QrCode as QrCodeIcon, Sparkles, ExternalLink } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database, CreditCard, Building2, Globe, Phone, Clock, Image as ImageIcon, QrCode as QrCodeIcon, Sparkles, ExternalLink, UploadCloud, RotateCcw, Palette, Check } from 'lucide-react';
 import { PayrollRubric, RoleConfig, ViewState, SystemSettings, User, Company, VtCardCompanySettings, ImpCard } from '../types';
 import { db, supabase } from '../services/database';
 import { VIEW_LABELS } from '../constants';
@@ -52,6 +52,8 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
   const [selectedVtCompanyId, setSelectedVtCompanyId] = useState<string>('');
   const [vtForm, setVtForm] = useState<VtCardCompanySettings>({
     system_name: '',
+    system_name_size: 'medium',
+    system_name_font_size: 24,
     slogan: '',
     display_website: '',
     sac_name: '',
@@ -59,7 +61,24 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
     sac_hours: '',
     front_background_url: '',
     back_background_url: '',
-    qr_code_destination: ''
+    qr_code_destination: '',
+    color_category: '',
+    color_system_name: '',
+    color_slogan: '',
+    color_city_state: '',
+    color_user_name: '',
+    color_user_label: '',
+    color_nfc: '',
+    color_operator_label: '',
+    color_internal_code: '',
+    color_card_number: '',
+    color_user_name_back: '',
+    color_legal_notice: '',
+    color_info_service: '',
+    color_display_website: '',
+    color_sac_name: '',
+    color_sac_phone: '',
+    color_sac_hours: ''
   });
   const [isSavingVt, setIsSavingVt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +87,54 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
   const [isRoleModalOpen, setIsRoleModalOpen] = useState(false);
   const [editingRubric, setEditingRubric] = useState<Partial<PayrollRubric> | null>(null);
   const [editingRole, setEditingRole] = useState<Partial<RoleConfig> | null>(null);
+
+  // Estados de Drag & Drop para imagens de fundo do cartão
+  const [isDraggingFront, setIsDraggingFront] = useState(false);
+  const [isDraggingBack, setIsDraggingBack] = useState(false);
+  const frontFileInputRef = useRef<HTMLInputElement | null>(null);
+  const backFileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Helper para processamento otimizado de imagens locais do cartão (1011px x 638px)
+  const processCardBackgroundImage = useCallback((file: File, callback: (dataUrl: string) => void) => {
+    if (!file.type.startsWith('image/')) {
+      addToast('Por favor, selecione um arquivo de imagem válido (PNG, JPG, WebP).', 'warning');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const rawResult = e.target?.result as string;
+      if (!rawResult) return;
+      
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          canvas.width = 1011;
+          canvas.height = 638;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            const scale = Math.max(canvas.width / img.width, canvas.height / img.height);
+            const x = (canvas.width - img.width * scale) / 2;
+            const y = (canvas.height - img.height * scale) / 2;
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
+            const optimized = canvas.toDataURL('image/jpeg', 0.88);
+            callback(optimized);
+          } else {
+            callback(rawResult);
+          }
+        } catch {
+          callback(rawResult);
+        }
+      };
+      img.onerror = () => {
+        callback(rawResult);
+      };
+      img.src = rawResult;
+    };
+    reader.readAsDataURL(file);
+  }, [addToast]);
 
   const { isOpen: isConfirmOpen, options: confirmOptions, confirm, handleClose: handleConfirmClose } = useConfirmDialog();
 
@@ -122,6 +189,8 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
     const compSettings = selectedVtCompanyId && settings?.vt_card_settings ? settings.vt_card_settings[selectedVtCompanyId] : undefined;
     setVtForm({
       system_name: compSettings?.system_name || (comp?.name ? `S.B.U. ${comp.name}` : settings?.vt_system_name || 'S.B.U. IntegraVias'),
+      system_name_size: compSettings?.system_name_size || settings?.vt_system_name_size || 'medium',
+      system_name_font_size: compSettings?.system_name_font_size || (settings as any)?.vt_system_name_font_size || 24,
       slogan: compSettings?.slogan || settings?.vt_slogan || 'Movendo pessoas, conectando cidades!',
       display_website: compSettings?.display_website || settings?.vt_display_website || 'vialivregestao.netlify.app',
       sac_name: compSettings?.sac_name || settings?.vt_sac_name || 'SAC Central do Usuário',
@@ -129,7 +198,24 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
       sac_hours: compSettings?.sac_hours || settings?.vt_sac_hours || 'Segunda a Sexta, das 06:00 às 22:00',
       front_background_url: compSettings?.front_background_url || settings?.vt_front_bg_url || '',
       back_background_url: compSettings?.back_background_url || settings?.vt_back_bg_url || '',
-      qr_code_destination: compSettings?.qr_code_destination || settings?.vt_qr_code_url || 'https://vialivregestao.netlify.app'
+      qr_code_destination: compSettings?.qr_code_destination || settings?.vt_qr_code_url || 'https://vialivregestao.netlify.app',
+      color_category: compSettings?.color_category || (settings as any)?.vt_color_category || '',
+      color_system_name: compSettings?.color_system_name || (settings as any)?.vt_color_system_name || '',
+      color_slogan: compSettings?.color_slogan || (settings as any)?.vt_color_slogan || '',
+      color_city_state: compSettings?.color_city_state || (settings as any)?.vt_color_city_state || '',
+      color_user_name: compSettings?.color_user_name || (settings as any)?.vt_color_user_name || '',
+      color_user_label: compSettings?.color_user_label || (settings as any)?.vt_color_user_label || '',
+      color_nfc: compSettings?.color_nfc || (settings as any)?.vt_color_nfc || '',
+      color_operator_label: compSettings?.color_operator_label || (settings as any)?.vt_color_operator_label || '',
+      color_internal_code: compSettings?.color_internal_code || (settings as any)?.vt_color_internal_code || '',
+      color_card_number: compSettings?.color_card_number || (settings as any)?.vt_color_card_number || '',
+      color_user_name_back: compSettings?.color_user_name_back || (settings as any)?.vt_color_user_name_back || '',
+      color_legal_notice: compSettings?.color_legal_notice || (settings as any)?.vt_color_legal_notice || '',
+      color_info_service: compSettings?.color_info_service || (settings as any)?.vt_color_info_service || '',
+      color_display_website: compSettings?.color_display_website || (settings as any)?.vt_color_display_website || '',
+      color_sac_name: compSettings?.color_sac_name || (settings as any)?.vt_color_sac_name || '',
+      color_sac_phone: compSettings?.color_sac_phone || (settings as any)?.vt_color_sac_phone || '',
+      color_sac_hours: compSettings?.color_sac_hours || (settings as any)?.vt_color_sac_hours || ''
     });
   }, [selectedVtCompanyId, settings, companies]);
 
@@ -146,6 +232,8 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         ...(settings || { id: 'default', registration_pattern: 'FLX-000' }),
         vt_card_settings: updatedCardSettings,
         vt_system_name: vtForm.system_name,
+        vt_system_name_size: vtForm.system_name_size,
+        vt_system_name_font_size: vtForm.system_name_font_size || 24,
         vt_slogan: vtForm.slogan,
         vt_display_website: vtForm.display_website,
         vt_sac_name: vtForm.sac_name,
@@ -156,11 +244,11 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         vt_qr_code_url: vtForm.qr_code_destination
       };
 
-      if (settings?.id && settings.id !== 'default') {
+      if (settings?.id && typeof settings.id === 'number') {
         await db.update('system_settings', updatedSettings);
       } else {
         const existing = await db.fetchAll<SystemSettings>('system_settings');
-        if (existing && existing.length > 0) {
+        if (existing && existing.length > 0 && typeof existing[0].id === 'number') {
           await db.update('system_settings', { ...existing[0], ...updatedSettings });
         } else {
           await db.create('system_settings', updatedSettings);
@@ -527,9 +615,34 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
 
                 <div className="space-y-4">
                   <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
-                      Nome do Sistema no Cartão (Frente) *
-                    </label>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5 ml-2">
+                      <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400">
+                        Nome do Sistema no Cartão (Frente) *
+                      </label>
+                      
+                      {/* Opção de Tamanho do Texto */}
+                      <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200/60 dark:border-zinc-700/60">
+                        <span className="text-[9px] font-black uppercase text-slate-400 px-1.5">Tamanho:</span>
+                        {(['small', 'medium', 'large'] as const).map(size => {
+                          const isSelected = (vtForm.system_name_size || 'medium') === size;
+                          const labels = { small: 'Pequeno', medium: 'Médio', large: 'Grande' };
+                          return (
+                            <button
+                              key={size}
+                              type="button"
+                              onClick={() => setVtForm({ ...vtForm, system_name_size: size })}
+                              className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
+                                isSelected
+                                  ? 'bg-yellow-400 text-slate-950 shadow-xs scale-100'
+                                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                              }`}
+                            >
+                              {labels[size]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <input
                       type="text"
                       placeholder="Ex: S.B.U. IntegraVias"
@@ -537,21 +650,30 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                       onChange={e => setVtForm({ ...vtForm, system_name: e.target.value })}
                       className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
                     />
-                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Exibido em destaque na frente do cartão logo abaixo do tipo de cadastro.</p>
+                    <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5 ml-2 text-[9px] text-slate-400">
+                      <span>Exibido em destaque na frente do cartão logo abaixo do tipo de cadastro.</span>
+                      {(vtForm.system_name_size === 'large' || (vtForm.system_name && vtForm.system_name.length > 18)) && (
+                        <span className="text-yellow-600 dark:text-yellow-400 font-bold flex items-center gap-1">
+                          ✨ Quebra de texto automática ativada para tamanho grande.
+                        </span>
+                      )}
+                    </div>
                   </div>
 
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
                       Lema / Slogan do Cartão (Frente) *
                     </label>
-                    <input
-                      type="text"
+                    <textarea
+                      rows={2}
                       placeholder="Ex: Movendo pessoas, conectando cidades!"
                       value={vtForm.slogan || ''}
                       onChange={e => setVtForm({ ...vtForm, slogan: e.target.value })}
-                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      className="w-full px-5 py-3.5 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white resize-none"
                     />
-                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Exibido alinhado à direita na frente do cartão.</p>
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">
+                      Exibido alinhado à borda direita da frente do cartão com quebra automática de texto em múltiplas linhas.
+                    </p>
                   </div>
 
                   <div>

@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
-import { db } from '../services/database';
+import { db, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/database';
 import TransportCard from './TransportCard';
 import { SystemSettings, Company } from '../types';
 
@@ -203,8 +203,8 @@ import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, Sta
 import { createClient } from '@supabase/supabase-js';
 
 // Conexão direta com a base do ViaLivre Gestão
-const SUPABASE_URL = 'https://xyzapbchpquycfcqxioz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh5emFwYmNocHF1eWNmY3F4aW96Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTE4NTI2MzcsImV4cCI6MjEwNzQyODYzN30.b3cEUOfR9ZTEF7Y3r1cLnIfvGE8kxvmVnm8p69jiSnI';
+const SUPABASE_URL = '${SUPABASE_URL}';
+const SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';
 const SYSTEM_ID = '${activeSystemId}';
 
 export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);

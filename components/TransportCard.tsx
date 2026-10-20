@@ -71,6 +71,8 @@ export const TransportCard: React.FC<TransportCardProps> = ({
   // Resolução dos dados institucionais
   const companyName = company?.name || company?.nome_fantasia || card?.company_name || 'Vialivre';
   const systemName = companyVtSettings?.system_name || settings?.vt_system_name || `S.B.U. ${companyName}`;
+  const systemNameSize = companyVtSettings?.system_name_size || settings?.vt_system_name_size || 'medium';
+  const systemNameFontSize = companyVtSettings?.system_name_font_size || (settings as any)?.vt_system_name_font_size;
   const slogan = companyVtSettings?.slogan || settings?.vt_slogan || 'Movendo pessoas, conectando cidades!';
   const displayWebsite = companyVtSettings?.display_website || settings?.vt_display_website || 'vialivregestao.netlify.app';
   const sacName = companyVtSettings?.sac_name || settings?.vt_sac_name || 'SAC Central do Usuário';
@@ -80,7 +82,47 @@ export const TransportCard: React.FC<TransportCardProps> = ({
   const backBgUrl = companyVtSettings?.back_background_url || settings?.vt_back_bg_url || '';
   const qrCodeDestination = companyVtSettings?.qr_code_destination || settings?.vt_qr_code_url || (displayWebsite.startsWith('http') ? displayWebsite : `https://${displayWebsite}`);
 
-  // Dados do usuário / cartão
+  // Resolução das cores personalizadas do cartão
+  const colorCategory = companyVtSettings?.color_category || (settings as any)?.vt_color_category;
+  const colorSystemName = companyVtSettings?.color_system_name || (settings as any)?.vt_color_system_name;
+  const colorSlogan = companyVtSettings?.color_slogan || (settings as any)?.vt_color_slogan;
+  const colorCityState = companyVtSettings?.color_city_state || (settings as any)?.vt_color_city_state;
+  const colorUserName = companyVtSettings?.color_user_name || (settings as any)?.vt_color_user_name;
+  const colorUserLabel = companyVtSettings?.color_user_label || (settings as any)?.vt_color_user_label;
+  const colorNfc = companyVtSettings?.color_nfc || (settings as any)?.vt_color_nfc;
+
+  const colorOperatorLabel = companyVtSettings?.color_operator_label || (settings as any)?.vt_color_operator_label;
+  const colorInternalCode = companyVtSettings?.color_internal_code || (settings as any)?.vt_color_internal_code;
+  const colorCardNumber = companyVtSettings?.color_card_number || (settings as any)?.vt_color_card_number;
+  const colorUserNameBack = companyVtSettings?.color_user_name_back || (settings as any)?.vt_color_user_name_back;
+  const colorLegalNotice = companyVtSettings?.color_legal_notice || (settings as any)?.vt_color_legal_notice;
+  const colorInfoService = companyVtSettings?.color_info_service || (settings as any)?.vt_color_info_service;
+  const colorDisplayWebsite = companyVtSettings?.color_display_website || (settings as any)?.vt_color_display_website;
+  const colorSacName = companyVtSettings?.color_sac_name || (settings as any)?.vt_color_sac_name;
+  const colorSacPhone = companyVtSettings?.color_sac_phone || (settings as any)?.vt_color_sac_phone;
+  const colorSacHours = companyVtSettings?.color_sac_hours || (settings as any)?.vt_color_sac_hours;
+
+  // Resolução do tamanho de fonte exato em pixels para o Nome do Sistema (ex: 12px, 20px, 30px)
+  const resolvedFontSize = useMemo(() => {
+    if (systemNameFontSize !== undefined && systemNameFontSize !== null && systemNameFontSize !== '') {
+      const parsed = typeof systemNameFontSize === 'string' 
+        ? parseInt(systemNameFontSize.replace(/\D/g, ''), 10) 
+        : Number(systemNameFontSize);
+      if (!isNaN(parsed) && parsed >= 8 && parsed <= 72) {
+        return parsed;
+      }
+    }
+    // Fallback retrocompatível para legacy small/medium/large
+    switch (systemNameSize) {
+      case 'small':
+        return 18;
+      case 'large':
+        return 30;
+      case 'medium':
+      default:
+        return 24;
+    }
+  }, [systemNameFontSize, systemNameSize]);
   const fullName = useMemo(() => {
     if (propName) return propName.toUpperCase();
     if (card?.name) {
@@ -152,35 +194,60 @@ export const TransportCard: React.FC<TransportCardProps> = ({
       {/* PARTE SUPERIOR: Tipo de cadastro correspondente */}
       <div className="relative z-10">
         <div className="flex items-center justify-between">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-950 text-yellow-400 font-black text-[11px] uppercase tracking-[0.2em] shadow-md border border-yellow-400/30">
-            <Sparkles size={12} className="text-yellow-400" />
+          <div 
+            className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-950 text-yellow-400 font-black text-[11px] uppercase tracking-[0.2em] shadow-md border border-yellow-400/30"
+            style={{ 
+              color: colorCategory || undefined,
+              borderColor: colorCategory ? `${colorCategory}55` : undefined
+            }}
+          >
+            <Sparkles size={12} style={{ color: colorCategory || undefined }} />
             <span>{userCategory}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Wifi size={22} className="text-slate-950 dark:text-white rotate-90 opacity-90 drop-shadow" />
+          <div className="flex items-center gap-2" style={{ color: colorNfc || undefined }}>
+            <Wifi size={22} className="rotate-90 opacity-90 drop-shadow" style={{ color: colorNfc || undefined }} />
             <span className="text-[9px] font-black uppercase tracking-widest opacity-80">NFC / CONTACTLESS</span>
           </div>
         </div>
 
-        {/* ABAIXO: Nome personalizado do sistema configurado pelo administrador */}
-        <h1 className="text-2xl md:text-[26px] font-black uppercase tracking-tight italic mt-2 drop-shadow-sm leading-tight text-slate-950 dark:text-white">
+        {/* ABAIXO: Nome personalizado do sistema configurado pelo administrador com tamanho em px e quebra automática */}
+        <h1 
+          style={{ 
+            fontSize: `${resolvedFontSize}px`, 
+            lineHeight: 1.15,
+            color: colorSystemName || undefined
+          }}
+          className="font-black uppercase tracking-tight italic mt-2 drop-shadow-sm text-slate-950 dark:text-white break-words whitespace-normal max-w-[460px]"
+        >
           {systemName}
         </h1>
 
         {/* LINHA DIVISÓRIA */}
         <div className="w-full h-1 bg-slate-950/20 dark:bg-white/30 my-2 rounded-full" />
 
-        {/* LOGO ABAIXO DA LINHA: Município e Estado de cadastro do usuário */}
-        <div className="flex items-center justify-between">
-          <p className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-zinc-100 flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full bg-slate-950 dark:bg-yellow-400 inline-block" />
+        {/* LOGO ABAIXO DA LINHA: Município e Estado de cadastro do usuário + Lema com quebra de texto alinhado à borda direita */}
+        <div className="flex items-start justify-between gap-3">
+          <p 
+            style={{ color: colorCityState || undefined }}
+            className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-zinc-100 flex items-center gap-1 shrink-0 pt-0.5"
+          >
+            <span 
+              className="w-2 h-2 rounded-full inline-block" 
+              style={{ backgroundColor: colorCityState || '#0f172a' }}
+            />
             {userCity} - {userState}
           </p>
 
-          {/* LADO DIREITO: Lema personalizado */}
-          <p className="text-[10px] font-bold uppercase tracking-wider text-right italic text-slate-800 dark:text-zinc-200 max-w-[240px] truncate" title={slogan}>
-            "{slogan}"
-          </p>
+          {/* LADO DIREITO: Lema personalizado alinhado à borda direita com quebra automática de texto */}
+          <div className="flex-1 flex justify-end text-right">
+            <p 
+              style={{ color: colorSlogan || undefined }}
+              className="text-[10px] font-bold uppercase tracking-wider text-right italic text-slate-800 dark:text-zinc-200 max-w-[260px] break-words whitespace-pre-line leading-tight" 
+              title={slogan}
+            >
+              "{slogan}"
+            </p>
+          </div>
         </div>
       </div>
 
@@ -205,8 +272,16 @@ export const TransportCard: React.FC<TransportCardProps> = ({
         {/* Foto do Usuário / Avatar */}
         <div className="flex items-center gap-3">
           <div className="text-right">
-            <p className="text-[9px] font-bold text-slate-800 dark:text-zinc-200 uppercase">Titular do Benefício</p>
-            <p className="text-xs font-black uppercase tracking-tight text-slate-950 dark:text-white max-w-[200px] truncate">
+            <p 
+              style={{ color: colorUserLabel || undefined }}
+              className="text-[9px] font-bold text-slate-800 dark:text-zinc-200 uppercase"
+            >
+              Titular do Benefício
+            </p>
+            <p 
+              style={{ color: colorUserName || undefined }}
+              className="text-xs font-black uppercase tracking-tight text-slate-950 dark:text-white max-w-[200px] truncate"
+            >
               {fullName}
             </p>
           </div>
@@ -269,7 +344,10 @@ export const TransportCard: React.FC<TransportCardProps> = ({
               <span>{companyName}</span>
             </div>
           )}
-          <span className="text-[10px] font-black uppercase text-yellow-400 tracking-wider">
+          <span 
+            style={{ color: colorOperatorLabel || undefined }}
+            className="text-[10px] font-black uppercase text-yellow-400 tracking-wider"
+          >
             Operadora & Concessionária
           </span>
         </div>
@@ -286,20 +364,29 @@ export const TransportCard: React.FC<TransportCardProps> = ({
           {/* Acima do nome: código interno gerado automaticamente (8 caracteres alfanuméricos) */}
           <div className="flex items-center gap-2">
             <span className="text-[8px] font-bold text-yellow-400 uppercase tracking-widest">CÓDIGO INTERNO:</span>
-            <span className="text-xs font-mono font-black text-yellow-300 px-2 py-0.5 rounded bg-yellow-400/15 border border-yellow-400/30">
+            <span 
+              style={{ color: colorInternalCode || undefined }}
+              className="text-xs font-mono font-black text-yellow-300 px-2 py-0.5 rounded bg-yellow-400/15 border border-yellow-400/30"
+            >
               {internalCode}
             </span>
           </div>
 
           {/* Logo após o código interno: Nome Completo do usuário */}
-          <p className="text-sm font-black uppercase text-white tracking-tight leading-tight pt-1">
+          <p 
+            style={{ color: colorUserNameBack || undefined }}
+            className="text-sm font-black uppercase text-white tracking-tight leading-tight pt-1 break-words"
+          >
             {fullName}
           </p>
 
           {/* Abaixo do nome: número de identificação composto por 10 algarismos */}
           <div className="flex items-center gap-1.5 pt-0.5">
             <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider">Nº DO CARTÃO:</span>
-            <span className="text-[13px] font-mono font-black tracking-[0.18em] text-white">
+            <span 
+              style={{ color: colorCardNumber || undefined }}
+              className="text-[13px] font-mono font-black tracking-[0.18em] text-white"
+            >
               {cleanCardNumber}
             </span>
           </div>
@@ -307,7 +394,10 @@ export const TransportCard: React.FC<TransportCardProps> = ({
 
         {/* Alinhado à direita: Aviso legal */}
         <div className="col-span-5 text-right pl-2 border-l border-white/15">
-          <p className="text-[7.5px] leading-tight font-bold text-slate-300 uppercase italic">
+          <p 
+            style={{ color: colorLegalNotice || undefined }}
+            className="text-[7.5px] leading-tight font-bold text-slate-300 uppercase italic break-words whitespace-normal"
+          >
             "ESTE CARTÃO É DE USO PESSOAL E INTRANSFERÍVEL. Em caso de perda, roubo, furto ou extravio, solicite imediatamente o bloqueio do cartão."
           </p>
         </div>
@@ -327,7 +417,10 @@ export const TransportCard: React.FC<TransportCardProps> = ({
 
           {/* Informações e Serviços */}
           <div className="space-y-0.5 text-left">
-            <p className="text-[9px] font-black text-yellow-400 uppercase tracking-wider">
+            <p 
+              style={{ color: colorInfoService || undefined }}
+              className="text-[9px] font-black text-yellow-400 uppercase tracking-wider"
+            >
               INFORMAÇÕES E SERVIÇOS
             </p>
             <p className="text-[8px] font-bold text-slate-300 flex items-center gap-1">
@@ -336,17 +429,38 @@ export const TransportCard: React.FC<TransportCardProps> = ({
             </p>
             <p className="text-[8px] font-bold text-slate-300 flex items-center gap-1">
               <Globe size={10} className="text-cyan-400 shrink-0" />
-              <span className="font-mono text-cyan-300">{displayWebsite}</span>
+              <span 
+                style={{ color: colorDisplayWebsite || undefined }}
+                className="font-mono text-cyan-300 break-all"
+              >
+                {displayWebsite}
+              </span>
             </p>
           </div>
         </div>
       </div>
 
-      {/* 4. RODAPÉ DO VERSO: Dados customizados do SAC (Nome, Telefone, Horários) */}
-      <div className="relative z-10 pt-1.5 mt-1 border-t border-white/10 flex items-center justify-between text-[7.5px] font-bold text-slate-400">
-        <span className="text-slate-200 uppercase">{sacName}</span>
-        <span className="text-yellow-300">{sacPhone}</span>
-        <span className="text-slate-300 truncate max-w-[180px]">{sacHours}</span>
+      {/* 4. RODAPÉ DO VERSO: Dados customizados do SAC (Nome, Telefone, Horários) com quebra de linha automática */}
+      <div className="relative z-10 pt-1.5 mt-1 border-t border-white/10 grid grid-cols-12 gap-1.5 text-[7.5px] font-bold text-slate-400 items-start">
+        <span 
+          style={{ color: colorSacName || undefined }}
+          className="col-span-4 text-slate-200 uppercase break-words leading-tight"
+        >
+          {sacName}
+        </span>
+        <span 
+          style={{ color: colorSacPhone || undefined }}
+          className="col-span-3 text-yellow-300 font-mono break-words leading-tight"
+        >
+          {sacPhone}
+        </span>
+        <span 
+          style={{ color: colorSacHours || undefined }}
+          className="col-span-5 text-right text-slate-300 break-words whitespace-normal leading-tight" 
+          title={sacHours}
+        >
+          {sacHours}
+        </span>
       </div>
     </div>
   );

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { addMonths } from 'date-fns';
-import { User, ThemeMode, UserRole, SystemSettings } from '../types';
+import { User, ThemeMode, UserRole, SystemSettings, ActivationKey } from '../types';
 import { 
   BusFront, 
   KeyRound, 
@@ -173,6 +173,18 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
             is_full_admin: isMaster || userProfile.is_full_admin || userProfile.activation_key?.includes('VITALICIO') || false
         };
 
+        // Identificação do Administrador Raiz: busca o system_id associado ao administrador raiz na tabela users
+        try {
+          const rootSystemId = await db.fetchRootAdminSystemId(updatedUser);
+          updatedUser.system_id = rootSystemId;
+          db.setSystemId(rootSystemId);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('vialivre_system_id', rootSystemId);
+          }
+        } catch (authSysErr) {
+          console.error('[AUTH_LOGIN] Erro ao identificar system_id do Administrador Raiz no Supabase:', authSysErr);
+        }
+
         // If biometric is supported but not yet registered for this user, offer quick registration
         if (isBiometricsSupported && !webAuthnService.hasBiometricsForUser(updatedUser.id)) {
           setPromptBiometricRegisterForUser(updatedUser);
@@ -182,10 +194,10 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
 
         triggerHaptic('success');
         onLogin(updatedUser);
-    } catch (e) {
-        console.error(e);
+    } catch (e: any) {
+        console.error('[AUTH_LOGIN_ERROR] Erro durante o login do usuário:', e);
         triggerHaptic('warning');
-        setErrorModal("Erro ao acessar servidor.");
+        setErrorModal(e?.message || "Erro ao acessar servidor.");
     } finally {
         setIsLoading(false);
     }
@@ -193,23 +205,34 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
 
   const handleRegister = async (e: React.FormEvent) => {
       e.preventDefault();
-      if (!regName || !regEmail || !regLogin || !regPass || !regUnidade || !regActivationKey) {
+      if (!regName.trim() || !regEmail.trim() || !regLogin.trim() || !regPass.trim() || !regUnidade.trim() || !regActivationKey.trim()) {
           setErrorModal("Preencha todos os campos obrigatórios.");
           return;
       }
 
-      if (!isValidActivationKey(regActivationKey.trim())) {
+      const keyCode = regActivationKey.trim().toUpperCase();
+      if (!isValidActivationKey(keyCode)) {
           setErrorModal(ACTIVATION_KEY_ERROR_MESSAGE);
           return;
       }
 
       setIsLoading(true);
+      setErrorModal(null);
+
       try {
-          const keyCode = regActivationKey.trim().toUpperCase();
           const isMasterKey = keyCode === 'MASTER-2024-TEST-KEY';
 
-          // Validate Activation Key
-          const keys = await db.getAllActivationKeys();
+          // 1. Validação da Chave de Ativação no Supabase
+          let keys: ActivationKey[] = [];
+          try {
+            keys = await db.getAllActivationKeys();
+          } catch (err: any) {
+            console.error('[CADASTRO_ADMIN] Erro ao validar chaves de ativação no Supabase:', err);
+            setErrorModal(`Erro ao consultar chaves no Supabase: ${err?.message || 'Falha de comunicação'}`);
+            setIsLoading(false);
+            return;
+          }
+
           const existingKey = keys.find(k => k.key_code === keyCode);
 
           // Se a chave já foi ativada por outra conta
@@ -228,8 +251,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               plan_type: 'LIFETIME',
               is_used: false,
               duration_type: 'MONTHS',
-              duration_months: 999,
-              system_id: '43e370b2-2c60-cf5f-7886-e111e8213ffb'
+              duration_months: 999
             } as any;
           }
 
@@ -248,11 +270,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               created_at: new Date().toISOString()
             };
             try {
-              await db.create('activation_keys', newKeyRecord);
-            } catch (createErr) {
-              console.warn('Registro de chave no banco:', createErr);
+              const createdKey = await db.create('activation_keys', newKeyRecord);
+              validKey = (createdKey || newKeyRecord) as any;
+            } catch (createErr: any) {
+              console.error('[CADASTRO_ADMIN] Falha ao registrar nova chave no Supabase:', createErr);
+              setErrorModal(`Falha ao registrar chave no Supabase: ${createErr?.message || 'Erro de permissão'}`);
+              setIsLoading(false);
+              return;
             }
-            validKey = newKeyRecord as any;
           }
 
           if (!validKey) {
@@ -261,40 +286,50 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               return;
           }
 
-          const systemId = (validKey.system_id && isValidUUID(validKey.system_id)) ? validKey.system_id : crypto.randomUUID();
+          // Geração de system_id exclusivo do novo Administrador e da Organização
+          const exclusiveSystemId = crypto.randomUUID();
+
           const newUser: Partial<User> = {
-              full_name: regName,
-              name: regName.split(' ')[0],
-              email: regEmail,
-              unidade: regUnidade,
+              full_name: regName.trim(),
+              name: regName.trim().split(' ')[0],
+              email: regEmail.trim(),
+              unidade: regUnidade.trim(),
               login_acesso: regLogin.trim(),
               senha_acesso: regPass,
               role: 'ADMIN',
               is_full_admin: validKey.plan_type === 'LIFETIME' || regEmail === 'consorcio.imperial.ltda@gmail.com',
-              system_id: systemId,
+              system_id: exclusiveSystemId,
               job_title: 'Administrador',
-              activation_key: regActivationKey
+              activation_key: keyCode,
+              status: 'active',
+              active: true
           };
 
-          const data = await db.create('users', newUser);
-          if (data) {
-            // Initialize System Settings
-            await db.create('system_settings', {
-                system_id: systemId,
-                system_name: 'ViaLivre Gestão',
-                company_name: regUnidade,
-                registration_pattern: 'FLX-000'
-            });
+          // 2. Gravação do Administrador na tabela public.users
+          let createdAdmin: User | null = null;
+          try {
+            createdAdmin = (await db.create('users', newUser)) as User;
+          } catch (createUserErr: any) {
+            console.error('[CADASTRO_ADMIN] Erro ao salvar novo Administrador na tabela public.users do Supabase:', createUserErr);
+            setErrorModal(`Erro ao gravar Administrador no Supabase: ${createUserErr?.message || 'Erro de permissão ou campos inválidos'}`);
+            setIsLoading(false);
+            return;
+          }
 
-            // Initialize Main Company
-            await db.create('companies', {
-                system_id: systemId,
-                name: regUnidade,
-                active: true,
-                contact_email: regEmail
-            });
+          if (!createdAdmin) {
+            setErrorModal("Falha ao criar conta de Administrador no Supabase.");
+            setIsLoading(false);
+            return;
+          }
 
-            // Initialize Subscription
+          // 3. Vinculação da Chave de Ativação e Configurações Iniciais da Organização
+          try {
+            db.setSystemId(exclusiveSystemId);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vialivre_system_id', exclusiveSystemId);
+            }
+
+            // Calcula expiração
             let expiresAt = new Date();
             if (validKey.duration_type === 'DAYS' || (validKey.duration_days && validKey.duration_days > 0 && validKey.duration_type !== 'MONTHS')) {
                 const durationDays = Number(validKey.duration_days) || 30;
@@ -307,38 +342,73 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                     expiresAt = addMonths(expiresAt, durationMonths);
                 }
             }
-
             const expiresAtISO = expiresAt.toISOString();
 
-            await db.create('subscriptions', {
-                system_id: systemId,
+            // Atualiza chave de ativação vinculada
+            try {
+              await db.update('activation_keys', {
+                ...validKey,
+                system_id: exclusiveSystemId,
+                is_used: true,
+                activated_at: new Date().toISOString(),
+                expires_at: expiresAtISO,
+                owner_email: regEmail.trim(),
+                company_name: regUnidade.trim(),
+                activated_by_system_id: exclusiveSystemId,
+                activated_by_user_id: createdAdmin.id,
+                activated_by_name: regName.trim()
+              });
+            } catch (keyErr: any) {
+              console.error('[CADASTRO_ADMIN] Erro ao atualizar status na tabela activation_keys:', keyErr);
+            }
+
+            // Inicializa System Settings
+            try {
+              await db.create('system_settings', {
+                system_id: exclusiveSystemId,
+                system_name: 'ViaLivre Gestão',
+                company_name: regUnidade.trim(),
+                registration_pattern: 'FLX-000'
+              });
+            } catch (settingsErr: any) {
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar system_settings no Supabase:', settingsErr);
+            }
+
+            // Inicializa Empresa Principal
+            try {
+              await db.create('companies', {
+                system_id: exclusiveSystemId,
+                name: regUnidade.trim(),
+                active: true,
+                contact_email: regEmail.trim()
+              });
+            } catch (compErr: any) {
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar companies no Supabase:', compErr);
+            }
+
+            // Inicializa Assinatura
+            try {
+              await db.create('subscriptions', {
+                system_id: exclusiveSystemId,
                 plan_type: validKey.plan_type,
                 activated_at: new Date().toISOString(),
                 expires_at: expiresAtISO,
                 status: 'ACTIVE',
                 created_at: new Date().toISOString()
-            });
+              });
+            } catch (subErr: any) {
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar subscriptions no Supabase:', subErr);
+            }
 
-            // Update Activation Key
-            await db.update('activation_keys', {
-                ...validKey,
-                is_used: true,
-                activated_at: new Date().toISOString(),
-                expires_at: expiresAtISO,
-                owner_email: regEmail,
-                company_name: regUnidade,
-                activated_by_system_id: systemId,
-                activated_by_user_id: data.id,
-                activated_by_name: regName
-            });
-
-            db.setSystemId(systemId);
-            onRegister(data as User);
+            triggerHaptic('success');
+            onRegister(createdAdmin);
+          } catch (initErr: any) {
+            console.error('[CADASTRO_ADMIN] Erro durante o provisionamento de dados da organização:', initErr);
+            onRegister(createdAdmin);
           }
-          else throw new Error("Erro ao criar conta.");
       } catch (e: any) {
-          console.error(e);
-          setErrorModal(e.message || "Erro ao criar conta.");
+          console.error('[CADASTRO_ADMIN] Exceção geral durante o cadastro:', e);
+          setErrorModal(e?.message || "Erro ao criar conta.");
       } finally {
           setIsLoading(false);
       }

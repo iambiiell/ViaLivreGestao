@@ -33,25 +33,30 @@ export const AuthProvider = ({ children }) => {
         role: profile?.role || profile?.cargo || 'Colaborador'
       };
 
-      if (userFull.system_id) {
-        db.setSystemId(userFull.system_id);
-      }
+      // Identificação do Administrador Raiz: busca o system_id associado ao administrador raiz na tabela users
+      const rootSystemId = await db.fetchRootAdminSystemId(userFull);
+      userFull.system_id = rootSystemId;
+      db.setSystemId(rootSystemId);
 
       setCurrentUser(userFull);
       setUserRole(userFull.role);
 
-      // Salva no localStorage apenas como backup offline
+      // Salva no localStorage e contexto global para sincronização entre dispositivos
+      localStorage.setItem('vialivre_system_id', rootSystemId);
       localStorage.setItem('@vialivre_user', JSON.stringify(userFull));
-    } catch (err) {
-      console.warn('Erro ao carregar do Supabase. Lendo cache local:', err.message);
-      const cached = localStorage.getItem('@vialivre_user');
+      localStorage.setItem('fluxo_session_user', JSON.stringify(userFull));
+    } catch (err: any) {
+      console.warn('Erro ao carregar do Supabase. Lendo cache local:', err?.message || err);
+      const cached = localStorage.getItem('@vialivre_user') || localStorage.getItem('fluxo_session_user');
       if (cached) {
-        const parsed = JSON.parse(cached);
-        if (parsed.system_id) {
-          db.setSystemId(parsed.system_id);
-        }
-        setCurrentUser(parsed);
-        setUserRole(parsed.role);
+        try {
+          const parsed = JSON.parse(cached);
+          const rootSystemId = parsed.system_id || localStorage.getItem('vialivre_system_id') || '44d472ca-9311-45e1-9297-c442e016e1a6';
+          parsed.system_id = rootSystemId;
+          db.setSystemId(rootSystemId);
+          setCurrentUser(parsed);
+          setUserRole(parsed.role);
+        } catch {}
       }
     } finally {
       setLoading(false);

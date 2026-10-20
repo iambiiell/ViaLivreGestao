@@ -212,6 +212,8 @@ export interface User {
   cnh_limit?: number;
   occurrences?: Occurrence[];
   status?: 'ACTIVE' | 'INACTIVE' | string;
+  active?: boolean;
+  is_active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -682,6 +684,8 @@ export interface SystemSettings {
   maintenance_km_threshold?: number;
   vt_card_settings?: { [companyId: string]: VtCardCompanySettings };
   vt_system_name?: string;
+  vt_system_name_size?: 'small' | 'medium' | 'large';
+  vt_system_name_font_size?: number | string;
   vt_slogan?: string;
   vt_display_website?: string;
   vt_sac_name?: string;
@@ -694,14 +698,36 @@ export interface SystemSettings {
 
 export interface VtCardCompanySettings {
   system_name?: string; // ex: "S.B.U. IntegraVias"
+  system_name_size?: 'small' | 'medium' | 'large'; // legado
+  system_name_font_size?: number | string; // tamanho em px configurável, ex: 12, 20, 24, 30
   slogan?: string; // ex: "Movendo pessoas, conectando cidades!"
   display_website?: string; // ex: "vialivregestao.netlify.app"
   sac_name?: string; // ex: "SAC Central do Usuário"
   sac_phone?: string; // ex: "(11) 4004-0000 / 0800 123 4567"
   sac_hours?: string; // ex: "Segunda a Sexta, das 06:00 às 22:00"
-  front_background_url?: string; // 1011px x 638px
-  back_background_url?: string; // 1011px x 638px
+  front_background_url?: string; // 1011px x 638px (Data URL / base64 ou URL)
+  back_background_url?: string; // 1011px x 638px (Data URL / base64 ou URL)
   qr_code_destination?: string; // ex: "https://vialivregestao.netlify.app"
+  
+  // Cores personalizadas para cada campo de texto do cartão
+  color_category?: string;       // Categoria / Tipo (Frente)
+  color_system_name?: string;    // Nome do Sistema (Frente)
+  color_slogan?: string;         // Lema / Slogan (Frente)
+  color_city_state?: string;     // Município e Estado (Frente)
+  color_user_name?: string;      // Nome do Usuário Titular (Frente)
+  color_user_label?: string;     // Rótulo "Titular do Benefício" (Frente)
+  color_nfc?: string;            // NFC / Contactless (Frente)
+
+  color_operator_label?: string; // Legenda da Operadora (Verso)
+  color_internal_code?: string;  // Código Interno (Verso)
+  color_card_number?: string;    // Número do Cartão (Verso)
+  color_user_name_back?: string; // Nome do Usuário (Verso)
+  color_legal_notice?: string;   // Aviso Legal (Verso)
+  color_info_service?: string;   // Título Informações e Serviços (Verso)
+  color_display_website?: string;// Site no Verso
+  color_sac_name?: string;       // Nome do SAC (Verso)
+  color_sac_phone?: string;      // Telefone do SAC (Verso)
+  color_sac_hours?: string;      // Horários de Atendimento (Verso)
 }
 
 export interface Skin {

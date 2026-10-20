@@ -1346,9 +1346,21 @@ const App: React.FC = () => {
     if (savedUser) {
       try { 
         const u = JSON.parse(savedUser);
-        db.setSystemId(u.system_id || null);
-        setCurrentUser(u);
-        currentUserRef.current = u;
+        db.fetchRootAdminSystemId(u).then(rootSysId => {
+          u.system_id = rootSysId;
+          db.setSystemId(rootSysId);
+          if (typeof window !== 'undefined') {
+            localStorage.setItem('vialivre_system_id', rootSysId);
+          }
+          setCurrentUser(u);
+          currentUserRef.current = u;
+          saveSessionMetadata(u);
+          loadInitialData();
+        }).catch(() => {
+          db.setSystemId(u.system_id || null);
+          setCurrentUser(u);
+          currentUserRef.current = u;
+        });
 
         // Initialize session version and timestamp if not already present
         if (!localStorage.getItem(SESSION_VERSION_KEY)) {
@@ -1587,9 +1599,18 @@ const App: React.FC = () => {
     }
   }, [currentUser]);
 
-  const handleSetUser = (user: User | null) => {
+  const handleSetUser = async (user: User | null) => {
       if (user) {
-          db.setSystemId(user.system_id || null);
+          try {
+            const rootSysId = await db.fetchRootAdminSystemId(user);
+            user.system_id = rootSysId;
+            db.setSystemId(rootSysId);
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('vialivre_system_id', rootSysId);
+            }
+          } catch (e) {
+            db.setSystemId(user.system_id || null);
+          }
           setCurrentUser(user);
           currentUserRef.current = user;
           saveSessionMetadata(user);
