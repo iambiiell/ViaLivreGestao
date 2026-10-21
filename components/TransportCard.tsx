@@ -9,6 +9,7 @@ export interface TransportCardProps {
   settings?: Partial<SystemSettings> | null;
   // Overrides diretos para retrocompatibilidade
   name?: string;
+  abbreviation?: string;
   cardNumber?: string;
   internalCode?: string;
   photoUrl?: string;
@@ -43,6 +44,7 @@ export const TransportCard: React.FC<TransportCardProps> = ({
   company,
   settings,
   name: propName,
+  abbreviation: propAbbreviation,
   cardNumber: propCardNumber,
   internalCode: propInternalCode,
   photoUrl: propPhotoUrl,
@@ -131,6 +133,17 @@ export const TransportCard: React.FC<TransportCardProps> = ({
     return 'MARIA EDUARDA SILVA';
   }, [propName, card]);
 
+  const abbreviation = useMemo(() => {
+    if (propAbbreviation && propAbbreviation.trim()) return propAbbreviation.trim().toUpperCase();
+    if (card?.abbreviation && card.abbreviation.trim()) return card.abbreviation.trim().toUpperCase();
+    if ((card as any)?.user_abbreviation && (card as any).user_abbreviation.trim()) return (card as any).user_abbreviation.trim().toUpperCase();
+    if (companyVtSettings?.user_abbreviation && companyVtSettings.user_abbreviation.trim()) return companyVtSettings.user_abbreviation.trim().toUpperCase();
+    if ((settings as any)?.vt_user_abbreviation && (settings as any).vt_user_abbreviation.trim()) return (settings as any).vt_user_abbreviation.trim().toUpperCase();
+    return '';
+  }, [propAbbreviation, card, companyVtSettings, settings]);
+
+  const frontDisplayName = abbreviation || fullName;
+
   const rawCardNumber = propCardNumber || card?.card_number || '1084920158';
   // Formatar número de 10 algarismos (ex: 1084920158 -> 10.84920158 ou apenas dígitos)
   const cleanCardNumber = rawCardNumber.replace(/\D/g, '').padEnd(10, '0').substring(0, 10);
@@ -186,10 +199,6 @@ export const TransportCard: React.FC<TransportCardProps> = ({
         !frontBgUrl ? 'bg-gradient-to-br from-yellow-400 via-amber-400 to-amber-500 text-slate-950' : 'text-white'
       }`}
     >
-      {/* Overlay sutil para garantir contraste e legibilidade institucional */}
-      {frontBgUrl && (
-        <div className="absolute inset-0 bg-slate-950/40 backdrop-blur-[0.5px] pointer-events-none" />
-      )}
 
       {/* PARTE SUPERIOR: Tipo de cadastro correspondente */}
       <div className="relative z-10">
@@ -282,7 +291,7 @@ export const TransportCard: React.FC<TransportCardProps> = ({
               style={{ color: colorUserName || undefined }}
               className="text-xs font-black uppercase tracking-tight text-slate-950 dark:text-white max-w-[200px] truncate"
             >
-              {fullName}
+              {frontDisplayName}
             </p>
           </div>
           <div className="w-16 h-16 rounded-2xl border-2 border-slate-950/30 dark:border-white/40 bg-white p-0.5 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
@@ -321,10 +330,6 @@ export const TransportCard: React.FC<TransportCardProps> = ({
         !backBgUrl ? 'bg-gradient-to-br from-slate-900 via-slate-950 to-black text-white' : 'text-white'
       }`}
     >
-      {/* Overlay sutil para garantir contraste caso haja foto de fundo */}
-      {backBgUrl && (
-        <div className="absolute inset-0 bg-slate-950/60 backdrop-blur-[0.5px] pointer-events-none" />
-      )}
 
       {/* 1. NO TOPO: Logo da empresa selecionada */}
       <div className="relative z-10 flex items-center justify-between pb-2 border-b border-white/15">
@@ -505,12 +510,12 @@ export const TransportCard: React.FC<TransportCardProps> = ({
         className="transition-transform duration-200"
       >
         {viewMode === 'both' ? (
-          <div className="flex flex-col xl:flex-row gap-6 items-center justify-center">
-            <div>
+          <div className="flex flex-col gap-6 items-center justify-center w-full">
+            <div className="w-full flex flex-col items-center">
               <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest text-center">Frente</p>
               {renderFront()}
             </div>
-            <div>
+            <div className="w-full flex flex-col items-center">
               <p className="text-[10px] font-black uppercase text-slate-400 mb-2 tracking-widest text-center">Verso</p>
               {renderBack()}
             </div>

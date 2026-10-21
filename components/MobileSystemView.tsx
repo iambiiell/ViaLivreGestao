@@ -634,7 +634,9 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       }
     ];
 
-    return list.filter(item => item.allowed);
+    return list
+      .filter(item => item.allowed)
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
   }, [currentUser, isFullAdmin, isFiscal, isDriverOrConductor, isMechanic, isRH, isTicketAgent, isDispatcher, isMasterEmail, userRole, onSelectFullView]);
 
   // User Customizable Quick Shortcuts State
@@ -966,9 +968,9 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
   };
 
   return (
-    <div className={`w-full max-w-[412px] h-[732px] overflow-hidden flex flex-col mx-auto relative select-none font-sans transition-colors duration-300 ${
+    <div className={`w-full ${isEmbedded ? 'max-w-xl h-full h-[100dvh]' : 'max-w-[412px] h-[732px] shadow-2xl sm:rounded-[36px] sm:border-4 border-slate-300 dark:border-zinc-800'} overflow-x-hidden overflow-y-hidden flex flex-col mx-auto relative select-none font-sans transition-colors duration-300 ${
       themeMode === 'dark' ? 'bg-zinc-950 text-slate-100' : 'bg-slate-50 text-slate-900'
-    } ${!isEmbedded ? 'shadow-2xl sm:rounded-[36px] sm:border-4 border-slate-300 dark:border-zinc-800' : ''}`}>
+    }`}>
       
       {/* 1. NATIVE ANDROID STATUS BAR (412px standard) */}
       <div className="w-full h-8 px-4 pt-1 flex items-center justify-between text-xs font-bold tracking-wider bg-transparent z-30 shrink-0">
@@ -1098,7 +1100,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       </div>
 
       {/* 4. SCROLLABLE CONTENT BODY */}
-      <div className="flex-1 overflow-y-auto px-4 py-3.5 custom-scrollbar space-y-4 pb-24">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-3.5 py-3.5 custom-scrollbar space-y-4 pb-28 w-full">
 
         {/* SUBVIEW: NOTIFICATIONS MODAL / SHEET */}
         {activeSubView === 'notifications' && (
@@ -1431,7 +1433,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-3 w-full">
                 <div>
                   <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-1.5 block">Carro / Prefixo</label>
                   <select
@@ -1460,11 +1462,11 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-1.5 block">Sentido da Viagem</label>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="flex flex-col gap-2.5 w-full">
                   <button
                     type="button"
                     onClick={() => setNewTripDirection('IDA')}
-                    className={`min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
+                    className={`w-full min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
                       newTripDirection === 'IDA' 
                         ? 'bg-yellow-400 text-slate-950 font-black ring-2 ring-yellow-400/50' 
                         : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200'
@@ -1476,7 +1478,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setNewTripDirection('VOLTA')}
-                    className={`min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
+                    className={`w-full min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 shadow-sm active:scale-95 ${
                       newTripDirection === 'VOLTA' 
                         ? 'bg-yellow-400 text-slate-950 font-black ring-2 ring-yellow-400/50' 
                         : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 hover:bg-slate-200'
@@ -1518,13 +1520,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
             <div className="space-y-3 text-left">
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-1.5 block">Categoria</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col gap-2 w-full">
                   {(['TRANSITO', 'MECANICA', 'PASSAGEIRO'] as const).map(cat => (
                     <button
                       key={cat}
                       type="button"
                       onClick={() => setOccCategory(cat)}
-                      className={`min-h-[44px] py-2 px-1 rounded-xl text-xs font-black uppercase transition-all shadow-xs active:scale-95 ${
+                      className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-black uppercase transition-all shadow-xs active:scale-95 text-center ${
                         occCategory === cat 
                           ? 'bg-red-500 text-white shadow-md' 
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300'
@@ -1538,13 +1540,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
               <div>
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-1.5 block">Gravidade</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="flex flex-col gap-2 w-full">
                   {(['BAIXA', 'MEDIA', 'ALTA'] as const).map(sev => (
                     <button
                       key={sev}
                       type="button"
                       onClick={() => setOccSeverity(sev)}
-                      className={`min-h-[44px] py-2 px-1 rounded-xl text-xs font-black uppercase transition-all shadow-xs active:scale-95 ${
+                      className={`w-full min-h-[44px] py-2.5 px-3 rounded-xl text-xs font-black uppercase transition-all shadow-xs active:scale-95 text-center ${
                         occSeverity === sev 
                           ? sev === 'ALTA' ? 'bg-red-600 text-white' : sev === 'MEDIA' ? 'bg-amber-500 text-slate-950' : 'bg-emerald-600 text-white' 
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300'
@@ -1655,62 +1657,70 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
               </button>
             </div>
 
-            {/* 4 Quick KPI Summary Cards */}
-            <div className="grid grid-cols-2 gap-3">
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
-                <div className="flex items-center justify-between text-yellow-600 dark:text-yellow-400">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Viagens Hoje</span>
-                  <Bus size={16} />
+            {/* Quick KPI Summary Cards (Vertical Layout) */}
+            <div className="flex flex-col gap-2.5 w-full">
+              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-yellow-600 dark:text-yellow-400">Viagens Hoje</span>
+                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                    {todayTrips.length}
+                  </p>
+                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    {todayTrips.filter(t => t.status === 'Em Rota' || t.status === 'Em Andamento').length} em andamento
+                  </span>
                 </div>
-                <p className="text-2xl font-black mt-1 text-slate-900 dark:text-white leading-none">
-                  {todayTrips.length}
-                </p>
-                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1.5">
-                  {todayTrips.filter(t => t.status === 'Em Rota' || t.status === 'Em Andamento').length} em andamento
-                </span>
+                <div className="w-10 h-10 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                  <Bus size={20} />
+                </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
-                <div className="flex items-center justify-between text-emerald-600 dark:text-emerald-400">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Pontualidade</span>
-                  <CheckCircle2 size={16} />
+              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pontualidade</span>
+                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                    98.4%
+                  </p>
+                  <span className="text-[10px] text-emerald-500 font-bold block mt-1">
+                    +1.2% meta CCO
+                  </span>
                 </div>
-                <p className="text-2xl font-black mt-1 text-slate-900 dark:text-white leading-none">
-                  98.4%
-                </p>
-                <span className="text-[10px] text-emerald-500 font-bold block mt-1.5">
-                  +1.2% meta CCO
-                </span>
+                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={20} />
+                </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
-                <div className="flex items-center justify-between text-blue-600 dark:text-blue-400">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Frota Ativa</span>
-                  <Compass size={16} />
+              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">Frota Ativa</span>
+                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                    {vehicles.length > 0 ? vehicles.length : 12}
+                  </p>
+                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    veículos operando
+                  </span>
                 </div>
-                <p className="text-2xl font-black mt-1 text-slate-900 dark:text-white leading-none">
-                  {vehicles.length > 0 ? vehicles.length : 12}
-                </p>
-                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1.5">
-                  veículos operando
-                </span>
+                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Compass size={20} />
+                </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
-                <div className="flex items-center justify-between text-purple-600 dark:text-purple-400">
-                  <span className="text-[11px] font-black uppercase tracking-wider">Passageiros</span>
-                  <Users size={16} />
+              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">Passageiros</span>
+                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                    {todayTrips.reduce((acc, t) => acc + (t.final_turnstile || 0), 0) || 1240}
+                  </p>
+                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    catraca registrada
+                  </span>
                 </div>
-                <p className="text-2xl font-black mt-1 text-slate-900 dark:text-white leading-none">
-                  {todayTrips.reduce((acc, t) => acc + (t.final_turnstile || 0), 0) || 1240}
-                </p>
-                <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1.5">
-                  catraca registrada
-                </span>
+                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <Users size={20} />
+                </div>
               </div>
             </div>
 
-            {/* Ações Rápidas de Campo - User Customizable Shortcuts (Drag-and-Drop) */}
+            {/* Ações Rápidas de Campo - Vertical Access Buttons */}
             <div id="tour-mobile-quick-actions" className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left">
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-1.5">
@@ -1740,23 +1750,31 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <span className="text-[8px] uppercase opacity-75">1-toque</span>
               </div>
 
-              {/* Dynamic Grid of Custom Shortcuts */}
-              <div className="grid grid-cols-4 gap-2.5">
+              {/* Dynamic Vertical List of Custom Shortcuts */}
+              <div className="flex flex-col gap-2 w-full">
                 {activeShortcuts.map((shortcut) => {
                   const Icon = shortcut.icon;
                   return (
                     <button
                       key={shortcut.id}
                       onClick={shortcut.action}
-                      className="flex flex-col items-center justify-center min-h-[72px] p-2 rounded-2xl bg-slate-50 dark:bg-zinc-800/80 hover:bg-yellow-400/20 active:scale-95 transition-all text-center group"
+                      className="w-full min-h-[50px] p-2.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/80 hover:bg-yellow-400/20 active:scale-98 transition-all flex items-center justify-between text-left group border border-slate-200/80 dark:border-zinc-700/80"
                       title={shortcut.label}
                     >
-                      <div className={`w-10 h-10 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs ${shortcut.color}`}>
-                        <Icon size={20} />
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center group-hover:scale-105 transition-transform shadow-xs shrink-0 ${shortcut.color}`}>
+                          <Icon size={18} />
+                        </div>
+                        <div className="min-w-0">
+                          <span className="text-xs font-black uppercase text-slate-900 dark:text-zinc-100 truncate block">
+                            {shortcut.label}
+                          </span>
+                          <span className="text-[10px] text-slate-500 dark:text-zinc-400 truncate block">
+                            {shortcut.description || 'Toque para acessar'}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-[10px] font-black uppercase mt-1.5 text-slate-800 dark:text-zinc-200 truncate max-w-full">
-                        {shortcut.label.split('/')[0].split('&')[0].trim()}
-                      </span>
+                      <ChevronRight size={16} className="text-slate-400 group-hover:text-yellow-500 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
                     </button>
                   );
                 })}
@@ -1897,15 +1915,15 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                   </div>
                 </div>
 
-                {/* Sentido IDA / VOLTA (Thumb Friendly 48px height) */}
+                {/* Sentido IDA / VOLTA (Vertical Layout) */}
                 <div>
                   <label className="text-xs font-black uppercase text-slate-700 dark:text-zinc-200 mb-1.5 block">Sentido do Itinerário</label>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="flex flex-col gap-2.5 w-full">
                     <button
                       onClick={async () => {
                         if (onUpdateTrip) await onUpdateTrip(activeTrip.id, { direction: 'IDA' });
                       }}
-                      className={`min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95 ${
+                      className={`w-full min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95 ${
                         activeTrip.direction === 'IDA' 
                           ? 'bg-yellow-400 text-slate-950 font-black shadow-sm ring-2 ring-yellow-400/40' 
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300'
@@ -1918,7 +1936,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                       onClick={async () => {
                         if (onUpdateTrip) await onUpdateTrip(activeTrip.id, { direction: 'VOLTA' });
                       }}
-                      className={`min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95 ${
+                      className={`w-full min-h-[48px] rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-95 ${
                         activeTrip.direction === 'VOLTA' 
                           ? 'bg-yellow-400 text-slate-950 font-black shadow-sm ring-2 ring-yellow-400/40' 
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300'
@@ -1930,68 +1948,70 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                   </div>
                 </div>
 
-                {/* Catraca Digital (+1, +5) with Height >= 48px */}
+                {/* Catraca Digital (+1, +5, Salvar) in Vertical Layout */}
                 <div className="bg-slate-50 dark:bg-zinc-800/70 p-3.5 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80">
-                  <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center justify-between mb-2.5">
                     <span className="text-xs font-black uppercase text-slate-700 dark:text-zinc-200">Contador de Catraca</span>
-                    <span className="text-lg font-black text-slate-900 dark:text-white font-mono">{passengerCount}</span>
+                    <span className="text-xl font-black text-slate-900 dark:text-white font-mono">{passengerCount}</span>
                   </div>
-                  <div className="grid grid-cols-3 gap-2.5">
-                    <button
-                      onClick={() => setPassengerCount(prev => prev + 1)}
-                      className="min-h-[48px] py-2.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 rounded-xl text-xs font-black uppercase shadow-sm active:scale-95 transition-all"
-                    >
-                      +1 Pass.
-                    </button>
-                    <button
-                      onClick={() => setPassengerCount(prev => prev + 5)}
-                      className="min-h-[48px] py-2.5 bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 text-slate-900 dark:text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all"
-                    >
-                      +5 Pass.
-                    </button>
+                  <div className="flex flex-col gap-2 w-full">
+                    <div className="grid grid-cols-2 gap-2 w-full">
+                      <button
+                        onClick={() => setPassengerCount(prev => prev + 1)}
+                        className="w-full min-h-[46px] py-2.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 rounded-xl text-xs font-black uppercase shadow-sm active:scale-95 transition-all"
+                      >
+                        +1 Pass.
+                      </button>
+                      <button
+                        onClick={() => setPassengerCount(prev => prev + 5)}
+                        className="w-full min-h-[46px] py-2.5 bg-slate-200 dark:bg-zinc-700 hover:bg-slate-300 text-slate-900 dark:text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all"
+                      >
+                        +5 Pass.
+                      </button>
+                    </div>
                     <button
                       onClick={() => handleUpdateTripQuick(activeTrip.status)}
-                      className="min-h-[48px] py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all"
+                      className="w-full min-h-[48px] py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all shadow-sm"
                     >
-                      Salvar
+                      Salvar Catraca
                     </button>
                   </div>
                 </div>
 
-                {/* Combustível & Odômetro with 48px Inputs */}
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="bg-slate-50 dark:bg-zinc-800/70 p-2.5 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80">
-                    <label className="text-[10px] font-black uppercase text-slate-600 dark:text-zinc-300 flex items-center gap-1 mb-1">
-                      <Fuel size={12} /> Combustível
+                {/* Combustível & Odômetro (Vertical Stack) */}
+                <div className="flex flex-col gap-3 w-full">
+                  <div className="bg-slate-50 dark:bg-zinc-800/70 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80">
+                    <label className="text-xs font-black uppercase text-slate-600 dark:text-zinc-300 flex items-center gap-1.5 mb-1.5">
+                      <Fuel size={14} /> Combustível
                     </label>
                     <select
                       value={fuelSelection}
                       onChange={(e) => setFuelSelection(e.target.value as any)}
-                      className="w-full h-10 bg-transparent text-xs font-black text-slate-900 dark:text-zinc-100 uppercase outline-none"
+                      className="w-full h-11 px-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-black text-slate-900 dark:text-zinc-100 uppercase outline-none focus:border-yellow-400"
                     >
-                      <option value="CHEIO" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100">Cheio (4/4)</option>
-                      <option value="3/4" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100">3/4 Tanque</option>
-                      <option value="1/2" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100">1/2 Tanque</option>
-                      <option value="1/4" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100">1/4 Tanque</option>
-                      <option value="RESERVA" className="bg-white dark:bg-zinc-900 text-slate-900 dark:text-zinc-100">Reserva !</option>
+                      <option value="CHEIO">Cheio (4/4)</option>
+                      <option value="3/4">3/4 Tanque</option>
+                      <option value="1/2">1/2 Tanque</option>
+                      <option value="1/4">1/4 Tanque</option>
+                      <option value="RESERVA">Reserva !</option>
                     </select>
                   </div>
 
-                  <div className="bg-slate-50 dark:bg-zinc-800/70 p-2.5 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80">
-                    <label className="text-[10px] font-black uppercase text-slate-600 dark:text-zinc-300 mb-1 block">
+                  <div className="bg-slate-50 dark:bg-zinc-800/70 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-700/80">
+                    <label className="text-xs font-black uppercase text-slate-600 dark:text-zinc-300 mb-1.5 block">
                       Odômetro (KM)
                     </label>
                     <input
                       type="number"
                       value={odometerValue}
                       onChange={(e) => setOdometerValue(Number(e.target.value))}
-                      className="w-full h-10 bg-transparent text-xs font-black text-slate-900 dark:text-white font-mono uppercase outline-none"
+                      className="w-full h-11 px-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl text-xs font-black text-slate-900 dark:text-white font-mono uppercase outline-none focus:border-yellow-400"
                     />
                   </div>
                 </div>
 
-                {/* SOS & Incident Buttons */}
-                <div className="grid grid-cols-2 gap-3 pt-1">
+                {/* SOS & Incident Buttons (Vertical Stack) */}
+                <div className="flex flex-col gap-2.5 pt-1 w-full">
                   <button
                     onClick={() => {
                       NotificationService.sendLocalNotification('ALERTA SOS DISPARADO', {
@@ -1999,18 +2019,18 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                       });
                       addToast('Sinal de emergência transmitido ao CCO!', 'error');
                     }}
-                    className="min-h-[48px] py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+                    className="w-full min-h-[48px] py-3 bg-red-600 hover:bg-red-500 text-white rounded-2xl text-xs font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
                     <ShieldAlert size={16} />
-                    <span>Botão SOS</span>
+                    <span>Botão SOS (Emergência)</span>
                   </button>
 
                   <button
                     onClick={() => setActiveSubView('new-occurrence')}
-                    className="min-h-[48px] py-3 bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+                    className="w-full min-h-[48px] py-3 bg-slate-900 dark:bg-zinc-800 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
                   >
                     <AlertTriangle size={16} className="text-yellow-400" />
-                    <span>Ocorrência</span>
+                    <span>Registrar Ocorrência</span>
                   </button>
                 </div>
 
@@ -2068,13 +2088,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-2 block">
                   Tipo de Registro
                 </label>
-                <div className="grid grid-cols-2 gap-2.5">
+                <div className="flex flex-col gap-2 w-full">
                   {(['Entrada', 'Saída Almoço', 'Volta Almoço', 'Fim Turno'] as const).map(tipo => (
                     <button
                       key={tipo}
                       type="button"
                       onClick={() => setSelectedPontoType(tipo)}
-                      className={`min-h-[48px] py-2.5 px-3 rounded-2xl text-xs font-black uppercase transition-all active:scale-95 ${
+                      className={`w-full min-h-[46px] py-2.5 px-3 rounded-2xl text-xs font-black uppercase transition-all active:scale-95 text-center ${
                         selectedPontoType === tipo
                           ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-400/50'
                           : 'bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-200 hover:bg-slate-200'
@@ -2141,8 +2161,8 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
             </div>
 
             <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm space-y-3.5">
-              {/* Vehicle Selection & Odometer */}
-              <div className="grid grid-cols-2 gap-3">
+              {/* Vehicle Selection & Odometer (Vertical Layout) */}
+              <div className="flex flex-col gap-3 w-full">
                 <div>
                   <label className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 mb-1.5 block">Veículo</label>
                   <select
@@ -2169,7 +2189,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 </div>
               </div>
 
-              {/* 6 Essential Checklist Items */}
+              {/* 6 Essential Checklist Items (Vertical Layout) */}
               <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-zinc-800">
                 <span className="text-xs font-black uppercase tracking-wider text-slate-700 dark:text-zinc-200 block">
                   Itens Obrigatórios de Segurança
@@ -2183,15 +2203,15 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                   { id: 'oleo', label: '5. Nível Óleo / Água' },
                   { id: 'extintor', label: '6. Extintor & Tacógrafo' }
                 ].map(item => (
-                  <div key={item.id} className="min-h-[52px] p-2.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/70 border border-slate-200 dark:border-zinc-700 flex items-center justify-between gap-2">
-                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase truncate">{item.label}</span>
-                    <div className="flex items-center gap-1.5 shrink-0">
+                  <div key={item.id} className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-800/70 border border-slate-200 dark:border-zinc-700 flex flex-col gap-2 w-full">
+                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-200 uppercase">{item.label}</span>
+                    <div className="grid grid-cols-3 gap-2 w-full">
                       {(['OK', 'ATENCAO', 'AVARIA'] as const).map(state => (
                         <button
                           key={state}
                           type="button"
                           onClick={() => setChecklistItems(prev => ({ ...prev, [item.id]: state }))}
-                          className={`min-h-[38px] px-2.5 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all active:scale-95 shadow-xs ${
+                          className={`min-h-[40px] px-2 py-1.5 rounded-xl text-xs font-black uppercase transition-all active:scale-95 shadow-xs text-center ${
                             checklistItems[item.id] === state
                               ? state === 'OK' ? 'bg-emerald-600 text-white ring-2 ring-emerald-400/40' : state === 'ATENCAO' ? 'bg-amber-500 text-slate-950 ring-2 ring-amber-400/40' : 'bg-red-600 text-white ring-2 ring-red-400/40'
                               : 'bg-slate-200 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300'
@@ -2584,11 +2604,11 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 })}
             </div>
 
-            {/* Drawer Bottom Actions: Shortcuts and Logout */}
-            <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex items-center gap-2 shrink-0">
+            {/* Drawer Bottom Actions: Shortcuts and Logout (Vertical Layout) */}
+            <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex flex-col gap-2 w-full shrink-0">
               <button
                 onClick={() => { setIsEditingShortcuts(true); setIsHamburgerOpen(false); }}
-                className="flex-1 min-h-[46px] py-2 px-3 rounded-2xl bg-yellow-400/20 dark:bg-yellow-400/15 text-yellow-700 dark:text-yellow-400 border border-yellow-400/40 text-xs font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all"
+                className="w-full min-h-[48px] py-2.5 px-3 rounded-2xl bg-yellow-400/20 dark:bg-yellow-400/15 text-yellow-700 dark:text-yellow-400 border border-yellow-400/40 text-xs font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all"
               >
                 <SlidersHorizontal size={16} />
                 <span>Editar Ações Rápidas</span>
@@ -2596,7 +2616,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
               <button
                 onClick={onLogout}
-                className="flex-1 min-h-[46px] py-2 px-3 rounded-2xl bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 text-xs font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all shrink-0"
+                className="w-full min-h-[48px] py-2.5 px-3 rounded-2xl bg-red-50 dark:bg-red-950/20 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/40 text-xs font-black uppercase flex items-center justify-center gap-2 active:scale-95 transition-all shrink-0"
               >
                 <LogOut size={16} />
                 <span>Desconectar</span>
@@ -2635,9 +2655,11 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </div>
 
           {/* Full View Content */}
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-2 sm:p-3">
+          <div className="flex-1 overflow-y-auto overflow-x-auto custom-scrollbar p-2 sm:p-3 w-full">
             {renderFullView ? (
-              renderFullView(activeFullView)
+              <div className="w-full min-w-0">
+                {renderFullView(activeFullView)}
+              </div>
             ) : (
               <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 text-center space-y-2 mt-4">
                 <p className="text-xs font-black uppercase text-slate-900 dark:text-white">

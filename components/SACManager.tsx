@@ -629,6 +629,7 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                       company={companies.find(c => c.id === formData.company_id)}
                       settings={systemSettings}
                       name={`${formData.name || '---'} ${formData.surname || ''}`}
+                      abbreviation={formData.abbreviation}
                       cardNumber={formData.card_number || '1084920158'}
                       internalCode={formData.internal_code || 'VT89K2A1'}
                       photoUrl={formData.photo_url}
@@ -643,7 +644,7 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
 
                 {/* Personal Data */}
                 <div className="lg:col-span-2 space-y-8">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     <div className="space-y-2">
                       <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Nome</label>
                       <input 
@@ -660,6 +661,32 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                         className="w-full px-6 py-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl text-xs font-black uppercase outline-none focus:ring-2 ring-yellow-400 transition-all"
                         value={formData.surname || ''}
                         onChange={(e) => setFormData({...formData, surname: e.target.value})}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between ml-2">
+                        <label className="text-[10px] font-black uppercase text-slate-400">Abreviação</label>
+                        {formData.name && formData.surname && !formData.abbreviation && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const first = (formData.name || '').trim().split(' ')[0] || '';
+                              const last = (formData.surname || '').trim().split(' ').pop() || '';
+                              const autoAbbr = `${first.charAt(0)}. ${last}`.toUpperCase();
+                              setFormData({ ...formData, abbreviation: autoAbbr });
+                            }}
+                            className="text-[9px] font-black text-amber-600 dark:text-yellow-400 uppercase hover:underline"
+                          >
+                            Sugerir
+                          </button>
+                        )}
+                      </div>
+                      <input 
+                        type="text"
+                        placeholder="Ex: M. E. SILVA ou MARIA SILVA"
+                        className="w-full px-6 py-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl text-xs font-black uppercase outline-none focus:ring-2 ring-yellow-400 transition-all text-slate-900 dark:text-white"
+                        value={formData.abbreviation || ''}
+                        onChange={(e) => setFormData({...formData, abbreviation: e.target.value.toUpperCase()})}
                       />
                     </div>
                     <div className="space-y-2">
@@ -1097,6 +1124,7 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                     company={companies.find(c => c.id === selectedCard.company_id)}
                     settings={systemSettings}
                     name={`${selectedCard.name} ${selectedCard.surname || ''}`}
+                    abbreviation={selectedCard.abbreviation}
                     cardNumber={selectedCard.card_number}
                     internalCode={selectedCard.internal_code}
                     photoUrl={selectedCard.photo_url}

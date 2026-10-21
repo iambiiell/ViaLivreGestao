@@ -694,12 +694,14 @@ export interface SystemSettings {
   vt_front_bg_url?: string;
   vt_back_bg_url?: string;
   vt_qr_code_url?: string;
+  vt_user_abbreviation?: string;
 }
 
 export interface VtCardCompanySettings {
   system_name?: string; // ex: "S.B.U. IntegraVias"
   system_name_size?: 'small' | 'medium' | 'large'; // legado
   system_name_font_size?: number | string; // tamanho em px configurável, ex: 12, 20, 24, 30
+  user_abbreviation?: string; // Nome abreviado do usuário que aparecerá na frente do cartão
   slogan?: string; // ex: "Movendo pessoas, conectando cidades!"
   display_website?: string; // ex: "vialivregestao.netlify.app"
   sac_name?: string; // ex: "SAC Central do Usuário"
@@ -836,6 +838,7 @@ export interface ImpCard {
   ai_art_url?: string;
   name: string;
   surname: string;
+  abbreviation?: string; // Nome abreviado do usuário que aparecerá na frente do cartão
   cpf: string;
   rg: string;
   birth_date: string;

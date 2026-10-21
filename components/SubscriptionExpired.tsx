@@ -103,7 +103,15 @@ const SubscriptionExpired: React.FC<SubscriptionExpiredProps> = ({
         owner_email: currentUser?.email
       });
 
-      // Do not delete old keys, keep them for activation history audit trail
+      // Exclusão automática da chave antiga ao trocar a chave de acesso do administrador
+      const oldKeyCode = subscription?.key_code || currentUser?.activation_key;
+      if (oldKeyCode && oldKeyCode.trim().toUpperCase() !== key.key_code.trim().toUpperCase()) {
+        try {
+          await (db as any).deleteActivationKeyByCode(oldKeyCode);
+        } catch (delErr) {
+          console.warn('[SUBSCRIPTION_EXPIRED] Falha ao excluir chave antiga:', delErr);
+        }
+      }
 
       let updatedSub: Subscription;
       if (subscription) {

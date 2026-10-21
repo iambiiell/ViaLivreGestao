@@ -230,10 +230,28 @@ const SystemConfigManager: React.FC<SystemConfigManagerProps> = ({ currentUser, 
         owner_email: currentAdmin?.email
       };
 
+      // Exclusão automática da chave antiga ao trocar a chave de acesso do administrador
+      const oldKeyCode = subscription?.key_code || currentAdmin?.activation_key;
+      if (oldKeyCode && oldKeyCode.trim().toUpperCase() !== key.key_code.trim().toUpperCase()) {
+        try {
+          await (db as any).deleteActivationKeyByCode(oldKeyCode);
+        } catch (delErr) {
+          console.warn('[SYSTEM_CONFIG] Falha ao excluir chave antiga:', delErr);
+        }
+      }
+
       if (subscription) {
         await db.update('subscriptions', { ...subscription, ...newSub });
       } else {
         await db.create('subscriptions', newSub);
+      }
+
+      // Atualiza também a activation_key no perfil do administrador
+      if (currentAdmin && currentAdmin.id) {
+        await db.update('users', {
+          ...currentAdmin,
+          activation_key: key.key_code
+        });
       }
 
       addToast('Sistema ativado com sucesso!', 'success');

@@ -51,6 +51,7 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
   const [companies, setCompanies] = useState<Company[]>([]);
   const [selectedVtCompanyId, setSelectedVtCompanyId] = useState<string>('');
   const [vtForm, setVtForm] = useState<VtCardCompanySettings>({
+    user_abbreviation: '',
     system_name: '',
     system_name_size: 'medium',
     system_name_font_size: 24,
@@ -188,6 +189,7 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
     const comp = companies.find(c => c.id === selectedVtCompanyId);
     const compSettings = selectedVtCompanyId && settings?.vt_card_settings ? settings.vt_card_settings[selectedVtCompanyId] : undefined;
     setVtForm({
+      user_abbreviation: compSettings?.user_abbreviation || (settings as any)?.vt_user_abbreviation || '',
       system_name: compSettings?.system_name || (comp?.name ? `S.B.U. ${comp.name}` : settings?.vt_system_name || 'S.B.U. IntegraVias'),
       system_name_size: compSettings?.system_name_size || settings?.vt_system_name_size || 'medium',
       system_name_font_size: compSettings?.system_name_font_size || (settings as any)?.vt_system_name_font_size || 24,
@@ -225,12 +227,14 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
       const currentVtSettings = settings?.vt_card_settings || {};
       const updatedCardSettings = {
         ...currentVtSettings,
-        ...(selectedVtCompanyId ? { [selectedVtCompanyId]: vtForm } : {})
+        ...(selectedVtCompanyId ? { [selectedVtCompanyId]: vtForm } : {}),
+        default: vtForm
       };
 
       const updatedSettings: SystemSettings = {
         ...(settings || { id: 'default', registration_pattern: 'FLX-000' }),
         vt_card_settings: updatedCardSettings,
+        vt_user_abbreviation: vtForm.user_abbreviation,
         vt_system_name: vtForm.system_name,
         vt_system_name_size: vtForm.system_name_size,
         vt_system_name_font_size: vtForm.system_name_font_size || 24,
@@ -241,24 +245,52 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         vt_sac_hours: vtForm.sac_hours,
         vt_front_bg_url: vtForm.front_background_url,
         vt_back_bg_url: vtForm.back_background_url,
-        vt_qr_code_url: vtForm.qr_code_destination
+        vt_qr_code_url: vtForm.qr_code_destination,
+        ...(vtForm.color_category ? { vt_color_category: vtForm.color_category } : {}),
+        ...(vtForm.color_system_name ? { vt_color_system_name: vtForm.color_system_name } : {}),
+        ...(vtForm.color_slogan ? { vt_color_slogan: vtForm.color_slogan } : {}),
+        ...(vtForm.color_city_state ? { vt_color_city_state: vtForm.color_city_state } : {}),
+        ...(vtForm.color_user_name ? { vt_color_user_name: vtForm.color_user_name } : {}),
+        ...(vtForm.color_user_label ? { vt_color_user_label: vtForm.color_user_label } : {}),
+        ...(vtForm.color_nfc ? { vt_color_nfc: vtForm.color_nfc } : {}),
+        ...(vtForm.color_operator_label ? { vt_color_operator_label: vtForm.color_operator_label } : {}),
+        ...(vtForm.color_internal_code ? { vt_color_internal_code: vtForm.color_internal_code } : {}),
+        ...(vtForm.color_card_number ? { vt_color_card_number: vtForm.color_card_number } : {}),
+        ...(vtForm.color_user_name_back ? { vt_color_user_name_back: vtForm.color_user_name_back } : {}),
+        ...(vtForm.color_legal_notice ? { vt_color_legal_notice: vtForm.color_legal_notice } : {}),
+        ...(vtForm.color_info_service ? { vt_color_info_service: vtForm.color_info_service } : {}),
+        ...(vtForm.color_display_website ? { vt_color_display_website: vtForm.color_display_website } : {}),
+        ...(vtForm.color_sac_name ? { vt_color_sac_name: vtForm.color_sac_name } : {}),
+        ...(vtForm.color_sac_phone ? { vt_color_sac_phone: vtForm.color_sac_phone } : {}),
+        ...(vtForm.color_sac_hours ? { vt_color_sac_hours: vtForm.color_sac_hours } : {})
       };
 
-      if (settings?.id && typeof settings.id === 'number') {
-        await db.update('system_settings', updatedSettings);
+      // Garantir persistência real no Supabase Cloud na tabela system_settings
+      let savedResult: SystemSettings | null = null;
+      const existingList = await db.fetchAll<SystemSettings>('system_settings', { bypassSystemId: true });
+      const activeRecord = (existingList && existingList.length > 0) ? existingList[0] : null;
+
+      if (activeRecord && activeRecord.id && activeRecord.id !== 'default') {
+        savedResult = await db.update('system_settings', {
+          ...activeRecord,
+          ...updatedSettings,
+          id: activeRecord.id
+        });
+      } else if (settings?.id && settings.id !== 'default') {
+        savedResult = await db.update('system_settings', {
+          ...settings,
+          ...updatedSettings,
+          id: settings.id
+        });
       } else {
-        const existing = await db.fetchAll<SystemSettings>('system_settings');
-        if (existing && existing.length > 0 && typeof existing[0].id === 'number') {
-          await db.update('system_settings', { ...existing[0], ...updatedSettings });
-        } else {
-          await db.create('system_settings', updatedSettings);
-        }
+        savedResult = await db.create('system_settings', updatedSettings);
       }
 
-      setSettings(updatedSettings);
+      const finalSaved = savedResult || updatedSettings;
+      setSettings(finalSaved);
       if (typeof window !== 'undefined') {
-        localStorage.setItem('vialivre_system_settings', JSON.stringify(updatedSettings));
-        window.dispatchEvent(new CustomEvent('vialivre-system-settings-updated', { detail: updatedSettings }));
+        localStorage.setItem('vialivre_system_settings', JSON.stringify(finalSaved));
+        window.dispatchEvent(new CustomEvent('vialivre-system-settings-updated', { detail: finalSaved }));
         window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
       }
 
@@ -620,27 +652,39 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                         Nome do Sistema no Cartão (Frente) *
                       </label>
                       
-                      {/* Opção de Tamanho do Texto */}
-                      <div className="inline-flex items-center gap-1 bg-slate-100 dark:bg-zinc-800 p-1 rounded-xl border border-slate-200/60 dark:border-zinc-700/60">
-                        <span className="text-[9px] font-black uppercase text-slate-400 px-1.5">Tamanho:</span>
-                        {(['small', 'medium', 'large'] as const).map(size => {
-                          const isSelected = (vtForm.system_name_size || 'medium') === size;
-                          const labels = { small: 'Pequeno', medium: 'Médio', large: 'Grande' };
-                          return (
+                      {/* Opção de Tamanho do Texto em Pixels (px) */}
+                      <div className="inline-flex items-center gap-2 bg-slate-100 dark:bg-zinc-800 px-2.5 py-1 rounded-xl border border-slate-200/60 dark:border-zinc-700/60">
+                        <span className="text-[9px] font-black uppercase text-slate-400">Tamanho:</span>
+                        <div className="flex items-center gap-1">
+                          <input
+                            type="number"
+                            min={10}
+                            max={48}
+                            value={Number(vtForm.system_name_font_size) || 24}
+                            onChange={e => {
+                              const val = Math.max(10, Math.min(48, Number(e.target.value) || 20));
+                              setVtForm({ ...vtForm, system_name_font_size: val, system_name_size: val >= 28 ? 'large' : val <= 16 ? 'small' : 'medium' });
+                            }}
+                            className="w-12 px-1 py-0.5 bg-white dark:bg-zinc-900 border border-slate-300 dark:border-zinc-700 rounded-lg text-xs font-black text-center text-slate-900 dark:text-white"
+                          />
+                          <span className="text-[10px] font-black text-slate-400">px</span>
+                        </div>
+                        <div className="hidden sm:flex items-center gap-1 pl-1.5 border-l border-slate-200 dark:border-zinc-700">
+                          {[12, 16, 20, 24, 30].map(px => (
                             <button
-                              key={size}
+                              key={px}
                               type="button"
-                              onClick={() => setVtForm({ ...vtForm, system_name_size: size })}
-                              className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase transition-all ${
-                                isSelected
-                                  ? 'bg-yellow-400 text-slate-950 shadow-xs scale-100'
-                                  : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                              onClick={() => setVtForm({ ...vtForm, system_name_font_size: px, system_name_size: px >= 28 ? 'large' : px <= 16 ? 'small' : 'medium' })}
+                              className={`px-2 py-0.5 rounded-md text-[9px] font-black transition-all ${
+                                Number(vtForm.system_name_font_size) === px
+                                  ? 'bg-yellow-400 text-slate-950 font-bold shadow-xs'
+                                  : 'text-slate-500 hover:text-slate-900 dark:hover:text-white'
                               }`}
                             >
-                              {labels[size]}
+                              {px}px
                             </button>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
                     </div>
                     <input
@@ -651,10 +695,10 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                       className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
                     />
                     <div className="flex flex-wrap items-center justify-between gap-2 mt-1.5 ml-2 text-[9px] text-slate-400">
-                      <span>Exibido em destaque na frente do cartão logo abaixo do tipo de cadastro.</span>
-                      {(vtForm.system_name_size === 'large' || (vtForm.system_name && vtForm.system_name.length > 18)) && (
+                      <span>Exibido em destaque na frente do cartão com dimensionamento configurável em pixels.</span>
+                      {(Number(vtForm.system_name_font_size) >= 24 || (vtForm.system_name && vtForm.system_name.length > 18)) && (
                         <span className="text-yellow-600 dark:text-yellow-400 font-bold flex items-center gap-1">
-                          ✨ Quebra de texto automática ativada para tamanho grande.
+                          ✨ Quebra de texto automática ativada no cartão para tamanho grande.
                         </span>
                       )}
                     </div>
@@ -673,6 +717,22 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                     />
                     <p className="text-[9px] text-slate-400 mt-1 ml-2">
                       Exibido alinhado à borda direita da frente do cartão com quebra automática de texto em múltiplas linhas.
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
+                      Abreviação (Nome no Cartão - Frente) *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: M. E. SILVA ou MARIA SILVA"
+                      value={vtForm.user_abbreviation || ''}
+                      onChange={e => setVtForm({ ...vtForm, user_abbreviation: e.target.value.toUpperCase() })}
+                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white uppercase"
+                    />
+                    <p className="text-[9px] text-slate-400 mt-1 ml-2">
+                      Nome abreviado exibido no canto inferior direito da frente do cartão. O nome completo do titular permanece no verso.
                     </p>
                   </div>
 
@@ -756,32 +816,178 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 </div>
 
                 <div className="space-y-4">
+                  {/* FRENTE: Upload / Drag & Drop do Armazenamento */}
                   <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
-                      URL da Imagem de Fundo da Frente (1011px x 638px)
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1.5 ml-2 block flex items-center justify-between">
+                      <span>Imagem de Fundo da Frente (1011px x 638px)</span>
+                      {vtForm.front_background_url && (
+                        <button
+                          type="button"
+                          onClick={() => setVtForm({ ...vtForm, front_background_url: '' })}
+                          className="text-[9px] text-red-500 hover:text-red-600 font-bold uppercase flex items-center gap-1"
+                        >
+                          <X size={12} /> Remover (Usar Amarelo Padrão)
+                        </button>
+                      )}
                     </label>
+
                     <input
-                      type="url"
-                      placeholder="https://exemplo.com/fundo-cartao-frente.jpg"
-                      value={vtForm.front_background_url || ''}
-                      onChange={e => setVtForm({ ...vtForm, front_background_url: e.target.value })}
-                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      type="file"
+                      ref={frontFileInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          processCardBackgroundImage(file, dataUrl => {
+                            setVtForm(prev => ({ ...prev, front_background_url: dataUrl }));
+                            addToast("Imagem de fundo da frente carregada com sucesso!", "success");
+                          });
+                        }
+                      }}
                     />
-                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Deixe em branco para usar o layout padrão institucional em amarelo ouro.</p>
+
+                    <div
+                      onDragOver={e => { e.preventDefault(); setIsDraggingFront(true); }}
+                      onDragLeave={() => setIsDraggingFront(false)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setIsDraggingFront(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) {
+                          processCardBackgroundImage(file, dataUrl => {
+                            setVtForm(prev => ({ ...prev, front_background_url: dataUrl }));
+                            addToast("Imagem de fundo da frente aplicada com sucesso!", "success");
+                          });
+                        }
+                      }}
+                      onClick={() => frontFileInputRef.current?.click()}
+                      className={`relative w-full p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col sm:flex-row items-center gap-4 ${
+                        isDraggingFront
+                          ? 'border-yellow-400 bg-yellow-400/10 scale-[1.01]'
+                          : vtForm.front_background_url
+                          ? 'border-yellow-400/80 bg-slate-50 dark:bg-zinc-950'
+                          : 'border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 hover:border-yellow-400'
+                      }`}
+                    >
+                      {vtForm.front_background_url ? (
+                        <>
+                          <div className="w-24 h-16 rounded-xl overflow-hidden border border-yellow-400 shadow-md shrink-0 bg-slate-900">
+                            <img src={vtForm.front_background_url} alt="Frente" className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase flex items-center gap-1.5">
+                              <Check size={14} className="text-emerald-500" />
+                              Imagem personalizada carregada
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              Clique ou arraste outro arquivo para substituir a imagem da frente.
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                            <UploadCloud size={24} />
+                          </div>
+                          <div className="text-center sm:text-left">
+                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase">
+                              Selecionar Imagem do Armazenamento ou Arrastar
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              PNG, JPG ou WebP • Enquadrado automaticamente para 1011px x 638px
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
+                  {/* VERSO: Upload / Drag & Drop do Armazenamento */}
                   <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
-                      URL da Imagem de Fundo do Verso (1011px x 638px)
+                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1.5 ml-2 block flex items-center justify-between">
+                      <span>Imagem de Fundo do Verso (1011px x 638px)</span>
+                      {vtForm.back_background_url && (
+                        <button
+                          type="button"
+                          onClick={() => setVtForm({ ...vtForm, back_background_url: '' })}
+                          className="text-[9px] text-red-500 hover:text-red-600 font-bold uppercase flex items-center gap-1"
+                        >
+                          <X size={12} /> Remover (Usar Fundo Escuro Padrão)
+                        </button>
+                      )}
                     </label>
+
                     <input
-                      type="url"
-                      placeholder="https://exemplo.com/fundo-cartao-verso.jpg"
-                      value={vtForm.back_background_url || ''}
-                      onChange={e => setVtForm({ ...vtForm, back_background_url: e.target.value })}
-                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white"
+                      type="file"
+                      ref={backFileInputRef}
+                      accept="image/*"
+                      className="hidden"
+                      onChange={e => {
+                        const file = e.target.files?.[0];
+                        if (file) {
+                          processCardBackgroundImage(file, dataUrl => {
+                            setVtForm(prev => ({ ...prev, back_background_url: dataUrl }));
+                            addToast("Imagem de fundo do verso carregada com sucesso!", "success");
+                          });
+                        }
+                      }}
                     />
-                    <p className="text-[9px] text-slate-400 mt-1 ml-2">Deixe em branco para usar o fundo escuro padrão de alta segurança.</p>
+
+                    <div
+                      onDragOver={e => { e.preventDefault(); setIsDraggingBack(true); }}
+                      onDragLeave={() => setIsDraggingBack(false)}
+                      onDrop={e => {
+                        e.preventDefault();
+                        setIsDraggingBack(false);
+                        const file = e.dataTransfer.files?.[0];
+                        if (file) {
+                          processCardBackgroundImage(file, dataUrl => {
+                            setVtForm(prev => ({ ...prev, back_background_url: dataUrl }));
+                            addToast("Imagem de fundo do verso aplicada com sucesso!", "success");
+                          });
+                        }
+                      }}
+                      onClick={() => backFileInputRef.current?.click()}
+                      className={`relative w-full p-4 rounded-2xl border-2 border-dashed transition-all cursor-pointer flex flex-col sm:flex-row items-center gap-4 ${
+                        isDraggingBack
+                          ? 'border-yellow-400 bg-yellow-400/10 scale-[1.01]'
+                          : vtForm.back_background_url
+                          ? 'border-yellow-400/80 bg-slate-50 dark:bg-zinc-950'
+                          : 'border-slate-300 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-950 hover:border-yellow-400'
+                      }`}
+                    >
+                      {vtForm.back_background_url ? (
+                        <>
+                          <div className="w-24 h-16 rounded-xl overflow-hidden border border-yellow-400 shadow-md shrink-0 bg-slate-900">
+                            <img src={vtForm.back_background_url} alt="Verso" className="w-full h-full object-cover" />
+                          </div>
+                          <div className="flex-1 text-left">
+                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase flex items-center gap-1.5">
+                              <Check size={14} className="text-emerald-500" />
+                              Imagem personalizada carregada
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              Clique ou arraste outro arquivo para substituir a imagem do verso.
+                            </p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="w-12 h-12 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                            <UploadCloud size={24} />
+                          </div>
+                          <div className="text-center sm:text-left">
+                            <p className="text-xs font-black text-slate-900 dark:text-white uppercase">
+                              Selecionar Imagem do Armazenamento ou Arrastar
+                            </p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5">
+                              PNG, JPG ou WebP • Enquadrado automaticamente para 1011px x 638px
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
 
                   <div>
@@ -799,6 +1005,153 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                       />
                     </div>
                     <p className="text-[9px] text-slate-400 mt-1 ml-2">Ao escanear o QR Code no verso do cartão, o usuário é direcionado a este link.</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* BLOCO 4: PERSONALIZAÇÃO DE CORES DOS TEXTOS DO CARTÃO */}
+              <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 shadow-sm space-y-6">
+                <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-zinc-800">
+                  <div className="flex items-center gap-3">
+                    <Palette size={20} className="text-pink-500" />
+                    <div>
+                      <h4 className="text-sm font-black uppercase text-slate-900 dark:text-white tracking-wider">
+                        4. Cores dos Textos do Cartão
+                      </h4>
+                      <p className="text-[9px] text-slate-400 font-bold mt-0.5">
+                        Defina a cor personalizada de cada campo de texto da frente e do verso
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setVtForm(prev => ({
+                        ...prev,
+                        color_category: '',
+                        color_system_name: '',
+                        color_slogan: '',
+                        color_city_state: '',
+                        color_user_name: '',
+                        color_user_label: '',
+                        color_nfc: '',
+                        color_operator_label: '',
+                        color_internal_code: '',
+                        color_card_number: '',
+                        color_user_name_back: '',
+                        color_legal_notice: '',
+                        color_info_service: '',
+                        color_display_website: '',
+                        color_sac_name: '',
+                        color_sac_phone: '',
+                        color_sac_hours: ''
+                      }));
+                      addToast("Cores restauradas para o padrão institucional!", "info");
+                    }}
+                    className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 text-slate-700 dark:text-zinc-300 font-black text-[10px] uppercase flex items-center gap-1.5 transition-all"
+                    title="Restaurar todas as cores para o tema padrão"
+                  >
+                    <RotateCcw size={12} />
+                    <span>Padrão</span>
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Cores da Frente */}
+                  <div className="space-y-3">
+                    <h5 className="text-[11px] font-black uppercase tracking-wider text-yellow-600 dark:text-yellow-400 flex items-center gap-1.5">
+                      <span>Frente do Cartão</span>
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { key: 'color_category', label: 'Categoria / Tipo de Cartão', defaultHex: '#0f172a' },
+                        { key: 'color_system_name', label: 'Nome do Sistema (Frente)', defaultHex: '#0f172a' },
+                        { key: 'color_slogan', label: 'Lema / Slogan do Cartão', defaultHex: '#1e293b' },
+                        { key: 'color_city_state', label: 'Município e Estado', defaultHex: '#334155' },
+                        { key: 'color_user_label', label: 'Rótulo "Titular do Benefício"', defaultHex: '#334155' },
+                        { key: 'color_user_name', label: 'Nome do Usuário Titular', defaultHex: '#0f172a' },
+                        { key: 'color_nfc', label: 'NFC / Contactless', defaultHex: '#0f172a' },
+                      ].map(({ key, label, defaultHex }) => {
+                        const currentColor = (vtForm as any)[key] || defaultHex;
+                        const isCustom = Boolean((vtForm as any)[key]);
+                        return (
+                          <div key={key} className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200 truncate">{label}</p>
+                              <span className="text-[9px] font-mono text-slate-400">{currentColor}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <input
+                                type="color"
+                                value={currentColor}
+                                onChange={e => setVtForm({ ...vtForm, [key]: e.target.value })}
+                                className="w-8 h-8 rounded-xl border-2 border-slate-300 dark:border-zinc-700 cursor-pointer p-0 bg-transparent"
+                              />
+                              {isCustom && (
+                                <button
+                                  type="button"
+                                  onClick={() => setVtForm({ ...vtForm, [key]: '' })}
+                                  className="text-slate-400 hover:text-red-500 p-1"
+                                  title="Restaurar padrão"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Cores do Verso */}
+                  <div className="space-y-3 pt-2 border-t border-slate-100 dark:border-zinc-800">
+                    <h5 className="text-[11px] font-black uppercase tracking-wider text-yellow-600 dark:text-yellow-400 flex items-center gap-1.5">
+                      <span>Verso do Cartão</span>
+                    </h5>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {[
+                        { key: 'color_operator_label', label: 'Legenda da Concessionária', defaultHex: '#94a3b8' },
+                        { key: 'color_internal_code', label: 'Código Interno', defaultHex: '#fde047' },
+                        { key: 'color_card_number', label: 'Número do Cartão (10 dígitos)', defaultHex: '#ffffff' },
+                        { key: 'color_user_name_back', label: 'Nome do Usuário (Verso)', defaultHex: '#ffffff' },
+                        { key: 'color_legal_notice', label: 'Aviso Legal ("Uso pessoal")', defaultHex: '#cbd5e1' },
+                        { key: 'color_info_service', label: 'Título Informações e Serviços', defaultHex: '#facc15' },
+                        { key: 'color_display_website', label: 'Site / Website no Verso', defaultHex: '#67e8f9' },
+                        { key: 'color_sac_name', label: 'Nome do SAC', defaultHex: '#e2e8f0' },
+                        { key: 'color_sac_phone', label: 'Telefone do SAC', defaultHex: '#fde047' },
+                        { key: 'color_sac_hours', label: 'Horários de Atendimento', defaultHex: '#cbd5e1' },
+                      ].map(({ key, label, defaultHex }) => {
+                        const currentColor = (vtForm as any)[key] || defaultHex;
+                        const isCustom = Boolean((vtForm as any)[key]);
+                        return (
+                          <div key={key} className="p-3 rounded-2xl bg-slate-50 dark:bg-zinc-950 border border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-2">
+                            <div className="min-w-0 flex-1">
+                              <p className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200 truncate">{label}</p>
+                              <span className="text-[9px] font-mono text-slate-400">{currentColor}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <input
+                                type="color"
+                                value={currentColor}
+                                onChange={e => setVtForm({ ...vtForm, [key]: e.target.value })}
+                                className="w-8 h-8 rounded-xl border-2 border-slate-300 dark:border-zinc-700 cursor-pointer p-0 bg-transparent"
+                              />
+                              {isCustom && (
+                                <button
+                                  type="button"
+                                  onClick={() => setVtForm({ ...vtForm, [key]: '' })}
+                                  className="text-slate-400 hover:text-red-500 p-1"
+                                  title="Restaurar padrão"
+                                >
+                                  <X size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -824,24 +1177,42 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
 
                 {/* COMPONENTE TRANSPORT CARD LIVE */}
                 <div className="w-full overflow-x-auto custom-scrollbar py-4 flex justify-center">
-                  <TransportCard
-                    company={companies.find(c => c.id === selectedVtCompanyId) || { name: 'Vialivre' }}
-                    settings={{
-                      ...settings,
-                      vt_card_settings: {
-                        ...(settings?.vt_card_settings || {}),
-                        [selectedVtCompanyId]: vtForm
-                      }
-                    }}
-                    name="MARIA EDUARDA SILVA"
-                    cardNumber="1084920158"
-                    internalCode="VT89K2A1"
-                    category="ESCOLAR"
-                    city="Campinas"
-                    state="SP"
-                    viewMode="both"
-                    scale={0.92}
-                  />
+                  {(() => {
+                    const activeComp = companies.find(c => c.id === selectedVtCompanyId) || (companies.length > 0 ? companies[0] : { id: 'default', name: 'Vialivre' });
+                    const compId = activeComp?.id || 'default';
+                    return (
+                      <TransportCard
+                        company={activeComp}
+                        settings={{
+                          ...settings,
+                          vt_user_abbreviation: vtForm.user_abbreviation,
+                          vt_system_name: vtForm.system_name,
+                          vt_system_name_font_size: vtForm.system_name_font_size,
+                          vt_slogan: vtForm.slogan,
+                          vt_display_website: vtForm.display_website,
+                          vt_sac_name: vtForm.sac_name,
+                          vt_sac_phone: vtForm.sac_phone,
+                          vt_sac_hours: vtForm.sac_hours,
+                          vt_front_bg_url: vtForm.front_background_url,
+                          vt_back_bg_url: vtForm.back_background_url,
+                          vt_card_settings: {
+                            ...(settings?.vt_card_settings || {}),
+                            [compId]: vtForm,
+                            default: vtForm
+                          }
+                        }}
+                        name="MARIA EDUARDA SILVA"
+                        abbreviation={vtForm.user_abbreviation}
+                        cardNumber="1084920158"
+                        internalCode="VT89K2A1"
+                        category="VALE TRANSPORTE"
+                        city="Campinas"
+                        state="SP"
+                        viewMode="both"
+                        scale={0.92}
+                      />
+                    );
+                  })()}
                 </div>
 
                 {/* INFORMAÇÕES DE INTEGRAÇÃO MULTI-TENANT */}

@@ -60,6 +60,7 @@ export type TableName =
   | 'shifts' 
   | 'daily_schedules'
   | 'time_tracking' 
+  | 'drivers'
   | 'driver_logs' 
   | 'conductor_logs'
   | 'dispatcher_logs'
@@ -121,6 +122,121 @@ export const isValidUUID = (str: any): boolean => {
 };
 
 export const DEFAULT_SYSTEM_UUID = '44d472ca-9311-45e1-9297-c442e016e1a6';
+
+export const getStoredSystemId = (): string | null => {
+  try {
+    if (typeof window !== 'undefined') {
+      const explicit = safeLocalStorage.getItem('vialivre_system_id');
+      if (explicit && isValidUUID(explicit)) {
+        return explicit;
+      }
+      const u = safeLocalStorage.getItem('fluxo_session_user') || safeLocalStorage.getItem('@vialivre_user');
+      if (u) {
+        const parsed = JSON.parse(u);
+        if (parsed.system_id && isValidUUID(parsed.system_id)) {
+          return parsed.system_id;
+        }
+      }
+    }
+  } catch {}
+  return null;
+};
+
+export let currentSystemId: string | null = getStoredSystemId();
+
+export const fetchRootAdminSystemId = async (user?: Partial<User> | null): Promise<string> => {
+  try {
+    const isUserAdmin = (user?.role || '').toUpperCase() === 'ADMIN' || user?.is_full_admin === true || (user?.job_title || '').toUpperCase().includes('ADMINISTRADOR');
+
+    // 1. Se o próprio usuário for Administrador e possuir system_id UUID válido, define e retorna imediatamente
+    if (isUserAdmin && user?.system_id && isValidUUID(user.system_id)) {
+      currentSystemId = user.system_id;
+      if (typeof window !== 'undefined') {
+        safeLocalStorage.setItem('vialivre_system_id', user.system_id);
+      }
+      return user.system_id;
+    }
+
+    // 2. Se o colaborador logado já tiver system_id UUID válido em seu cadastro de usuário
+    if (user?.system_id && isValidUUID(user.system_id)) {
+      currentSystemId = user.system_id;
+      if (typeof window !== 'undefined') {
+        safeLocalStorage.setItem('vialivre_system_id', user.system_id);
+      }
+      return user.system_id;
+    }
+
+    // 3. Busca o Administrador Raiz da mesma unidade organizacional do colaborador na tabela public.users
+    if (user?.unidade) {
+      const { data: unitAdmins, error: unitErr } = await supabase
+        .from('users')
+        .select('id, system_id, role, is_full_admin, created_at')
+        .eq('unidade', user.unidade)
+        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
+        .not('system_id', 'is', null)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (!unitErr && unitAdmins && unitAdmins.length > 0 && unitAdmins[0].system_id) {
+        const found = unitAdmins[0].system_id;
+        currentSystemId = found;
+        if (typeof window !== 'undefined') {
+          safeLocalStorage.setItem('vialivre_system_id', found);
+        }
+        return found;
+      }
+    }
+
+    // 4. Busca o Administrador Raiz pela empresa vinculada (company_id)
+    if (user?.company_id) {
+      const { data: compAdmins, error: compErr } = await supabase
+        .from('users')
+        .select('id, system_id, role, is_full_admin, created_at')
+        .eq('company_id', user.company_id)
+        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
+        .not('system_id', 'is', null)
+        .order('created_at', { ascending: true })
+        .limit(1);
+
+      if (!compErr && compAdmins && compAdmins.length > 0 && compAdmins[0].system_id) {
+        const found = compAdmins[0].system_id;
+        currentSystemId = found;
+        if (typeof window !== 'undefined') {
+          safeLocalStorage.setItem('vialivre_system_id', found);
+        }
+        return found;
+      }
+    }
+
+    // 5. Busca o Administrador Raiz geral primário na tabela public.users
+    const { data: rootAdmins, error: rootErr } = await supabase
+      .from('users')
+      .select('id, system_id, role, is_full_admin, created_at')
+      .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
+      .not('system_id', 'is', null)
+      .order('created_at', { ascending: true })
+      .limit(1);
+
+    if (!rootErr && rootAdmins && rootAdmins.length > 0 && rootAdmins[0].system_id) {
+      const rootSysId = rootAdmins[0].system_id;
+      currentSystemId = rootSysId;
+      if (typeof window !== 'undefined') {
+        safeLocalStorage.setItem('vialivre_system_id', rootSysId);
+      }
+      return rootSysId;
+    }
+  } catch (err) {
+    console.error('[AUTH] Erro ao buscar system_id do Administrador Raiz na tabela users do Supabase:', err);
+  }
+
+  // Fallback seguro para o ID da organização padrão do sistema
+  const fallback = DEFAULT_SYSTEM_UUID;
+  currentSystemId = fallback;
+  if (typeof window !== 'undefined') {
+    safeLocalStorage.setItem('vialivre_system_id', fallback);
+  }
+  return fallback;
+};
 
 export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
   companies: new Set([
@@ -397,11 +513,18 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   }
 
   if (table === 'shifts') {
-    if (typeof cleaned.id === 'string' && isNaN(Number(cleaned.id))) delete cleaned.id;
+    if (!isUpdate) delete cleaned.id;
+    else if (typeof cleaned.id === 'string' && isNaN(Number(cleaned.id))) delete cleaned.id;
     if (!cleaned.date) cleaned.date = new Date().toISOString().substring(0, 10);
     if (!cleaned.start_time) cleaned.start_time = '08:00';
     if (!cleaned.end_time) cleaned.end_time = '16:00';
     if (!cleaned.status) cleaned.status = 'AGENDADO';
+    if (!cleaned.driver_id) {
+      cleaned.driver_id = cleaned.user_id || '00000000-0000-4000-a000-000000000001';
+    }
+    if (!cleaned.route_id) {
+      cleaned.route_id = '00000000-0000-4000-a000-000000000001';
+    }
   }
 
   if (table === 'system_settings') {
@@ -422,6 +545,12 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
         else if (typeof cleaned.value === 'object' && cleaned.value !== null) existingVal = cleaned.value;
       } catch {}
       cleaned.value = JSON.stringify({ ...existingVal, ...extraSettings });
+    }
+  }
+
+  if (table === 'imp_cards') {
+    if (obj.abbreviation && typeof obj.abbreviation === 'string' && obj.abbreviation.trim()) {
+      cleaned.ai_art_url = 'abbr:' + obj.abbreviation.trim().toUpperCase();
     }
   }
 
@@ -452,7 +581,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
 
   // Garantia do system_id exclusivo ou da organização (INSERT automático)
   const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
-  if (!cleaned.system_id || cleaned.system_id === 'sys-vialivre-default' || cleaned.system_id === 'default-sys') {
+  if (!cleaned.system_id || cleaned.system_id === 'sys-vialivre-default' || cleaned.system_id === 'default-sys' || cleaned.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb') {
     cleaned.system_id = activeSys;
   }
 
@@ -505,112 +634,6 @@ export const PUBLIC_PASSENGER_TABLES: TableName[] = [
   'cities'
 ];
 
-export const getStoredSystemId = (): string | null => {
-  try {
-    if (typeof window !== 'undefined') {
-      const explicit = safeLocalStorage.getItem('vialivre_system_id');
-      if (explicit && isValidUUID(explicit)) {
-        return explicit;
-      }
-      const u = safeLocalStorage.getItem('fluxo_session_user') || safeLocalStorage.getItem('@vialivre_user');
-      if (u) {
-        const parsed = JSON.parse(u);
-        if (parsed.system_id && isValidUUID(parsed.system_id)) {
-          return parsed.system_id;
-        }
-      }
-    }
-  } catch {}
-  return null;
-};
-
-export const fetchRootAdminSystemId = async (user?: Partial<User> | null): Promise<string> => {
-  try {
-    const isUserAdmin = (user?.role || '').toUpperCase() === 'ADMIN' || user?.is_full_admin === true || (user?.job_title || '').toUpperCase().includes('ADMINISTRADOR');
-
-    // 1. Se o próprio usuário for Administrador e possuir system_id UUID válido, define e retorna imediatamente
-    if (isUserAdmin && user?.system_id && isValidUUID(user.system_id)) {
-      currentSystemId = user.system_id;
-      if (typeof window !== 'undefined') {
-        safeLocalStorage.setItem('vialivre_system_id', user.system_id);
-      }
-      return user.system_id;
-    }
-
-    // 2. Busca o Administrador Raiz da mesma unidade organizacional do colaborador na tabela public.users
-    if (user?.unidade) {
-      const { data: unitAdmins, error: unitErr } = await supabase
-        .from('users')
-        .select('id, system_id, role, is_full_admin, created_at')
-        .eq('unidade', user.unidade)
-        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-        .not('system_id', 'is', null)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (!unitErr && unitAdmins && unitAdmins.length > 0 && unitAdmins[0].system_id) {
-        const found = unitAdmins[0].system_id;
-        currentSystemId = found;
-        if (typeof window !== 'undefined') {
-          safeLocalStorage.setItem('vialivre_system_id', found);
-        }
-        return found;
-      }
-    }
-
-    // 3. Busca o Administrador Raiz pela empresa vinculada (company_id)
-    if (user?.company_id) {
-      const { data: compAdmins, error: compErr } = await supabase
-        .from('users')
-        .select('id, system_id, role, is_full_admin, created_at')
-        .eq('company_id', user.company_id)
-        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-        .not('system_id', 'is', null)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (!compErr && compAdmins && compAdmins.length > 0 && compAdmins[0].system_id) {
-        const found = compAdmins[0].system_id;
-        currentSystemId = found;
-        if (typeof window !== 'undefined') {
-          safeLocalStorage.setItem('vialivre_system_id', found);
-        }
-        return found;
-      }
-    }
-
-    // 4. Busca o Administrador Raiz geral primário na tabela public.users
-    const { data: rootAdmins, error: rootErr } = await supabase
-      .from('users')
-      .select('id, system_id, role, is_full_admin, created_at')
-      .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-      .not('system_id', 'is', null)
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (!rootErr && rootAdmins && rootAdmins.length > 0 && rootAdmins[0].system_id) {
-      const rootSysId = rootAdmins[0].system_id;
-      currentSystemId = rootSysId;
-      if (typeof window !== 'undefined') {
-        safeLocalStorage.setItem('vialivre_system_id', rootSysId);
-      }
-      return rootSysId;
-    }
-  } catch (err) {
-    console.error('[AUTH] Erro ao buscar system_id do Administrador Raiz na tabela users do Supabase:', err);
-  }
-
-  // Fallback seguro para o ID da organização padrão do sistema
-  const fallback = DEFAULT_SYSTEM_UUID;
-  currentSystemId = fallback;
-  if (typeof window !== 'undefined') {
-    safeLocalStorage.setItem('vialivre_system_id', fallback);
-  }
-  return fallback;
-};
-
-let currentSystemId: string | null = getStoredSystemId();
-
 // Helper para gerenciar exclusões locais
 const getDeletedIds = (table: TableName): Set<string> => {
   try {
@@ -643,7 +666,7 @@ const removeDeletedId = (table: TableName, id: string): void => {
   } catch (e) {}
 };
 
-// Cache local com suporte a multitenancy
+// Cache local com suporte a multitenancy (somente espelho do Supabase)
 const getLocalData = <T>(table: TableName): T[] => {
   const deleted = getDeletedIds(table);
   const isPublicPassenger = PUBLIC_PASSENGER_TABLES.includes(table);
@@ -664,62 +687,6 @@ const getLocalData = <T>(table: TableName): T[] => {
         const bsParsed = JSON.parse(bsRaw);
         if (Array.isArray(bsParsed)) rawList = bsParsed;
       }
-    }
-    if (table === 'activation_keys' && rawList.length === 0) {
-      const defaultKeys = [
-        {
-          id: '00000000-0000-4000-a000-000000000001',
-          key_code: 'MASTER-2024-TEST-KEY',
-          plan_type: 'LIFETIME',
-          price: 0,
-          duration_months: 999,
-          duration_type: 'MONTHS',
-          is_used: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '00000000-0000-4000-a000-000000000002',
-          key_code: 'VL-84920194-4921',
-          plan_type: 'ANNUAL',
-          price: 1490,
-          duration_months: 12,
-          duration_type: 'MONTHS',
-          is_used: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '00000000-0000-4000-a000-000000000003',
-          key_code: 'VL-A1B2C3D4-5E6F',
-          plan_type: 'LIFETIME',
-          price: 4990,
-          duration_months: 999,
-          duration_type: 'MONTHS',
-          is_used: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '00000000-0000-4000-a000-000000000004',
-          key_code: 'VL-12345678-ABCD',
-          plan_type: 'SEMI_ANNUAL',
-          price: 790,
-          duration_months: 6,
-          duration_type: 'MONTHS',
-          is_used: false,
-          created_at: new Date().toISOString()
-        },
-        {
-          id: '00000000-0000-4000-a000-000000000005',
-          key_code: 'VL-SYS-PROV-2026',
-          plan_type: 'ANNUAL',
-          price: 1490,
-          duration_months: 12,
-          duration_type: 'MONTHS',
-          is_used: false,
-          created_at: new Date().toISOString()
-        }
-      ];
-      rawList = defaultKeys;
-      setLocalData('activation_keys', defaultKeys);
     }
 
     if (rawList.length > 0) {
@@ -1096,6 +1063,12 @@ export const db = {
               }
             } catch {}
           }
+          if (table === 'imp_cards' && item?.ai_art_url && typeof item.ai_art_url === 'string' && item.ai_art_url.startsWith('abbr:')) {
+            return {
+              ...item,
+              abbreviation: item.ai_art_url.replace('abbr:', '')
+            };
+          }
           if (table === 'routes' && Array.isArray(item?.sections)) {
             const meta = item.sections.find((s: any) => s && s.__route_meta__);
             if (meta) {
@@ -1118,27 +1091,32 @@ export const db = {
           return item;
         });
 
-        if (enriched.length > 0) {
-          setLocalData(table, enriched);
-          return enriched as T[];
-        } else {
-          const cloudData = await fetchTableFromCloudStorage<T>(table);
-          if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
-            setLocalData(table, cloudData);
-            return cloudData;
+        // Se system_settings não retornou com filtro específico, tenta recuperar configuração global do Supabase
+        if (enriched.length === 0 && table === 'system_settings') {
+          const { data: globalSettings } = await supabase.from('system_settings').select('*').limit(1);
+          if (globalSettings && globalSettings.length > 0) {
+            const raw = globalSettings[0];
+            let parsedVal: any = {};
+            try {
+              if (raw.value) parsedVal = typeof raw.value === 'string' ? JSON.parse(raw.value) : raw.value;
+            } catch {}
+            const fallbackItem = [{ ...raw, ...parsedVal }] as T[];
+            setLocalData(table, fallbackItem);
+            return fallbackItem;
           }
-          return getLocalData<T>(table);
         }
+
+        // Persistência local atua estritamente como espelho do banco de dados em nuvem
+        setLocalData(table, enriched);
+        return enriched as T[];
       }
 
-      const cloudFallback = await fetchTableFromCloudStorage<T>(table);
-      if (cloudFallback && Array.isArray(cloudFallback) && cloudFallback.length > 0) {
-        setLocalData(table, cloudFallback);
-        return cloudFallback;
-      }
-
-      return getLocalData<T>(table);
+      return [];
     } catch (e: any) {
+      if (isNetworkError(e)) {
+        updateStatus({ isOffline: true, lastError: 'Sem conexão com a internet' });
+        return getLocalData<T>(table);
+      }
       const cloudData = await fetchTableFromCloudStorage<T>(table).catch(() => null);
       if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
         setLocalData(table, cloudData);
@@ -1166,10 +1144,10 @@ export const db = {
 
   // CRIAÇÃO DIRETA NA NUVEM COM SUPORTE A RECURSÃO RLS
   create: async <T extends { id?: string; system_id?: string }>(table: TableName, item: Partial<T>): Promise<T | null> => {
-    const payload = cleanPayload(table, item, true);
+    const payload = cleanPayload(table, item, false);
     
-    // Geração de ID seguro
-    if (table === 'role_configs') {
+    // Geração de ID seguro: shifts e role_configs utilizam identificador gerado pelo banco
+    if (table === 'role_configs' || table === 'shifts') {
       delete payload.id;
     } else if (!payload.id || !isValidUUID(payload.id)) {
       if (table !== 'system_settings') {
@@ -1177,6 +1155,12 @@ export const db = {
       }
     }
     
+    // Vinculação obrigatória ao system_id ativo da organização do Administrador Raiz
+    const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
+    if (!payload.system_id || payload.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb' || payload.system_id === 'sys-vialivre-default' || payload.system_id === 'default-sys') {
+      payload.system_id = activeSys;
+    }
+
     if (payload.id) {
       removeDeletedId(table, String(payload.id));
     }
@@ -1240,22 +1224,31 @@ export const db = {
       }
 
       if (!finalItem && lastError) {
-        console.error(`[SUPABASE_CREATE_ERROR] Erro persistente ao salvar na tabela ${table}:`, lastError);
-        if (table === 'users' || table === 'activation_keys') {
-          throw new Error(`Falha no Supabase ao gravar em ${table}: ${lastError.message || 'Erro de permissão ou restrição'}`);
+        console.error(`[SUPABASE_INSERT_ERROR] Erro ao cadastrar na tabela '${table}' no Supabase:`, {
+          code: lastError.code,
+          message: lastError.message,
+          details: lastError.details,
+          hint: lastError.hint,
+          payload: currentPayload
+        });
+
+        // Alerta visual no console e toast para diagnóstico imediato
+        dispatchSystemToast(`Erro ao salvar no banco de dados (${table}): ${lastError.message || lastError.code || 'Falha de permissão RLS'}`, 'error');
+
+        // Se for erro de rede offline, salva no cache local e fila
+        if (isNetworkError(lastError)) {
+          const localList = getLocalData<any>(table);
+          const updatedList = [currentPayload, ...localList.filter((x: any) => x.id !== currentPayload.id)];
+          setLocalData(table, updatedList);
+          await syncTableToCloudStorage(table, updatedList);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: currentPayload } }));
+          }
+          return currentPayload as T;
         }
 
-        // Salva localmente e replica imediatamente para o Supabase Cloud Storage como redundância
-        const localList = getLocalData<any>(table);
-        const updatedList = [currentPayload, ...localList.filter((x: any) => x.id !== currentPayload.id)];
-        setLocalData(table, updatedList);
-        await syncTableToCloudStorage(table, updatedList);
-
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: currentPayload } }));
-        }
-
-        return currentPayload as T;
+        // Falha real do Supabase: lança o erro para impedir que o sistema finja ter persistido na nuvem
+        throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao gravar no Supabase'}`);
       }
 
       const savedResult = finalItem || payload;
@@ -1271,7 +1264,7 @@ export const db = {
       return savedResult as T;
     } catch (e: any) {
       console.error(`[SUPABASE_CREATE_EXCEPTION] Falha ao cadastrar na tabela ${table}:`, e);
-      if (table === 'users' || table === 'activation_keys') {
+      if (!isNetworkError(e)) {
         throw e;
       }
       const localList = getLocalData<any>(table);
@@ -1292,6 +1285,29 @@ export const db = {
     
     if (item.id) {
       removeDeletedId(table, item.id);
+    }
+
+    // Vinculação ao system_id se não presente
+    const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
+    if (!payload.system_id || payload.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb' || payload.system_id === 'sys-vialivre-default') {
+      payload.system_id = activeSys;
+    }
+
+    // EXCLUSÃO AUTOMÁTICA DA CHAVE ANTIGA AO TROCAR A CHAVE DE ACESSO DE UM ADMINISTRADOR
+    if (table === 'users' && (payload.activation_key || (item as any).activation_key)) {
+      try {
+        const newKey = String(payload.activation_key || (item as any).activation_key || '').trim();
+        const { data: existingUser } = await supabase.from('users').select('activation_key, role, is_full_admin').eq('id', item.id).maybeSingle();
+        if (existingUser && existingUser.activation_key) {
+          const oldKey = String(existingUser.activation_key).trim();
+          if (oldKey && oldKey.toUpperCase() !== newKey.toUpperCase()) {
+            console.log(`[ADMIN_KEY_CHANGE] Detectada troca de chave de acesso do administrador: '${oldKey}' -> '${newKey}'. Excluindo chave antiga automaticamente...`);
+            await db.deleteActivationKeyByCode(oldKey);
+          }
+        }
+      } catch (keyEx) {
+        console.warn('[ADMIN_KEY_CHANGE_WARN] Falha ao verificar/excluir chave antiga:', keyEx);
+      }
     }
 
     try {
@@ -1319,45 +1335,48 @@ export const db = {
       }
 
       if (!finalItem && lastError) {
-        console.error(`[SUPABASE_UPDATE_ERROR] Erro ao atualizar na tabela ${table}:`, lastError);
-        if (table === 'users' || table === 'activation_keys') {
-          throw new Error(`Falha no Supabase ao atualizar ${table}: ${lastError.message || 'Erro de permissão ou restrição'}`);
+        console.error(`[SUPABASE_UPDATE_ERROR] Erro ao atualizar na tabela '${table}' no Supabase:`, {
+          code: lastError.code,
+          message: lastError.message,
+          details: lastError.details,
+          hint: lastError.hint,
+          payload: currentPayload
+        });
+
+        dispatchSystemToast(`Erro ao atualizar no banco (${table}): ${lastError.message || lastError.code || 'Falha RLS'}`, 'error');
+
+        if (isNetworkError(lastError)) {
+          const localList = getLocalData<any>(table);
+          const idx = localList.findIndex((x: any) => x.id === item.id);
+          if (idx !== -1) localList[idx] = { ...localList[idx], ...payload };
+          else localList.push(payload);
+          setLocalData(table, localList);
+          await syncTableToCloudStorage(table, localList);
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: payload } }));
+          }
+          return item;
         }
 
-        const isRls = isRlsRecursionError(lastError);
-        if (!isNetworkError(lastError) && !isRls) {
-          console.warn(`Supabase update aviso em ${table}:`, lastError?.message || lastError);
-        }
-
-        const localList = getLocalData<any>(table);
-        const idx = localList.findIndex((x: any) => x.id === item.id);
-        if (idx !== -1) localList[idx] = { ...localList[idx], ...payload };
-        else localList.push(payload);
-        setLocalData(table, localList);
-        await syncTableToCloudStorage(table, localList);
-
-        if (typeof window !== 'undefined') {
-          window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: payload } }));
-        }
-        return item;
+        throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao atualizar no Supabase'}`);
       }
 
-      const finalItem = (Array.isArray(data) ? (data.length > 0 ? data[0] : item) : (data || item)) as T;
+      const updatedItem = (finalItem || payload || item) as T;
       const localList = getLocalData<any>(table);
       const idx = localList.findIndex((x: any) => x.id === item.id);
-      if (idx !== -1) localList[idx] = finalItem;
-      else localList.push(finalItem);
+      if (idx !== -1) localList[idx] = updatedItem;
+      else localList.push(updatedItem);
       setLocalData(table, localList);
       syncTableToCloudStorage(table, localList).catch(() => {});
 
       if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: finalItem } }));
+        window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: updatedItem } }));
       }
 
-      return finalItem as T;
+      return updatedItem as T;
     } catch (e: any) {
       console.error(`[SUPABASE_UPDATE_EXCEPTION] Falha ao atualizar na tabela ${table}:`, e);
-      if (table === 'users' || table === 'activation_keys') {
+      if (!isNetworkError(e)) {
         throw e;
       }
       const localList = getLocalData<any>(table);
@@ -1390,8 +1409,16 @@ export const db = {
 
     try {
       const { error } = await supabase.from(table).delete().eq('id', id);
-      if (error && !isRlsRecursionError(error) && !isNetworkError(error)) {
-        console.warn(`Supabase delete aviso em ${table}:`, error?.message || error);
+      if (error) {
+        console.error(`[SUPABASE_DELETE_ERROR] Erro ao excluir na tabela ${table} no Supabase:`, {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          id
+        });
+        if (!isNetworkError(error)) {
+          dispatchSystemToast(`Erro ao excluir na tabela ${table}: ${error.message || error.code}`, 'error');
+        }
       }
       
       if (typeof window !== 'undefined') {
@@ -1399,6 +1426,7 @@ export const db = {
       }
       return true;
     } catch (e: any) {
+      console.error(`[SUPABASE_DELETE_EXCEPTION] Erro ao excluir na tabela ${table}:`, e);
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'delete', id } }));
       }
@@ -1543,7 +1571,10 @@ export const db = {
 
   // MÉTODOS DE CONSULTA (Compatibilidade Direta e Aliases getAll...)
   getUsers: () => db.fetchAll<User>('users'),
-  getAllUsers: () => db.fetchAll<User>('users'),
+  getAllUsers: () => db.fetchAll<User>('users', { bypassSystemId: true }),
+
+  getDrivers: () => db.fetchAll<any>('drivers'),
+  getAllDrivers: () => db.fetchAll<any>('drivers', { bypassSystemId: true }),
 
   getCities: () => db.fetchAll<City>('cities'),
   getAllCities: () => db.fetchAll<City>('cities'),
@@ -1606,6 +1637,41 @@ export const db = {
 
   getActivationKeys: () => db.fetchAll<any>('activation_keys'),
   getAllActivationKeys: () => db.fetchAll<any>('activation_keys'),
+  deleteActivationKeyByCode: async (keyCode: string): Promise<boolean> => {
+    if (!keyCode || typeof keyCode !== 'string') return false;
+    const cleanKey = keyCode.trim();
+    if (!cleanKey) return false;
+    try {
+      console.log(`[DATABASE] Excluindo chave antiga de ativação: ${cleanKey}`);
+      const { error } = await supabase
+        .from('activation_keys')
+        .delete()
+        .ilike('key_code', cleanKey);
+      
+      if (error) {
+        console.error('[SUPABASE_DELETE_KEY_ERROR] Erro ao excluir chave antiga no Supabase:', {
+          code: error.code,
+          message: error.message,
+          details: error.details,
+          keyCode: cleanKey
+        });
+      } else {
+        console.log(`[SUPABASE] Chave antiga '${cleanKey}' excluída com sucesso do banco de dados.`);
+      }
+
+      const localKeys = getLocalData<any>('activation_keys');
+      const filtered = localKeys.filter((k: any) => (k.key_code || '').trim().toUpperCase() !== cleanKey.toUpperCase());
+      setLocalData('activation_keys', filtered);
+
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table: 'activation_keys', action: 'delete' } }));
+      }
+      return true;
+    } catch (err) {
+      console.error('[DELETE_OLD_KEY_EXCEPTION] Falha ao tentar excluir chave antiga:', err);
+      return false;
+    }
+  },
 
   getTimeTracking: () => db.fetchAll<TimeEntry>('time_tracking'),
   getTimeEntries: async (userId?: string): Promise<TimeEntry[]> => {

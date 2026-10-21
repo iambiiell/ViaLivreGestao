@@ -376,7 +376,7 @@ const DriverManager: React.FC<DriverManagerProps> = ({ drivers = [], cities = []
       ...formData, 
       role, 
       occurrences,
-      system_id: currentUser?.system_id || formData.system_id || db.getSystemId() || '43e370b2-2c60-cf5f-7886-e111e8213ffb'
+      system_id: currentUser?.system_id || formData.system_id || db.getSystemId() || '44d472ca-9311-45e1-9297-c442e016e1a6'
     } as User;
     
     // daily_hours_target validation

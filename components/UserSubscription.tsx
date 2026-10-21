@@ -176,7 +176,15 @@ const UserSubscription: React.FC<UserSubscriptionProps> = ({ currentUser, addToa
       await db.update('activation_keys', updatedKey);
       setCurrentKey(updatedKey);
 
-      // Do NOT delete old keys so that historical activation logs remain accessible
+      // Exclusão automática da chave antiga ao trocar a chave de acesso do administrador
+      const oldKeyCode = subscription?.key_code || currentUser?.activation_key || currentKey?.key_code;
+      if (oldKeyCode && oldKeyCode.trim().toUpperCase() !== key.key_code.trim().toUpperCase()) {
+        try {
+          await (db as any).deleteActivationKeyByCode(oldKeyCode);
+        } catch (delErr) {
+          console.warn('[USER_SUBSCRIPTION] Falha ao excluir chave antiga:', delErr);
+        }
+      }
 
       if (subscription) {
         await db.update('subscriptions', {

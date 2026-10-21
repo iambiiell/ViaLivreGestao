@@ -1131,10 +1131,10 @@ const App: React.FC = () => {
 
     // Multitenancy security filter: ignore events from other activation keys/networks
     const isPublicPassengerTable = ['routes', 'itineraries', 'bus_stations', 'bus_terminals', 'itinerary_sections', 'route_sections', 'cities', 'notices'].includes(table);
-    if (!isPassengerMode && currentUser?.system_id && !isPublicPassengerTable) {
-      const activeSys = currentUser.system_id;
+    const activeSys = currentUser?.system_id || db.getSystemId() || localStorage.getItem('vialivre_system_id');
+    if (!isPassengerMode && activeSys && !isPublicPassengerTable) {
       const itemSys = newItem?.system_id || oldItem?.system_id;
-      if (itemSys && itemSys !== activeSys && !(activeSys === '43e370b2-2c60-cf5f-7886-e111e8213ffb' && itemSys === 'sys-vialivre-default')) {
+      if (itemSys && itemSys !== activeSys && itemSys !== 'sys-vialivre-default') {
         return;
       }
     }
@@ -1672,8 +1672,9 @@ const App: React.FC = () => {
           if (currentUser?.id && !payloadWithUser.created_by) {
             payloadWithUser.created_by = currentUser.id;
           }
-          if (currentUser?.system_id && !payloadWithUser.system_id) {
-            payloadWithUser.system_id = currentUser.system_id;
+          const activeSys = currentUser?.system_id || db.getSystemId() || (typeof window !== 'undefined' ? localStorage.getItem('vialivre_system_id') : null);
+          if (activeSys && (!payloadWithUser.system_id || payloadWithUser.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb' || payloadWithUser.system_id === 'sys-vialivre-default')) {
+            payloadWithUser.system_id = activeSys;
           }
           res = await db.create(table, payloadWithUser);
           if (res) {
@@ -2144,13 +2145,9 @@ const App: React.FC = () => {
     return (
       <ErrorBoundary>
         <GlobalTopProgressBar currentView={currentView} />
-        {isMobile ? (
-          <div className="w-full h-screen h-[100dvh] overflow-hidden flex flex-col justify-center items-center bg-slate-100 dark:bg-zinc-950">
-            <MobileSystemView {...mobileProps} isEmbedded={false} />
-          </div>
-        ) : (
-          <MobileDeviceSimulator {...mobileProps} onSwitchToDesktop={toggleMobileMode} />
-        )}
+        <div className="w-full h-screen h-[100dvh] overflow-hidden flex flex-col justify-center items-center bg-slate-50 dark:bg-zinc-950">
+          <MobileSystemView {...mobileProps} isEmbedded={true} onSwitchToDesktop={toggleMobileMode} />
+        </div>
       </ErrorBoundary>
     );
   }
