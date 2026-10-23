@@ -136,6 +136,7 @@ export interface BusRoute {
   service_class?: string;
   exibir_codigo_letreiro?: boolean;
   letreiro_cor_preview?: 'AMBAR' | 'BRANCO';
+  letreiro_cor?: string;
   empresa_autuante?: string;
   empresa_autuante_id?: string;
 }

@@ -261,7 +261,7 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'schedule_sundays', 'estimated_travel_time_text', 'payment_methods_accepted', 'service_class',
     'origin_station_id', 'origin_station_platform', 'destination_station_id',
     'destination_station_platform', 'via1_cor', 'via2_cor', 'via3_cor', 'exibir_codigo_letreiro',
-    'created_by', 'updated_by', 'is_active'
+    'created_by', 'updated_by', 'is_active', 'empresa_autuante', 'empresa_autuante_id', 'letreiro_cor'
   ]),
   users: new Set([
     'id', 'full_name', 'email', 'created_at', 'active', 'admission_date', 'job_title', 'registration_id',
@@ -448,23 +448,27 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (!cleaned.tarifa_integral && cleaned.price) cleaned.tarifa_integral = Number(cleaned.price);
     if (cleaned.active === undefined) cleaned.active = true;
 
-    // Se empresa autuante for informada, encapsula com segurança em sections para persistência
-    if (obj.empresa_autuante || obj.empresa_autuante_id) {
-      let sectionsArr: any[] = [];
+    // Garantir que sections contenha APENAS seções reais criadas pelo usuário (não gerar seções automáticas)
+    let cleanSections: any[] = [];
+    if (Array.isArray(cleaned.sections)) {
+      cleanSections = cleaned.sections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
+    } else if (typeof cleaned.sections === 'string') {
       try {
-        if (Array.isArray(cleaned.sections)) sectionsArr = [...cleaned.sections];
-        else if (typeof cleaned.sections === 'string') sectionsArr = JSON.parse(cleaned.sections);
+        const parsed = JSON.parse(cleaned.sections);
+        if (Array.isArray(parsed)) {
+          cleanSections = parsed.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
+        }
       } catch {}
-      const metaObj = {
-        __route_meta__: true,
-        empresa_autuante: obj.empresa_autuante || null,
-        empresa_autuante_id: obj.empresa_autuante_id || null
-      };
-      const existingMetaIdx = sectionsArr.findIndex(s => s && s.__route_meta__);
-      if (existingMetaIdx >= 0) sectionsArr[existingMetaIdx] = metaObj;
-      else sectionsArr.push(metaObj);
-      cleaned.sections = sectionsArr;
     }
+    cleaned.sections = cleanSections;
+    if (obj.letreiro_cor) {
+      cleaned.letreiro_cor = obj.letreiro_cor;
+      if (!cleaned.display_main_color) cleaned.display_main_color = obj.letreiro_cor;
+    } else if (obj.display_main_color && !cleaned.letreiro_cor) {
+      cleaned.letreiro_cor = obj.display_main_color;
+    }
+    if (obj.empresa_autuante) cleaned.empresa_autuante = obj.empresa_autuante;
+    if (obj.empresa_autuante_id) cleaned.empresa_autuante_id = obj.empresa_autuante_id;
   }
 
   if (table === 'drivers') {
@@ -531,6 +535,9 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (typeof cleaned.id === 'string' && isNaN(Number(cleaned.id))) {
       delete cleaned.id;
     }
+    if (!cleaned.key) {
+      cleaned.key = obj.key || 'config_default';
+    }
     // Encapsula propriedades adicionais de configuração institucional e VT dentro da coluna value (JSON)
     const extraSettings: Record<string, any> = {};
     for (const [k, val] of Object.entries(obj)) {
@@ -549,8 +556,28 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   }
 
   if (table === 'imp_cards') {
+    const metaObj: Record<string, any> = {};
     if (obj.abbreviation && typeof obj.abbreviation === 'string' && obj.abbreviation.trim()) {
-      cleaned.ai_art_url = 'abbr:' + obj.abbreviation.trim().toUpperCase();
+      metaObj.abbreviation = obj.abbreviation.trim().toUpperCase();
+    }
+    if (obj.company_id) {
+      metaObj.company_id = obj.company_id;
+      cleaned.card_logo_left_url = String(obj.company_id);
+    }
+    if (obj.company_name) {
+      metaObj.company_name = obj.company_name;
+      cleaned.card_logo_right_url = String(obj.company_name);
+    }
+    if (obj.company_logo) {
+      metaObj.company_logo = obj.company_logo;
+      cleaned.left_logo_url = String(obj.company_logo);
+    }
+    if (obj.internal_code) {
+      metaObj.internal_code = obj.internal_code;
+      cleaned.right_logo_url = String(obj.internal_code);
+    }
+    if (Object.keys(metaObj).length > 0) {
+      cleaned.ai_art_url = JSON.stringify(metaObj);
     }
   }
 
@@ -1063,21 +1090,36 @@ export const db = {
               }
             } catch {}
           }
-          if (table === 'imp_cards' && item?.ai_art_url && typeof item.ai_art_url === 'string' && item.ai_art_url.startsWith('abbr:')) {
+          if (table === 'imp_cards') {
+            let meta: any = null;
+            if (item?.ai_art_url && typeof item.ai_art_url === 'string') {
+              if (item.ai_art_url.startsWith('{')) {
+                try {
+                  meta = JSON.parse(item.ai_art_url);
+                } catch {}
+              } else if (item.ai_art_url.startsWith('abbr:')) {
+                meta = { abbreviation: item.ai_art_url.replace('abbr:', '') };
+              }
+            }
             return {
               ...item,
-              abbreviation: item.ai_art_url.replace('abbr:', '')
+              company_id: meta?.company_id || item.card_logo_left_url || item.company_id || '',
+              company_name: meta?.company_name || item.card_logo_right_url || item.company_name || '',
+              company_logo: meta?.company_logo || item.left_logo_url || item.company_logo || '',
+              internal_code: meta?.internal_code || item.right_logo_url || item.internal_code || '',
+              abbreviation: meta?.abbreviation || item.abbreviation || ''
             };
           }
-          if (table === 'routes' && Array.isArray(item?.sections)) {
-            const meta = item.sections.find((s: any) => s && s.__route_meta__);
-            if (meta) {
-              return {
-                ...item,
-                empresa_autuante: item.empresa_autuante || meta.empresa_autuante,
-                empresa_autuante_id: item.empresa_autuante_id || meta.empresa_autuante_id
-              };
-            }
+          if (table === 'routes') {
+            const rawSections = Array.isArray(item?.sections) ? item.sections : [];
+            const realSections = rawSections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
+            const meta = rawSections.find((s: any) => s && s.__route_meta__);
+            return {
+              ...item,
+              sections: realSections,
+              empresa_autuante: item.empresa_autuante || meta?.empresa_autuante,
+              empresa_autuante_id: item.empresa_autuante_id || meta?.empresa_autuante_id
+            };
           }
           if (table === 'companies') {
             return {
@@ -1149,10 +1191,18 @@ export const db = {
     // Geração de ID seguro: shifts e role_configs utilizam identificador gerado pelo banco
     if (table === 'role_configs' || table === 'shifts') {
       delete payload.id;
-    } else if (!payload.id || !isValidUUID(payload.id)) {
-      if (table !== 'system_settings') {
-        payload.id = generateUUID();
+    } else if (table === 'system_settings') {
+      try {
+        const { data: existingSettings } = await supabase.from('system_settings').select('id').limit(1);
+        if (existingSettings && existingSettings.length > 0) {
+          const targetId = existingSettings[0].id;
+          return await db.update('system_settings', { ...item, id: targetId } as any) as T;
+        }
+      } catch (checkErr) {
+        console.warn('[system_settings check error]', checkErr);
       }
+    } else if (!payload.id || !isValidUUID(payload.id)) {
+      payload.id = generateUUID();
     }
     
     // Vinculação obrigatória ao system_id ativo da organização do Administrador Raiz
@@ -1251,7 +1301,16 @@ export const db = {
         throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao gravar no Supabase'}`);
       }
 
-      const savedResult = finalItem || payload;
+      let savedResult = finalItem || payload;
+      if (table === 'system_settings') {
+        let unpacked: any = {};
+        try {
+          if (savedResult?.value) {
+            unpacked = typeof savedResult.value === 'string' ? JSON.parse(savedResult.value) : savedResult.value;
+          }
+        } catch {}
+        savedResult = { ...item, ...savedResult, ...(unpacked || {}) };
+      }
       const localList = getLocalData<any>(table);
       const updatedList = [savedResult, ...localList.filter((x: any) => x.id !== (savedResult as any).id)];
       setLocalData(table, updatedList);
@@ -1361,7 +1420,16 @@ export const db = {
         throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao atualizar no Supabase'}`);
       }
 
-      const updatedItem = (finalItem || payload || item) as T;
+      let updatedItem = (finalItem || payload || item) as T;
+      if (table === 'system_settings') {
+        let unpacked: any = {};
+        try {
+          if ((updatedItem as any)?.value) {
+            unpacked = typeof (updatedItem as any).value === 'string' ? JSON.parse((updatedItem as any).value) : (updatedItem as any).value;
+          }
+        } catch {}
+        updatedItem = { ...item, ...updatedItem, ...(unpacked || {}) } as T;
+      }
       const localList = getLocalData<any>(table);
       const idx = localList.findIndex((x: any) => x.id === item.id);
       if (idx !== -1) localList[idx] = updatedItem;

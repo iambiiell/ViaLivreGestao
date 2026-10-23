@@ -94,8 +94,20 @@ const SchedulePoster: React.FC<SchedulePosterProps> = ({ route, trips }) => {
           <div className="contents">
               {[groupedTrips.weekdays, groupedTrips.saturday, groupedTrips.sunday].map((dayData, idx) => (
                 <div key={idx} className={`grid grid-cols-2 ${idx < 2 ? 'border-r-4' : ''} border-slate-900 h-full`}>
-                   <div className="border-r-2 border-slate-400 bg-slate-50 text-center py-2 text-[10px] font-black uppercase tracking-tighter">IDA</div>
-                   <div className="bg-slate-50 text-center py-2 text-[10px] font-black uppercase tracking-tighter">VOLTA</div>
+                   <div 
+                     className="border-r-2 border-slate-400 bg-slate-50 text-center py-2 px-1 font-black uppercase tracking-tight text-slate-800 leading-tight break-words flex items-center justify-center min-h-[30px]"
+                     style={{ fontSize: (route.origin || '').length > 16 ? '8px' : '9px' }}
+                     title={`Saída: ${route.origin}`}
+                   >
+                     Saída: {route.origin}
+                   </div>
+                   <div 
+                     className="bg-slate-50 text-center py-2 px-1 font-black uppercase tracking-tight text-slate-800 leading-tight break-words flex items-center justify-center min-h-[30px]"
+                     style={{ fontSize: (route.destination || '').length > 16 ? '8px' : '9px' }}
+                     title={`Saída: ${route.destination}`}
+                   >
+                     Saída: {route.destination}
+                   </div>
                    
                    <div className="p-4 border-r-2 border-slate-400 space-y-2">
                       {dayData.ida.map(time => (

@@ -1667,9 +1667,6 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         <span className="text-amber-500 font-sans font-bold not-italic">➔</span>
                         <span>{route.destination}</span>
                       </h2>
-                      <span className="px-2.5 py-0.5 bg-yellow-400 text-slate-950 font-black rounded-lg text-xs uppercase font-sans not-italic shadow-sm">
-                        Sentido Ida
-                      </span>
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2.5 flex-wrap">
@@ -1683,9 +1680,6 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                         )}
                         <span>{route.origin}</span>
                       </h2>
-                      <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black rounded-lg text-xs uppercase font-sans not-italic shadow-sm">
-                        Sentido Volta
-                      </span>
                     </div>
                   )}
 
@@ -1697,12 +1691,10 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                   )}
                 </div>
 
-                {/* 3. SEÇÕES DE HORÁRIOS SEPARADAS POR DIAS E COLUNAS DE IDA E VOLTA */}
+                {/* 3. SEÇÕES DE HORÁRIOS SEPARADAS POR DIAS E COLUNAS */}
                 <div className="p-6 space-y-4 flex-1 flex flex-col justify-start">
                   {daysConfig.map((day) => {
                     const dayTimes = times[day.key];
-                    const hasIda = dayTimes.ida.length > 0;
-                    const hasVolta = dayTimes.volta.length > 0;
 
                     return (
                       <div 
@@ -1714,28 +1706,14 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                           <h3 className="font-black text-base uppercase tracking-widest">
                             {day.label}
                           </h3>
-                          <div className="flex items-center gap-2">
-                            {simultaneousDepartures ? (
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
-                                {dayTimes.ida.length} horários • Saídas Simultâneas
-                              </span>
-                            ) : includeIda && includeVolta ? (
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
-                                {dayTimes.ida.length} Ida • {dayTimes.volta.length} Volta
-                              </span>
-                            ) : includeIda ? (
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
-                                {dayTimes.ida.length} partidas (Ida)
-                              </span>
-                            ) : (
-                              <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
-                                {dayTimes.volta.length} partidas (Volta)
-                              </span>
-                            )}
-                          </div>
+                          {simultaneousDepartures && (
+                            <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
+                              Saídas Simultâneas
+                            </span>
+                          )}
                         </div>
 
-                        {/* Conteúdo: Se Saídas Simultâneas, exibe o texto Saídas Simultâneas ao invés de Ponto de Origem ou Destino */}
+                        {/* Conteúdo: Se Saídas Simultâneas, exibe o texto Saídas Simultâneas */}
                         {simultaneousDepartures ? (
                           /* Bloco Unificado: Saídas Simultâneas */
                           <div className="flex flex-col bg-[#0b5c8f]">
@@ -1752,15 +1730,18 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                             </div>
                           </div>
                         ) : includeIda && includeVolta ? (
-                          /* Duas Colunas: Ida (Ponto de Origem) e Volta (Ponto de Destino) */
+                          /* Duas Colunas: Origem e Destino com dimensionamento ajustável para caber no espaço */
                           <div className="grid grid-cols-2 divide-x-2 divide-[#08456c]">
-                            {/* Coluna 1: IDA (Ponto de Origem) */}
+                            {/* Coluna 1: Saída Origem */}
                             <div className="flex flex-col bg-[#0b5c8f]">
-                              <div className="bg-[#073959] py-2 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                                <span className="px-2 py-0.5 bg-yellow-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
-                                  IDA
-                                </span>
-                                <span className="font-black text-xs sm:text-sm uppercase tracking-wide text-white truncate" title={`Saída do Ponto de Origem: ${route.origin}`}>
+                              <div className="bg-[#073959] py-2.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[40px]">
+                                <span 
+                                  className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                  style={{
+                                    fontSize: (route.origin || '').length > 28 ? '10px' : (route.origin || '').length > 20 ? '11px' : '13px'
+                                  }}
+                                  title={`Saída: ${route.origin}`}
+                                >
                                   Saída: {route.origin}
                                 </span>
                               </div>
@@ -1769,13 +1750,16 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                               </div>
                             </div>
 
-                            {/* Coluna 2: VOLTA (Ponto de Destino) */}
+                            {/* Coluna 2: Saída Destino */}
                             <div className="flex flex-col bg-[#0b5c8f]">
-                              <div className="bg-[#073959] py-2 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                                <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
-                                  VOLTA
-                                </span>
-                                <span className="font-black text-xs sm:text-sm uppercase tracking-wide text-white truncate" title={`Saída do Ponto de Destino: ${route.destination}`}>
+                              <div className="bg-[#073959] py-2.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[40px]">
+                                <span 
+                                  className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                  style={{
+                                    fontSize: (route.destination || '').length > 28 ? '10px' : (route.destination || '').length > 20 ? '11px' : '13px'
+                                  }}
+                                  title={`Saída: ${route.destination}`}
+                                >
                                   Saída: {route.destination}
                                 </span>
                               </div>
@@ -1785,13 +1769,15 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                             </div>
                           </div>
                         ) : includeIda ? (
-                          /* Apenas Coluna de IDA */
+                          /* Apenas Coluna de Origem */
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-2 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                              <span className="px-2.5 py-0.5 bg-yellow-400 text-slate-950 font-black text-xs uppercase rounded font-mono shadow-sm">
-                                IDA
-                              </span>
-                              <span className="font-black text-sm uppercase tracking-wide text-white">
+                            <div className="bg-[#073959] py-2.5 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[40px]">
+                              <span 
+                                className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                style={{
+                                  fontSize: (route.origin || '').length > 35 ? '11px' : '14px'
+                                }}
+                              >
                                 Ponto de Origem: Saídas de {route.origin}
                               </span>
                             </div>
@@ -1800,13 +1786,15 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                             </div>
                           </div>
                         ) : (
-                          /* Apenas Coluna de VOLTA */
+                          /* Apenas Coluna de Destino */
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-2 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                              <span className="px-2.5 py-0.5 bg-amber-400 text-slate-950 font-black text-xs uppercase rounded font-mono shadow-sm">
-                                VOLTA
-                              </span>
-                              <span className="font-black text-sm uppercase tracking-wide text-white">
+                            <div className="bg-[#073959] py-2.5 px-4 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[40px]">
+                              <span 
+                                className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                style={{
+                                  fontSize: (route.destination || '').length > 35 ? '11px' : '14px'
+                                }}
+                              >
                                 Ponto de Destino: Saídas de {route.destination}
                               </span>
                             </div>

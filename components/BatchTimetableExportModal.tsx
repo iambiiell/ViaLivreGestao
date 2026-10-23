@@ -804,11 +804,11 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                     <div key={day.key} className="rounded-xl overflow-hidden border-2 border-[#0b5c8f] shadow-md bg-[#0b5c8f]">
                       <div className="bg-[#08456c] py-2 px-4 text-white flex items-center justify-between border-b-2 border-blue-900">
                         <h3 className="font-black text-sm sm:text-base uppercase tracking-widest">{day.label}</h3>
-                        <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
-                          {simultaneousDepartures 
-                            ? `${dayTimes.ida.length} horários • Saídas Simultâneas`
-                            : `${dayTimes.ida.length} Ida • ${dayTimes.volta.length} Volta`}
-                        </span>
+                        {simultaneousDepartures && (
+                          <span className="text-[11px] font-bold uppercase tracking-wider text-blue-200">
+                            Saídas Simultâneas
+                          </span>
+                        )}
                       </div>
 
                       {simultaneousDepartures ? (
@@ -827,13 +827,16 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                         </div>
                       ) : (
                         <div className="grid grid-cols-2 divide-x-2 divide-[#08456c]">
-                          {/* Coluna 1: IDA */}
+                          {/* Coluna 1: Saída Origem */}
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-1.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                              <span className="px-2 py-0.5 bg-yellow-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
-                                IDA
-                              </span>
-                              <span className="font-black text-xs sm:text-sm uppercase tracking-wide text-white truncate">
+                            <div className="bg-[#073959] py-2 px-2.5 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[38px]">
+                              <span 
+                                className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                style={{
+                                  fontSize: (renderingRoute.route.origin || '').length > 25 ? '10px' : (renderingRoute.route.origin || '').length > 18 ? '11px' : '12px'
+                                }}
+                                title={`Saída: ${renderingRoute.route.origin}`}
+                              >
                                 Saída: {renderingRoute.route.origin}
                               </span>
                             </div>
@@ -842,13 +845,16 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
                             </div>
                           </div>
 
-                          {/* Coluna 2: VOLTA */}
+                          {/* Coluna 2: Saída Destino */}
                           <div className="flex flex-col bg-[#0b5c8f]">
-                            <div className="bg-[#073959] py-1.5 px-3 text-center border-b-2 border-[#08456c] flex items-center justify-center gap-2">
-                              <span className="px-2 py-0.5 bg-amber-400 text-slate-950 font-black text-[10px] uppercase rounded font-mono shadow-sm">
-                                VOLTA
-                              </span>
-                              <span className="font-black text-xs sm:text-sm uppercase tracking-wide text-white truncate">
+                            <div className="bg-[#073959] py-2 px-2.5 text-center border-b-2 border-[#08456c] flex items-center justify-center min-h-[38px]">
+                              <span 
+                                className="font-black uppercase tracking-wide text-white leading-tight break-words text-center"
+                                style={{
+                                  fontSize: (renderingRoute.route.destination || '').length > 25 ? '10px' : (renderingRoute.route.destination || '').length > 18 ? '11px' : '12px'
+                                }}
+                                title={`Saída: ${renderingRoute.route.destination}`}
+                              >
                                 Saída: {renderingRoute.route.destination}
                               </span>
                             </div>

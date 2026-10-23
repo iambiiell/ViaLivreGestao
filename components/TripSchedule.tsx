@@ -1218,14 +1218,14 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                       onClick={() => setFormData({...formData, direction: 'IDA'})}
                                       className={`py-3 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${formData.direction === 'IDA' ? 'bg-emerald-500 border-emerald-600 text-white shadow-lg' : 'bg-white dark:bg-zinc-800 border-slate-100 dark:border-zinc-700 text-slate-400'}`}
                                   >
-                                      IDA
+                                      IDA ({selectedRoute?.origin ? `Saída: ${selectedRoute.origin}` : 'Saída Origem'})
                                   </button>
                                   <button 
                                       type="button" 
                                       onClick={() => setFormData({...formData, direction: 'VOLTA'})}
                                       className={`py-3 rounded-2xl font-black text-[10px] uppercase border-2 transition-all ${formData.direction === 'VOLTA' ? 'bg-blue-500 border-blue-600 text-white shadow-lg' : 'bg-white dark:bg-zinc-800 border-slate-100 dark:border-zinc-700 text-slate-400'}`}
                                   >
-                                      VOLTA
+                                      VOLTA ({selectedRoute?.destination ? `Saída: ${selectedRoute.destination}` : 'Saída Destino'})
                                   </button>
                               </div>
                           </div>

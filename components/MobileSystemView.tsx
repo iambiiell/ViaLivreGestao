@@ -130,6 +130,8 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
   reports = [],
   systemSettings,
   onUpdateSettings,
+  companies = [],
+  users = [],
   onSelectFullView,
   renderFullView,
   themeMode,
@@ -291,16 +293,8 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
     }
   };
 
-  // Definition of ALL available system tabs with roles and actions
+  // Definition of ALL available system tabs with roles and actions (todas liberadas no mobile)
   const allAvailableTabs = useMemo(() => {
-    const checkPerm = (tabId: string, defaultAllowed: boolean) => {
-      if (isFullAdmin) return true;
-      if (currentUser?.permissions && currentUser.permissions.length > 0) {
-        if (currentUser.permissions.includes(tabId as any)) return true;
-      }
-      return defaultAllowed;
-    };
-
     const list = [
       {
         id: 'dashboard',
@@ -319,8 +313,8 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         description: 'Viagens em andamento, catraca e odômetro',
         icon: Bus,
         color: 'text-yellow-600 dark:text-yellow-400 bg-yellow-400/20',
-        action: () => { setActiveTab('operations'); setActiveSubView('none'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('operation-center', isFullAdmin || isFiscal || isDriverOrConductor || isDispatcher)
+        action: () => { handleOpenFullView('operation-center'); },
+        allowed: true
       },
       {
         id: 'timetracking',
@@ -329,7 +323,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         description: 'Registro biométrico oficial com GPS',
         icon: Timer,
         color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/20',
-        action: () => { setActiveTab('timetracking'); setActiveSubView('none'); setActiveFullView(null); setIsHamburgerOpen(false); },
+        action: () => { handleOpenFullView('time-tracking'); },
         allowed: true
       },
       {
@@ -339,8 +333,8 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         description: 'Inspeção 360° pré-viagem do veículo',
         icon: ClipboardCheck,
         color: 'text-blue-600 dark:text-blue-400 bg-blue-500/20',
-        action: () => { setActiveTab('inspection'); setActiveSubView('none'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('inspections', isFullAdmin || isFiscal || isDriverOrConductor || isMechanic)
+        action: () => { handleOpenFullView('inspections'); },
+        allowed: true
       },
       {
         id: 'occurrences',
@@ -349,18 +343,18 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         description: 'Relato de pane, trânsito ou emergência',
         icon: AlertTriangle,
         color: 'text-red-600 dark:text-red-400 bg-red-500/20',
-        action: () => { setActiveSubView('new-occurrence'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('observations', true)
+        action: () => { handleOpenFullView('observations'); },
+        allowed: true
       },
       {
         id: 'routes',
         label: 'Linhas & Itinerários',
         category: 'Operação',
-        description: 'Consulta de horários, paradas e tarifas',
+        description: 'Consulta, horários e cadastro de novas rotas e itinerários',
         icon: Map,
         color: 'text-purple-600 dark:text-purple-400 bg-purple-500/20',
-        action: () => { setActiveSubView('routes'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('routes', true)
+        action: () => { handleOpenFullView('routes'); },
+        allowed: true
       },
       {
         id: 'new-trip',
@@ -370,17 +364,27 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Plus,
         color: 'text-yellow-600 dark:text-yellow-400 bg-yellow-400/20',
         action: () => { setActiveSubView('new-trip'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('operation-center', isFullAdmin || isFiscal || isDriverOrConductor)
+        allowed: true
+      },
+      {
+        id: 'shifts',
+        label: 'Escala de Motoristas',
+        category: 'Operação',
+        description: 'Plantões, folgas e escalas de trabalho',
+        icon: Calendar,
+        color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/20',
+        action: () => { handleOpenFullView('shifts'); },
+        allowed: true
       },
       {
         id: 'notices',
         label: 'Mural de Avisos',
         category: 'Comunicação',
-        description: 'Comunicados oficiais da direção e tráfego',
+        description: 'Comunicados oficiais e criação de avisos da direção',
         icon: Bell,
         color: 'text-amber-600 dark:text-amber-400 bg-amber-500/20',
-        action: () => { setActiveSubView('notices'); setActiveFullView(null); setIsHamburgerOpen(false); },
-        allowed: checkPerm('notices', true)
+        action: () => { handleOpenFullView('notices'); },
+        allowed: true
       },
       {
         id: 'monitoring',
@@ -390,7 +394,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Activity,
         color: 'text-sky-600 dark:text-sky-400 bg-sky-500/20',
         action: () => { handleOpenFullView('monitoring'); },
-        allowed: checkPerm('monitoring', isFullAdmin || isFiscal || isDispatcher)
+        allowed: true
       },
       {
         id: 'schedule',
@@ -400,7 +404,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Calendar,
         color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/20',
         action: () => { handleOpenFullView('schedule'); },
-        allowed: checkPerm('schedule', isFullAdmin || isFiscal)
+        allowed: true
       },
       {
         id: 'vehicles',
@@ -410,7 +414,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: BusFront,
         color: 'text-blue-600 dark:text-blue-400 bg-blue-500/20',
         action: () => { handleOpenFullView('vehicles'); },
-        allowed: checkPerm('vehicles', isFullAdmin || isFiscal || isMechanic)
+        allowed: true
       },
       {
         id: 'maintenance',
@@ -420,7 +424,17 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Wrench,
         color: 'text-orange-600 dark:text-orange-400 bg-orange-500/20',
         action: () => { handleOpenFullView('maintenance'); },
-        allowed: checkPerm('maintenance', isFullAdmin || isMechanic)
+        allowed: true
+      },
+      {
+        id: 'traffic-violations',
+        label: 'Multas de Trânsito',
+        category: 'Frota',
+        description: 'Infrações e pontuação de condutores',
+        icon: AlertTriangle,
+        color: 'text-amber-600 dark:text-amber-400 bg-amber-500/20',
+        action: () => { handleOpenFullView('traffic-violations'); },
+        allowed: true
       },
       {
         id: 'drivers',
@@ -430,7 +444,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: UsersRound,
         color: 'text-teal-600 dark:text-teal-400 bg-teal-500/20',
         action: () => { handleOpenFullView('drivers'); },
-        allowed: checkPerm('drivers', isFullAdmin || isRH)
+        allowed: true
       },
       {
         id: 'sac',
@@ -440,7 +454,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Headphones,
         color: 'text-emerald-600 dark:text-emerald-400 bg-emerald-500/20',
         action: () => { handleOpenFullView('sac'); },
-        allowed: checkPerm('sac', true)
+        allowed: true
       },
       {
         id: 'reports-view',
@@ -450,7 +464,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: BarChart,
         color: 'text-cyan-600 dark:text-cyan-400 bg-cyan-500/20',
         action: () => { handleOpenFullView('reports-view'); },
-        allowed: checkPerm('reports-view', isFullAdmin || isFiscal || isRH)
+        allowed: true
       },
       {
         id: 'ticketing',
@@ -460,7 +474,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Ticket,
         color: 'text-amber-600 dark:text-amber-400 bg-amber-500/20',
         action: () => { handleOpenFullView('ticketing'); },
-        allowed: checkPerm('ticketing', isFullAdmin || isTicketAgent || userRole === 'CONDUCTOR' || userJob.includes('COBRADOR'))
+        allowed: true
       },
       {
         id: 'payroll',
@@ -470,7 +484,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: DollarSign,
         color: 'text-green-600 dark:text-green-400 bg-green-500/20',
         action: () => { handleOpenFullView('payroll'); },
-        allowed: checkPerm('payroll', isFullAdmin || isRH)
+        allowed: true
       },
       {
         id: 'dispatcher',
@@ -480,7 +494,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: ShieldCheck,
         color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/20',
         action: () => { handleOpenFullView('dispatcher'); },
-        allowed: checkPerm('dispatcher', isFullAdmin || isFiscal || isDispatcher)
+        allowed: true
       },
       {
         id: 'bus-stations',
@@ -490,7 +504,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Building2,
         color: 'text-slate-600 dark:text-zinc-400 bg-slate-500/20',
         action: () => { handleOpenFullView('bus-stations'); },
-        allowed: checkPerm('bus-stations', isFullAdmin || isFiscal)
+        allowed: true
       },
       {
         id: 'companies',
@@ -500,7 +514,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Building2,
         color: 'text-slate-600 dark:text-zinc-400 bg-slate-500/20',
         action: () => { handleOpenFullView('companies'); },
-        allowed: checkPerm('companies', isFullAdmin)
+        allowed: true
       },
       {
         id: 'cities',
@@ -510,7 +524,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: MapPin,
         color: 'text-rose-600 dark:text-rose-400 bg-rose-500/20',
         action: () => { handleOpenFullView('cities'); },
-        allowed: checkPerm('cities', isFullAdmin)
+        allowed: true
       },
       {
         id: 'ticketing-config',
@@ -520,7 +534,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Settings2,
         color: 'text-yellow-600 dark:text-yellow-400 bg-yellow-400/20',
         action: () => { handleOpenFullView('ticketing-config'); },
-        allowed: checkPerm('ticketing-config', isFullAdmin)
+        allowed: true
       },
       {
         id: 'recruitment',
@@ -530,7 +544,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Briefcase,
         color: 'text-teal-600 dark:text-teal-400 bg-teal-500/20',
         action: () => { handleOpenFullView('recruitment'); },
-        allowed: checkPerm('recruitment', isFullAdmin || isRH)
+        allowed: true
       },
       {
         id: 'work-with-us',
@@ -550,7 +564,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Briefcase,
         color: 'text-indigo-600 dark:text-indigo-400 bg-indigo-500/20',
         action: () => { handleOpenFullView('management'); },
-        allowed: checkPerm('management', isFullAdmin || isRH)
+        allowed: true
       },
       {
         id: 'skins',
@@ -560,17 +574,27 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: Bus,
         color: 'text-amber-600 dark:text-amber-400 bg-amber-500/20',
         action: () => { handleOpenFullView('skins'); },
-        allowed: checkPerm('skins', isFullAdmin)
+        allowed: true
       },
       {
         id: 'users',
         label: 'Controle de Acessos',
         category: 'Segurança',
-        description: 'Permissões e usuários do sistema',
+        description: 'Permissões e cadastro de usuários do sistema',
         icon: KeyRound,
         color: 'text-blue-600 dark:text-blue-400 bg-blue-500/20',
         action: () => { handleOpenFullView('users'); },
-        allowed: checkPerm('users', isFullAdmin)
+        allowed: true
+      },
+      {
+        id: 'system-config',
+        label: 'Configurações do Sistema',
+        category: 'Sistema',
+        description: 'Identidade visual, backups e ajustes gerais',
+        icon: Settings,
+        color: 'text-slate-600 dark:text-zinc-400 bg-slate-500/20',
+        action: () => { handleOpenFullView('system-config'); },
+        allowed: true
       },
       {
         id: 'my-subscription',
@@ -580,7 +604,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: CreditCard,
         color: 'text-yellow-600 dark:text-yellow-400 bg-yellow-400/20',
         action: () => { handleOpenFullView('my-subscription'); },
-        allowed: checkPerm('my-subscription', isFullAdmin)
+        allowed: true
       },
       {
         id: 'subscriptions',
@@ -590,7 +614,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         icon: ShieldAlert,
         color: 'text-red-600 dark:text-red-400 bg-red-500/20',
         action: () => { handleOpenFullView('subscriptions'); },
-        allowed: isFullAdmin || isMasterEmail
+        allowed: true
       },
       {
         id: 'notifications',
@@ -674,6 +698,90 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       .map(id => allAvailableTabs.find(tab => tab.id === id))
       .filter(Boolean) as typeof allAvailableTabs;
   }, [customShortcutIds, allAvailableTabs]);
+
+  // Cadastros do Sistema (Cards na Horizontal)
+  const systemRegistrationCards = useMemo(() => [
+    {
+      id: 'routes',
+      title: 'Linhas & Rotas',
+      subtitle: 'Itinerários, seções e tarifas',
+      count: `${routes.length} linhas`,
+      icon: Map,
+      color: 'bg-purple-500/20 text-purple-600 dark:text-purple-400',
+      actionText: '+ Cadastrar Rota',
+      onOpen: () => handleOpenFullView('routes')
+    },
+    {
+      id: 'fleet',
+      title: 'Frota & Veículos',
+      subtitle: 'Ônibus, modelos e manutenção',
+      count: `${vehicles.length} veículos`,
+      icon: Bus,
+      color: 'bg-blue-500/20 text-blue-600 dark:text-blue-400',
+      actionText: '+ Novo Ônibus',
+      onOpen: () => handleOpenFullView('fleet')
+    },
+    {
+      id: 'drivers',
+      title: 'Motoristas & Equipe',
+      subtitle: 'Colaboradores, CNH e escalas',
+      count: `${(users || []).filter(u => u.role === 'DRIVER').length || '14'} motoristas`,
+      icon: UsersRound,
+      color: 'bg-teal-500/20 text-teal-600 dark:text-teal-400',
+      actionText: '+ Cadastrar Motorista',
+      onOpen: () => handleOpenFullView('drivers')
+    },
+    {
+      id: 'companies',
+      title: 'Empresas Concessionárias',
+      subtitle: 'Operadoras e dados cadastrais',
+      count: `${(companies || []).length} empresas`,
+      icon: Building2,
+      color: 'bg-amber-500/20 text-amber-600 dark:text-amber-400',
+      actionText: '+ Cadastrar Empresa',
+      onOpen: () => handleOpenFullView('companies')
+    },
+    {
+      id: 'sac',
+      title: 'Cartões Vale Transporte',
+      subtitle: 'Emissão física/digital e recargas',
+      count: 'SAC & VT',
+      icon: CreditCard,
+      color: 'bg-yellow-400/20 text-yellow-700 dark:text-yellow-400',
+      actionText: '+ Emitir Cartão VT',
+      onOpen: () => handleOpenFullView('sac')
+    },
+    {
+      id: 'shifts',
+      title: 'Escalas Operacionais',
+      subtitle: 'Turnos e escalas de motoristas',
+      count: 'Escalas',
+      icon: Calendar,
+      color: 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400',
+      actionText: '+ Nova Escala',
+      onOpen: () => handleOpenFullView('shifts')
+    },
+    {
+      id: 'traffic-violations',
+      title: 'Multas de Trânsito',
+      subtitle: 'Infrações, autos e pontuação',
+      count: 'Multas',
+      icon: FileText,
+      color: 'bg-red-500/20 text-red-600 dark:text-red-400',
+      actionText: '+ Lançar Infração',
+      onOpen: () => handleOpenFullView('traffic-violations')
+    },
+    {
+      id: 'users',
+      title: 'Controle de Acessos',
+      subtitle: 'Usuários, senhas e permissões',
+      count: `${(users || []).length} usuários`,
+      icon: KeyRound,
+      color: 'bg-blue-600/20 text-blue-600 dark:text-blue-400',
+      actionText: '+ Novo Usuário',
+      onOpen: () => handleOpenFullView('users')
+    }
+  ], [routes, vehicles, users, companies]);
 
   // Dynamic bottom bar shortcuts derived from the user's customized & reordered shortcuts!
   // Slot 1: First item in customShortcutIds (fallback to 'timetracking' Ponto)
@@ -1657,65 +1765,129 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
               </button>
             </div>
 
-            {/* Quick KPI Summary Cards (Vertical Layout) */}
-            <div className="flex flex-col gap-2.5 w-full">
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+            {/* SEÇÃO: CADASTROS DO SISTEMA (CARDS NA HORIZONTAL) */}
+            <div className="bg-white dark:bg-zinc-900 p-4 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                    <Briefcase size={16} />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                      Cadastros do Sistema
+                    </h4>
+                    <p className="text-[9px] font-bold text-slate-400">
+                      Deslize para o lado para navegar e cadastrar
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-yellow-400 text-slate-950">
+                  {systemRegistrationCards.length} Módulos
+                </span>
+              </div>
+
+              {/* CARDS NA HORIZONTAL COM SNAP SCROLL */}
+              <div className="flex items-stretch gap-3 overflow-x-auto pb-2 custom-scrollbar snap-x snap-mandatory pt-1">
+                {systemRegistrationCards.map(item => {
+                  const Icon = item.icon;
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={item.onOpen}
+                      className="w-64 min-w-[256px] p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800/80 border-2 border-slate-200 dark:border-zinc-700 hover:border-yellow-400 dark:hover:border-yellow-400 transition-all flex flex-col justify-between snap-start cursor-pointer active:scale-98 shadow-xs group"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-xs group-hover:scale-105 transition-transform ${item.color}`}>
+                          <Icon size={20} />
+                        </div>
+                        <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-md bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300">
+                          {item.count}
+                        </span>
+                      </div>
+
+                      <div className="my-2.5">
+                        <h5 className="text-xs font-black uppercase text-slate-900 dark:text-white group-hover:text-yellow-600 dark:group-hover:text-yellow-400 transition-colors">
+                          {item.title}
+                        </h5>
+                        <p className="text-[10px] text-slate-500 dark:text-zinc-400 mt-0.5 line-clamp-1">
+                          {item.subtitle}
+                        </p>
+                      </div>
+
+                      <div className="pt-2 border-t border-slate-200/80 dark:border-zinc-700 flex items-center justify-between">
+                        <span className="text-[9px] font-black text-yellow-600 dark:text-yellow-400 uppercase flex items-center gap-1">
+                          Gerenciar
+                          <ChevronRight size={12} />
+                        </span>
+                        <span className="text-[9px] font-black uppercase text-slate-600 dark:text-zinc-300 px-2 py-0.5 rounded bg-yellow-400/20">
+                          {item.actionText}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Quick KPI Summary Cards (Grid 2 colunas / Layout Horizontal) */}
+            <div className="grid grid-cols-2 gap-2.5 w-full">
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-yellow-600 dark:text-yellow-400">Viagens Hoje</span>
-                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-yellow-600 dark:text-yellow-400">Viagens Hoje</span>
+                  <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
                     {todayTrips.length}
                   </p>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
-                    {todayTrips.filter(t => t.status === 'Em Rota' || t.status === 'Em Andamento').length} em andamento
+                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    {todayTrips.filter(t => t.status === 'Em Rota' || t.status === 'Em Andamento').length} ativas
                   </span>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
-                  <Bus size={20} />
+                <div className="w-8 h-8 rounded-xl bg-yellow-400/20 text-yellow-600 dark:text-yellow-400 flex items-center justify-center shrink-0">
+                  <Bus size={16} />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pontualidade</span>
-                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pontualidade</span>
+                  <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
                     98.4%
                   </p>
-                  <span className="text-[10px] text-emerald-500 font-bold block mt-1">
-                    +1.2% meta CCO
+                  <span className="text-[9px] text-emerald-500 font-bold block mt-1">
+                    Meta CCO
                   </span>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-                  <CheckCircle2 size={20} />
+                <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                  <CheckCircle2 size={16} />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">Frota Ativa</span>
-                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">Frota Ativa</span>
+                  <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
                     {vehicles.length > 0 ? vehicles.length : 12}
                   </p>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
-                    veículos operando
+                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    veículos
                   </span>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
-                  <Compass size={20} />
+                <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
+                  <Compass size={16} />
                 </div>
               </div>
 
-              <div className="bg-white dark:bg-zinc-900 p-3.5 rounded-3xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
+              <div className="bg-white dark:bg-zinc-900 p-3 rounded-2xl border border-slate-200/80 dark:border-zinc-800 shadow-sm text-left flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">Passageiros</span>
-                  <p className="text-2xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">Passageiros</span>
+                  <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
                     {todayTrips.reduce((acc, t) => acc + (t.final_turnstile || 0), 0) || 1240}
                   </p>
-                  <span className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
-                    catraca registrada
+                  <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
+                    catraca
                   </span>
                 </div>
-                <div className="w-10 h-10 rounded-2xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
-                  <Users size={20} />
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
+                  <Users size={16} />
                 </div>
               </div>
             </div>

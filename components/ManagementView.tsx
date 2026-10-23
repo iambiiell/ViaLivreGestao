@@ -81,6 +81,7 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
     color_sac_phone: '',
     color_sac_hours: ''
   });
+  const [vtPreviewSide, setVtPreviewSide] = useState<'front' | 'back'>('front');
   const [isSavingVt, setIsSavingVt] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -158,7 +159,16 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         setRoles((rolesData || []).sort((a, b) => a.name.localeCompare(b.name)));
         setCompanies(companiesData || []);
         if (settingsData && settingsData.length > 0) {
-          setSettings(settingsData[0]);
+          const loadedSetting = settingsData[0];
+          let unpackedVal: any = {};
+          try {
+            if ((loadedSetting as any).value) {
+              unpackedVal = typeof (loadedSetting as any).value === 'string'
+                ? JSON.parse((loadedSetting as any).value)
+                : (loadedSetting as any).value;
+            }
+          } catch {}
+          setSettings({ ...loadedSetting, ...unpackedVal });
         } else {
           setSettings({ id: 'default', registration_pattern: 'FLX-000' });
         }
@@ -234,7 +244,6 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
       const updatedSettings: SystemSettings = {
         ...(settings || { id: 'default', registration_pattern: 'FLX-000' }),
         vt_card_settings: updatedCardSettings,
-        vt_user_abbreviation: vtForm.user_abbreviation,
         vt_system_name: vtForm.system_name,
         vt_system_name_size: vtForm.system_name_size,
         vt_system_name_font_size: vtForm.system_name_font_size || 24,
@@ -286,7 +295,21 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         savedResult = await db.create('system_settings', updatedSettings);
       }
 
-      const finalSaved = savedResult || updatedSettings;
+      let unpackedValue: any = {};
+      try {
+        if (savedResult && (savedResult as any).value) {
+          unpackedValue = typeof (savedResult as any).value === 'string'
+            ? JSON.parse((savedResult as any).value)
+            : (savedResult as any).value;
+        }
+      } catch {}
+
+      const finalSaved: SystemSettings = {
+        ...updatedSettings,
+        ...(savedResult || {}),
+        ...(unpackedValue || {}),
+        vt_card_settings: updatedCardSettings
+      };
       setSettings(finalSaved);
       if (typeof window !== 'undefined') {
         localStorage.setItem('vialivre_system_settings', JSON.stringify(finalSaved));
@@ -720,21 +743,7 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                     </p>
                   </div>
 
-                  <div>
-                    <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
-                      Abreviação (Nome no Cartão - Frente) *
-                    </label>
-                    <input
-                      type="text"
-                      placeholder="Ex: M. E. SILVA ou MARIA SILVA"
-                      value={vtForm.user_abbreviation || ''}
-                      onChange={e => setVtForm({ ...vtForm, user_abbreviation: e.target.value.toUpperCase() })}
-                      className="w-full px-5 py-4 bg-slate-50 dark:bg-zinc-950 border-2 border-yellow-400 rounded-2xl font-bold text-xs outline-none focus:ring-2 ring-yellow-400 text-slate-900 dark:text-white uppercase"
-                    />
-                    <p className="text-[9px] text-slate-400 mt-1 ml-2">
-                      Nome abreviado exibido no canto inferior direito da frente do cartão. O nome completo do titular permanece no verso.
-                    </p>
-                  </div>
+
 
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-500 dark:text-zinc-400 mb-1 ml-2 block">
@@ -1170,9 +1179,35 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                       Frente & Verso Institucional (Proporção 1011px x 638px)
                     </p>
                   </div>
-                  <span className="px-3 py-1 bg-yellow-400 text-slate-950 rounded-xl font-black text-[9px] uppercase shadow">
-                    Live Preview
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-zinc-800 rounded-2xl border border-slate-200 dark:border-zinc-700">
+                      <button
+                        type="button"
+                        onClick={() => setVtPreviewSide('front')}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                          vtPreviewSide === 'front'
+                            ? 'bg-yellow-400 text-slate-950 shadow-sm'
+                            : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Frente
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setVtPreviewSide('back')}
+                        className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+                          vtPreviewSide === 'back'
+                            ? 'bg-slate-900 text-yellow-400 dark:bg-yellow-400 dark:text-slate-950 shadow-sm'
+                            : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                        }`}
+                      >
+                        Verso
+                      </button>
+                    </div>
+                    <span className="px-3 py-1 bg-yellow-400 text-slate-950 rounded-xl font-black text-[9px] uppercase shadow">
+                      Live Preview
+                    </span>
+                  </div>
                 </div>
 
                 {/* COMPONENTE TRANSPORT CARD LIVE */}
@@ -1202,13 +1237,14 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                           }
                         }}
                         name="MARIA EDUARDA SILVA"
-                        abbreviation={vtForm.user_abbreviation}
+                        abbreviation="M. E. SILVA"
                         cardNumber="1084920158"
                         internalCode="VT89K2A1"
                         category="VALE TRANSPORTE"
                         city="Campinas"
                         state="SP"
-                        viewMode="both"
+                        viewMode={vtPreviewSide}
+                        interactiveFlip={true}
                         scale={0.92}
                       />
                     );

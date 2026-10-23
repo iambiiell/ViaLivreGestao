@@ -26,6 +26,7 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
   const [selectedCard, setSelectedCard] = useState<ImpCard | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
+  const [cardPreviewSide, setCardPreviewSide] = useState<'front' | 'back'>('front');
 
   // Recharge state
   const [rechargeQuery, setRechargeQuery] = useState('');
@@ -84,18 +85,19 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
   const selectCompanyForNewCard = (companyId?: string) => {
     const comp = companies.find(c => c.id === companyId) || companies[0];
     setShowCompanySelectModal(false);
-    setFormData({
-      type: 'Vale Transporte',
+    setFormData(prev => ({
+      ...prev,
+      type: prev?.type || 'Vale Transporte',
       company_id: comp?.id || '',
       company_name: comp?.name || comp?.nome_fantasia || '',
       company_logo: comp?.logo_url || '',
-      internal_code: generateCardInternalCode(),
-      card_number: generateCardNumber10Digits('Vale Transporte'),
-      balance: 0,
-      medico_ficha_preenchida: false,
-      pericia_realizada: false,
-      beneficio_liberado: false
-    });
+      internal_code: prev?.internal_code || generateCardInternalCode(),
+      card_number: prev?.card_number || generateCardNumber10Digits(prev?.type || 'Vale Transporte'),
+      balance: prev?.balance || 0,
+      medico_ficha_preenchida: prev?.medico_ficha_preenchida || false,
+      pericia_realizada: prev?.pericia_realizada || false,
+      beneficio_liberado: prev?.beneficio_liberado || false
+    }));
     setActiveTab('register');
   };
 
@@ -603,24 +605,46 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                     <button className="absolute bottom-4 right-4 p-4 bg-yellow-400 text-slate-900 rounded-2xl shadow-xl border-2 border-slate-900 opacity-0 group-hover:opacity-100 transition-all"><Upload size={20}/></button>
                   </div>
 
-                  {/* Empresa Selecionada com opção de troca */}
-                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/80 rounded-2xl border border-slate-200 dark:border-zinc-700 space-y-2">
+                  {/* Empresa Selecionada com opção de troca direta */}
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/80 rounded-2xl border-2 border-yellow-400 space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">Empresa Concessionária</span>
+                      <span className="text-[10px] font-black uppercase text-slate-700 dark:text-zinc-200 tracking-wider flex items-center gap-1.5">
+                        <Building2 size={14} className="text-yellow-500" />
+                        Empresa Concessionária *
+                      </span>
                       {companies.length > 1 && (
                         <button
                           type="button"
                           onClick={() => setShowCompanySelectModal(true)}
                           className="text-[9px] font-black text-amber-600 dark:text-yellow-400 uppercase hover:underline"
                         >
-                          Alterar Empresa
+                          Ver Lista
                         </button>
                       )}
                     </div>
-                    <div className="flex items-center gap-2 font-black text-xs text-slate-900 dark:text-white uppercase">
-                      <Building2 size={16} className="text-yellow-500 shrink-0" />
-                      <span className="truncate">{formData.company_name || companies.find(c => c.id === formData.company_id)?.name || 'Empresa Padrão'}</span>
-                    </div>
+                    <select
+                      value={formData.company_id || (companies.length > 0 ? companies[0].id : '')}
+                      onChange={(e) => {
+                        const comp = companies.find(c => c.id === e.target.value);
+                        setFormData(prev => ({
+                          ...prev,
+                          company_id: e.target.value,
+                          company_name: comp?.name || comp?.nome_fantasia || '',
+                          company_logo: comp?.logo_url || ''
+                        }));
+                      }}
+                      className="w-full px-3 py-2.5 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-700 rounded-xl font-black text-xs text-slate-900 dark:text-white uppercase outline-none focus:ring-2 ring-yellow-400"
+                    >
+                      {companies.length > 0 ? (
+                        companies.map(c => (
+                          <option key={c.id} value={c.id}>
+                            {c.name} {c.nome_fantasia ? `(${c.nome_fantasia})` : ''}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">Empresa Padrão (Vialivre)</option>
+                      )}
+                    </select>
                   </div>
 
                   <div className="scale-[0.70] origin-top-left -mr-32">
@@ -1108,16 +1132,45 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="bg-white dark:bg-zinc-900 w-full max-w-5xl rounded-[3rem] shadow-2xl overflow-hidden border-2 border-slate-100 dark:border-zinc-800 flex flex-col max-h-[92vh]"
             >
-              <div className="p-8 border-b border-slate-100 dark:border-zinc-800 flex justify-between items-center bg-slate-50 dark:bg-zinc-950">
+              <div className="p-6 sm:p-8 border-b border-slate-100 dark:border-zinc-800 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-slate-50 dark:bg-zinc-950">
                 <div>
                   <h3 className="text-xl font-black uppercase italic text-slate-900 dark:text-white">Visualização do Cartão (Frente & Verso)</h3>
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Layout Digital Oficial • 1011px x 638px</p>
                 </div>
-                <button onClick={() => setIsPreviewOpen(false)} className="p-3 bg-white dark:bg-zinc-800 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><X size={20}/></button>
+
+                <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  {/* Alternância Frente e Verso */}
+                  <div className="flex items-center gap-1.5 p-1 bg-slate-200/70 dark:bg-zinc-800 rounded-2xl border border-slate-300 dark:border-zinc-700">
+                    <button
+                      type="button"
+                      onClick={() => setCardPreviewSide('front')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                        cardPreviewSide === 'front'
+                          ? 'bg-yellow-400 text-slate-950 shadow-md font-black'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Frente
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCardPreviewSide('back')}
+                      className={`px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
+                        cardPreviewSide === 'back'
+                          ? 'bg-slate-900 text-yellow-400 dark:bg-yellow-400 dark:text-slate-950 shadow-md font-black'
+                          : 'text-slate-600 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      Verso
+                    </button>
+                  </div>
+
+                  <button onClick={() => setIsPreviewOpen(false)} className="p-3 bg-white dark:bg-zinc-800 rounded-2xl hover:bg-red-500 hover:text-white transition-all shadow-sm"><X size={20}/></button>
+                </div>
               </div>
 
               <div className="p-8 flex flex-col items-center justify-center min-h-[450px] gap-8 overflow-y-auto custom-scrollbar">
-                {/* Live Preview using TransportCard with Front & Back */}
+                {/* Live Preview using TransportCard with Front by default and Back toggle */}
                 <div className="scale-75 sm:scale-95 origin-center">
                   <TransportCard 
                     card={selectedCard}
@@ -1131,7 +1184,8 @@ const SACManager: React.FC<SACManagerProps> = ({ addToast }) => {
                     category={selectedCard.type}
                     city={selectedCard.address_city}
                     state={selectedCard.address_state}
-                    viewMode="both"
+                    viewMode={cardPreviewSide}
+                    interactiveFlip={true}
                   />
                 </div>
               </div>

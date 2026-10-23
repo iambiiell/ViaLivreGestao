@@ -805,13 +805,24 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
 
   const handleAuthLogin = async () => {
     if (!loginIdentifier) {
-      addToast("Informe seu CPF, Cartão ou E-mail.", "warning");
+      addToast(authModalTab === 'CARD' ? "Informe seu CPF cadastrado." : "Informe seu CPF ou E-mail.", "warning");
       return;
     }
     const cleanIdentifier = loginIdentifier.replace(/\D/g, '');
-    if (/^\d+$/.test(cleanIdentifier) && cleanIdentifier.length > 0 && cleanIdentifier.length < 11 && cleanIdentifier.length !== 8) {
-      addToast("CPF deve ter 11 dígitos ou Cartão 8 dígitos.", "warning");
-      return;
+    if (authModalTab === 'CARD') {
+      if (cleanIdentifier.length !== 11) {
+        addToast("Digite um CPF válido com 11 dígitos.", "warning");
+        return;
+      }
+      if (!loginPassword) {
+        addToast("Digite sua senha cadastrada no sistema.", "warning");
+        return;
+      }
+    } else {
+      if (/^\d+$/.test(cleanIdentifier) && cleanIdentifier.length > 0 && cleanIdentifier.length < 11 && cleanIdentifier.length !== 8) {
+        addToast("CPF deve ter 11 dígitos ou Cartão 8 dígitos.", "warning");
+        return;
+      }
     }
     try {
       const cards = await db.getImpCards();
@@ -823,6 +834,10 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
         const isTargetType = authModalTab === 'PASSENGER' ? c.is_passenger_buyer === true : !c.is_passenger_buyer;
         if (!isTargetType) return false;
 
+        if (authModalTab === 'CARD') {
+          return cleanCpf === cleanIdentifier || cleanCard === cleanIdentifier || c.cpf === loginIdentifier;
+        }
+
         const matchesInput = (cleanIdentifier && (cleanCpf === cleanIdentifier || cleanCard === cleanIdentifier)) ||
                              c.cpf === loginIdentifier || c.card_number === loginIdentifier ||
                              (c.email && c.email.toLowerCase() === loginIdentifier.toLowerCase().trim());
@@ -831,7 +846,11 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
       });
 
       if (!found) {
-        addToast(`Nenhum cadastro de ${authModalTab === 'PASSENGER' ? 'Passageiro Comprador' : 'Vale Transporte'} encontrado para este documento.`, "error");
+        if (authModalTab === 'CARD') {
+          addToast("Nenhum cadastro de Vale Transporte encontrado no sistema para este CPF. É necessário possuir cadastro prévio.", "error");
+        } else {
+          addToast("Nenhum cadastro de Passageiro Comprador encontrado para este documento.", "error");
+        }
         return;
       }
 
@@ -1037,11 +1056,17 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
         result = result.filter(r => 
           normalize(r?.prefixo_linha).includes(nSearch) || 
           normalize(r?.destination).includes(nSearch) ||
-          normalize(r?.origin).includes(nSearch)
+          normalize(r?.origin).includes(nSearch) ||
+          normalize(r?.empresa_autuante).includes(nSearch)
         );
       }
       if (filterCompany) {
-        result = result.filter(r => r?.company_id === filterCompany);
+        const nComp = normalize(filterCompany);
+        result = result.filter(r => 
+          r?.company_id === filterCompany || 
+          r?.empresa_autuante_id === filterCompany ||
+          normalize(r?.empresa_autuante).includes(nComp)
+        );
       }
       const targetCity = cepCity || filterCity;
       if (targetCity) {
@@ -1106,7 +1131,7 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                           </button>
                           <button 
                               type="button"
-                              onClick={() => { setAuthModalTab('CARD'); setIsRegisteringPassword(false); }}
+                              onClick={() => { setAuthModalTab('CARD'); setAuthModalMode('LOGIN'); setIsRegisteringPassword(false); }}
                               className={`flex-1 py-3 px-2 rounded-2xl text-[10px] uppercase font-black tracking-wider flex items-center justify-center gap-1.5 transition-all ${authModalTab === 'CARD' ? 'bg-yellow-400 text-slate-900 shadow-md font-extrabold' : 'text-slate-500 dark:text-zinc-400 hover:text-slate-900 dark:hover:text-white'}`}
                           >
                               <CreditCard size={14} />
@@ -1263,18 +1288,27 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                               <div className="space-y-4">
                                   <div>
                                     <label className="text-[10px] font-black uppercase text-slate-400 ml-2">
-                                      {authModalTab === 'PASSENGER' ? 'CPF ou E-mail' : 'Número do Cartão ou CPF'}
+                                      {authModalTab === 'PASSENGER' ? 'CPF ou E-mail *' : 'CPF Cadastrado *'}
                                     </label>
                                     <input 
                                       type="text" 
-                                      placeholder={authModalTab === 'PASSENGER' ? "000.000.000-00 ou email" : "Número do cartão ou CPF"} 
+                                      placeholder={authModalTab === 'PASSENGER' ? "000.000.000-00 ou email" : "Digite seu CPF (11 dígitos)"} 
                                       className="w-full px-6 py-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl text-xs font-black border border-slate-200 dark:border-zinc-700 outline-none" 
                                       value={loginIdentifier} 
-                                      onChange={e => setLoginIdentifier(e.target.value)} 
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        if (authModalTab === 'CARD') {
+                                          setLoginIdentifier(cpfMask(val));
+                                        } else {
+                                          setLoginIdentifier(val);
+                                        }
+                                      }} 
                                     />
                                   </div>
                                   <div>
-                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">Senha</label>
+                                    <label className="text-[10px] font-black uppercase text-slate-400 ml-2">
+                                      {authModalTab === 'PASSENGER' ? 'Senha *' : 'Senha Cadastrada *'}
+                                    </label>
                                     <input 
                                       type="password" 
                                       placeholder="••••••••" 
@@ -1291,15 +1325,23 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                                 {authModalTab === 'PASSENGER' ? 'Entrar para Comprar' : 'Acessar Vale Transporte'}
                               </button>
 
-                              <div className="pt-4 border-t dark:border-zinc-800 text-center space-y-2">
-                                  <p className="text-[10px] font-bold text-slate-400 uppercase">Não possui uma conta ainda?</p>
-                                  <button 
-                                    onClick={() => setAuthModalMode('REGISTER')} 
-                                    className={`w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider border-2 transition-all ${authModalTab === 'PASSENGER' ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40' : 'border-yellow-400 text-slate-900 dark:text-yellow-400 hover:bg-yellow-50 dark:hover:bg-yellow-950/30'}`}
-                                  >
-                                    Criar Conta de {authModalTab === 'PASSENGER' ? 'Passageiro' : 'Vale Transporte'}
-                                  </button>
-                              </div>
+                              {authModalTab === 'PASSENGER' ? (
+                                <div className="pt-4 border-t dark:border-zinc-800 text-center space-y-2">
+                                    <p className="text-[10px] font-bold text-slate-400 uppercase">Não possui uma conta ainda?</p>
+                                    <button 
+                                      onClick={() => setAuthModalMode('REGISTER')} 
+                                      className="w-full py-3 rounded-xl text-xs font-black uppercase tracking-wider border-2 border-indigo-600 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 transition-all"
+                                    >
+                                      Criar Conta de Passageiro
+                                    </button>
+                                </div>
+                              ) : (
+                                <div className="pt-4 border-t dark:border-zinc-800 text-center">
+                                  <p className="text-[10px] text-slate-500 dark:text-zinc-400 font-bold leading-relaxed uppercase">
+                                    🔒 O acesso ao Cartão VT é exclusivo para usuários já cadastrados no sistema. Digite seu CPF e senha cadastrada.
+                                  </p>
+                                </div>
+                              )}
                           </div>
                       )}
                   </div>
@@ -1456,13 +1498,13 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                     }
                   }} 
                   className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-sm ${loggedInCard ? 'bg-emerald-600 text-white hover:bg-emerald-700' : 'bg-slate-900/15 hover:bg-slate-900/25 text-slate-900'}`}
-                  title={loggedInCard ? `Gerenciar Vale Transporte (${loggedInCard.card_number || loggedInCard.name}) - Saldo: R$ ${Number(loggedInCard.balance || 0).toFixed(2)}` : "Entrar / Criar Conta de Vale Transporte"}
+                  title={loggedInCard ? `Gerenciar Vale Transporte (${loggedInCard.card_number || loggedInCard.name}) - Saldo: R$ ${Number(loggedInCard.balance || 0).toFixed(2)}` : "Acessar Cartão Vale Transporte"}
                 >
                   <CreditCard size={14} className={loggedInCard ? 'text-emerald-200' : 'text-slate-800'} />
                   <span className="truncate max-w-[150px] font-black">
                     {loggedInCard 
                       ? `VT: R$ ${Number(loggedInCard.balance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` 
-                      : 'VT: Entrar / Consultar'}
+                      : 'Acesso ao Cartão VT'}
                   </span>
                 </button>
 

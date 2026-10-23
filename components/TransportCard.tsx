@@ -204,54 +204,64 @@ export const TransportCard: React.FC<TransportCardProps> = ({
       <div className="relative z-10">
         <div className="flex items-center justify-between">
           <div 
-            className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-slate-950 text-yellow-400 font-black text-[11px] uppercase tracking-[0.2em] shadow-md border border-yellow-400/30"
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full font-black text-[11px] uppercase tracking-[0.2em] bg-transparent"
             style={{ 
-              color: colorCategory || undefined,
-              borderColor: colorCategory ? `${colorCategory}55` : undefined
+              color: colorCategory || (frontBgUrl ? '#ffffff' : '#0f172a'),
+              border: `1.5px solid ${colorCategory ? `${colorCategory}55` : frontBgUrl ? 'rgba(255,255,255,0.4)' : 'rgba(15,23,42,0.3)'}`
             }}
           >
             <Sparkles size={12} style={{ color: colorCategory || undefined }} />
             <span>{userCategory}</span>
           </div>
-          <div className="flex items-center gap-2" style={{ color: colorNfc || undefined }}>
+          <div className="flex items-center gap-2 bg-transparent" style={{ color: colorNfc || (frontBgUrl ? '#ffffff' : '#0f172a') }}>
             <Wifi size={22} className="rotate-90 opacity-90 drop-shadow" style={{ color: colorNfc || undefined }} />
             <span className="text-[9px] font-black uppercase tracking-widest opacity-80">NFC / CONTACTLESS</span>
           </div>
         </div>
 
-        {/* ABAIXO: Nome personalizado do sistema configurado pelo administrador com tamanho em px e quebra automática */}
-        <h1 
-          style={{ 
-            fontSize: `${resolvedFontSize}px`, 
-            lineHeight: 1.15,
-            color: colorSystemName || undefined
-          }}
-          className="font-black uppercase tracking-tight italic mt-2 drop-shadow-sm text-slate-950 dark:text-white break-words whitespace-normal max-w-[460px]"
-        >
-          {systemName}
-        </h1>
+        {/* NOME DA EMPRESA SELECIONADA EM DESTAQUE (com dimensionamento configurável) */}
+        <div className="mt-2 bg-transparent">
+          <h1 
+            style={{ 
+              fontSize: `${resolvedFontSize}px`, 
+              lineHeight: 1.15,
+              color: colorSystemName || (frontBgUrl ? '#ffffff' : '#0f172a')
+            }}
+            className="font-black uppercase tracking-tight italic drop-shadow-sm break-words whitespace-normal max-w-[460px] bg-transparent"
+          >
+            {companyName}
+          </h1>
+          {systemName && systemName.toUpperCase() !== companyName.toUpperCase() && (
+            <p 
+              style={{ color: colorSystemName ? `${colorSystemName}cc` : undefined }}
+              className="text-[10px] font-bold uppercase tracking-wider opacity-85 mt-0.5 bg-transparent"
+            >
+              {systemName}
+            </p>
+          )}
+        </div>
 
         {/* LINHA DIVISÓRIA */}
         <div className="w-full h-1 bg-slate-950/20 dark:bg-white/30 my-2 rounded-full" />
 
-        {/* LOGO ABAIXO DA LINHA: Município e Estado de cadastro do usuário + Lema com quebra de texto alinhado à borda direita */}
-        <div className="flex items-start justify-between gap-3">
+        {/* LOGO ABAIXO DA LINHA: Município e Estado + Lema sem fundos brancos */}
+        <div className="flex items-start justify-between gap-3 bg-transparent">
           <p 
-            style={{ color: colorCityState || undefined }}
-            className="text-[11px] font-black uppercase tracking-widest text-slate-900 dark:text-zinc-100 flex items-center gap-1 shrink-0 pt-0.5"
+            style={{ color: colorCityState || (frontBgUrl ? '#ffffff' : '#0f172a') }}
+            className="text-[11px] font-black uppercase tracking-widest flex items-center gap-1 shrink-0 pt-0.5 bg-transparent"
           >
             <span 
               className="w-2 h-2 rounded-full inline-block" 
-              style={{ backgroundColor: colorCityState || '#0f172a' }}
+              style={{ backgroundColor: colorCityState || (frontBgUrl ? '#ffffff' : '#0f172a') }}
             />
             {userCity} - {userState}
           </p>
 
-          {/* LADO DIREITO: Lema personalizado alinhado à borda direita com quebra automática de texto */}
-          <div className="flex-1 flex justify-end text-right">
+          {/* LADO DIREITO: Lema personalizado */}
+          <div className="flex-1 flex justify-end text-right bg-transparent">
             <p 
-              style={{ color: colorSlogan || undefined }}
-              className="text-[10px] font-bold uppercase tracking-wider text-right italic text-slate-800 dark:text-zinc-200 max-w-[260px] break-words whitespace-pre-line leading-tight" 
+              style={{ color: colorSlogan || (frontBgUrl ? 'rgba(255,255,255,0.9)' : '#1e293b') }}
+              className="text-[10px] font-bold uppercase tracking-wider text-right italic max-w-[260px] break-words whitespace-pre-line leading-tight bg-transparent" 
               title={slogan}
             >
               "{slogan}"
@@ -260,41 +270,44 @@ export const TransportCard: React.FC<TransportCardProps> = ({
         </div>
       </div>
 
-      {/* PARTE INFERIOR DA FRENTE: Chip Smartcard + Foto/Avatar do Usuário */}
-      <div className="relative z-10 flex items-end justify-between mt-auto pt-4">
-        {/* Chip EMV Dourado Metálico */}
-        <div className="space-y-1">
-          <div className="w-14 h-10 bg-gradient-to-br from-amber-200 via-yellow-400 to-amber-600 rounded-lg border border-amber-900/40 relative overflow-hidden shadow-md">
-            <div className="absolute inset-0 grid grid-cols-3 grid-rows-2 gap-px opacity-40">
-              <div className="border-r border-b border-black/40"></div>
-              <div className="border-r border-b border-black/40"></div>
-              <div className="border-b border-black/40"></div>
-              <div className="border-r border-black/40"></div>
-              <div className="border-r border-black/40"></div>
-              <div></div>
-            </div>
-            <div className="absolute inset-1 border border-black/20 rounded"></div>
+      {/* PARTE INFERIOR DA FRENTE: Titular do Benefício e Foto (SEM CHIP) */}
+      <div className="relative z-10 flex items-end justify-between mt-auto pt-4 bg-transparent">
+        {/* Identificação de Segurança / Autenticidade (Substituindo o chip físico) */}
+        <div className="space-y-1 bg-transparent">
+          <div className="flex items-center gap-1.5 opacity-80">
+            <Shield size={14} style={{ color: colorCategory || (frontBgUrl ? '#ffffff' : '#0f172a') }} />
+            <span 
+              style={{ color: colorCategory || (frontBgUrl ? '#ffffff' : '#0f172a') }}
+              className="text-[9px] font-black uppercase tracking-widest bg-transparent"
+            >
+              CARTÃO BILHETAGEM
+            </span>
           </div>
-          <span className="text-[8px] font-mono font-black uppercase opacity-75 tracking-wider block">CHIP SMARTPASS</span>
+          <span 
+            style={{ color: colorCityState || (frontBgUrl ? 'rgba(255,255,255,0.7)' : '#334155') }}
+            className="text-[8px] font-mono font-bold uppercase tracking-wider block bg-transparent"
+          >
+            AUTENTICAÇÃO DIGITAL
+          </span>
         </div>
 
         {/* Foto do Usuário / Avatar */}
-        <div className="flex items-center gap-3">
-          <div className="text-right">
+        <div className="flex items-center gap-3 bg-transparent">
+          <div className="text-right bg-transparent">
             <p 
-              style={{ color: colorUserLabel || undefined }}
-              className="text-[9px] font-bold text-slate-800 dark:text-zinc-200 uppercase"
+              style={{ color: colorUserLabel || (frontBgUrl ? 'rgba(255,255,255,0.8)' : '#334155') }}
+              className="text-[9px] font-bold uppercase bg-transparent"
             >
               Titular do Benefício
             </p>
             <p 
-              style={{ color: colorUserName || undefined }}
-              className="text-xs font-black uppercase tracking-tight text-slate-950 dark:text-white max-w-[200px] truncate"
+              style={{ color: colorUserName || (frontBgUrl ? '#ffffff' : '#0f172a') }}
+              className="text-xs font-black uppercase tracking-tight max-w-[220px] truncate bg-transparent"
             >
               {frontDisplayName}
             </p>
           </div>
-          <div className="w-16 h-16 rounded-2xl border-2 border-slate-950/30 dark:border-white/40 bg-white p-0.5 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
+          <div className="w-16 h-16 rounded-2xl border-2 border-slate-950/30 dark:border-white/40 bg-transparent p-0.5 shadow-xl overflow-hidden flex items-center justify-center shrink-0">
             {photoUrl ? (
               <img
                 src={photoUrl}
@@ -331,30 +344,30 @@ export const TransportCard: React.FC<TransportCardProps> = ({
       }`}
     >
 
-      {/* 1. NO TOPO: Logo da empresa selecionada */}
+      {/* 1. NO TOPO: Operadora & Concessionária com o Nome da Empresa Selecionada */}
       <div className="relative z-10 flex items-center justify-between pb-2 border-b border-white/15">
         <div className="flex items-center gap-3">
-          {companyLogo ? (
+          {companyLogo && (
             <img
               src={companyLogo}
               alt={companyName}
-              className="h-9 max-w-[140px] object-contain drop-shadow"
+              className="h-9 max-w-[120px] object-contain drop-shadow"
               onError={(e) => {
                 (e.target as HTMLElement).style.display = 'none';
               }}
             />
-          ) : (
-            <div className="flex items-center gap-2 px-3 py-1 bg-yellow-400 text-slate-950 rounded-xl font-black text-xs uppercase shadow">
-              <Building2 size={16} />
-              <span>{companyName}</span>
-            </div>
           )}
-          <span 
-            style={{ color: colorOperatorLabel || undefined }}
-            className="text-[10px] font-black uppercase text-yellow-400 tracking-wider"
-          >
-            Operadora & Concessionária
-          </span>
+          <div className="flex flex-col text-left">
+            <span 
+              style={{ color: colorOperatorLabel || undefined }}
+              className="text-[8px] font-bold uppercase text-yellow-400 tracking-wider"
+            >
+              Operadora & Concessionária
+            </span>
+            <span className="text-xs font-black uppercase text-white tracking-wide truncate max-w-[240px]">
+              {companyName}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-[9px] font-mono font-bold tracking-widest text-slate-300">
           <Shield size={12} className="text-yellow-400" />
@@ -473,12 +486,12 @@ export const TransportCard: React.FC<TransportCardProps> = ({
   return (
     <div className={`inline-flex flex-col items-center gap-3 ${className}`}>
       {/* Botões interativos de alternância Frente / Verso */}
-      {interactiveFlip && viewMode === 'front' && (
-        <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-zinc-800 rounded-2xl shadow-inner border border-slate-200 dark:border-zinc-700">
+      {interactiveFlip && viewMode !== 'both' && (
+        <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-zinc-800 rounded-2xl shadow-inner border border-slate-200 dark:border-zinc-700">
           <button
             type="button"
             onClick={() => setCurrentSide('front')}
-            className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+            className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
               currentSide === 'front'
                 ? 'bg-yellow-400 text-slate-950 shadow-md scale-100'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white'
@@ -489,9 +502,9 @@ export const TransportCard: React.FC<TransportCardProps> = ({
           <button
             type="button"
             onClick={() => setCurrentSide('back')}
-            className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all ${
+            className={`px-5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all ${
               currentSide === 'back'
-                ? 'bg-slate-900 text-yellow-400 shadow-md scale-100'
+                ? 'bg-slate-900 text-yellow-400 dark:bg-yellow-400 dark:text-slate-950 shadow-md scale-100'
                 : 'text-slate-600 dark:text-zinc-400 hover:text-slate-950 dark:hover:text-white'
             }`}
           >

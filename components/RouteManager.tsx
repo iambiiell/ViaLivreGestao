@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { BusRoute, RouteStatus, Company, City, User, LedColor, RouteSection, TicketingConfig, Trip, TicketSale, BusStation, SystemSettings } from '../types';
-import { Plus, Navigation, Trash2, X, Pencil, Save, Clock, ListChecks, Type, Search, LayoutGrid, Palette, Zap, Binary, Hash, ArrowRight, BarChart3, Users, DollarSign, Activity, FileSpreadsheet, Crosshair, Minimize2, MapPin, Bus, Download, FolderArchive, Tag, Sparkles } from 'lucide-react';
+import { Plus, Navigation, Trash2, X, Pencil, Save, Clock, ListChecks, Type, Search, LayoutGrid, Palette, Zap, Binary, Hash, ArrowRight, BarChart3, Users, DollarSign, Activity, FileSpreadsheet, Crosshair, Minimize2, MapPin, Bus, Download, FolderArchive, Tag, Sparkles, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../services/database';
 import { supabase } from '../services/supabaseClient';
@@ -56,7 +56,9 @@ const initialForm: Partial<BusRoute> = {
   payment_methods_accepted: ['DINHEIRO', 'PIX', 'CREDITO', 'DEBITO'],
   estimated_travel_time_text: '',
   empresa_autuante: '',
-  empresa_autuante_id: ''
+  empresa_autuante_id: '',
+  exibir_codigo_letreiro: false,
+  letreiro_cor: '#ffaa00'
 };
 
 const RouteManager: React.FC<RouteManagerProps> = ({ 
@@ -77,6 +79,23 @@ const RouteManager: React.FC<RouteManagerProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<ModalTab>('geral');
   const [searchTerm, setSearchTerm] = useState('');
+  const [selectedAutuanteFilter, setSelectedAutuanteFilter] = useState<string>('');
+  const [panelLedColor, setPanelLedColor] = useState<string>(() => {
+    try {
+      return localStorage.getItem('vialivre_letreiro_custom_color') || '#ffaa00';
+    } catch {
+      return '#ffaa00';
+    }
+  });
+
+  const handleUpdateLedColor = (color: string) => {
+    setPanelLedColor(color);
+    setFormData(prev => ({ ...prev, letreiro_cor: color }));
+    try {
+      localStorage.setItem('vialivre_letreiro_custom_color', color);
+    } catch {}
+  };
+
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [selectedDirection, setSelectedDirection] = useState<'IDA' | 'VOLTA'>('IDA');
   const [selectedScope, setSelectedScope] = useState<string>('');
@@ -548,14 +567,76 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     }
   };
 
+  const distinctAutuanteCompanies = useMemo(() => {
+    const map = new Map<string, string>(); // value -> label
+
+    // 1. Das empresas cadastradas no sistema
+    companies.forEach(c => {
+      const label = c.nome_fantasia || c.name;
+      if (c.id && label) {
+        map.set(c.id, label);
+      }
+    });
+
+    // 2. Dos itinerários que possuem empresa atuante registrada
+    routes.forEach(r => {
+      if (r.empresa_autuante && r.empresa_autuante.trim()) {
+        const trimmed = r.empresa_autuante.trim();
+        let exists = false;
+        map.forEach((lbl) => {
+          if (lbl.trim().toLowerCase() === trimmed.toLowerCase()) exists = true;
+        });
+        if (!exists) {
+          map.set(r.empresa_autuante_id || trimmed, trimmed);
+        }
+      }
+    });
+
+    return Array.from(map.entries())
+      .map(([value, label]) => ({ value, label }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [companies, routes]);
+
   const filteredRoutes = useMemo(() => {
-    const search = searchTerm.toLowerCase();
-    return routes.filter(r => 
-      r.prefixo_linha.toLowerCase().includes(search) ||
-      r.destination.toLowerCase().includes(search) ||
-      r.origin.toLowerCase().includes(search)
-    ).sort((a, b) => a.prefixo_linha.localeCompare(b.prefixo_linha, undefined, { numeric: true }));
-  }, [routes, searchTerm]);
+    const search = searchTerm.toLowerCase().trim();
+    return routes.filter(r => {
+      // 1. Filtro por Empresa Atuante Selecionada
+      if (selectedAutuanteFilter) {
+        const target = selectedAutuanteFilter.toLowerCase();
+        const matchesId = r.empresa_autuante_id === selectedAutuanteFilter || r.company_id === selectedAutuanteFilter;
+        const matchesName = (r.empresa_autuante || '').toLowerCase() === target;
+        
+        // Verifica também se o id selecionado corresponde ao nome da empresa
+        const comp = companies.find(c => c.id === selectedAutuanteFilter);
+        const compName = (comp?.nome_fantasia || comp?.name || '').toLowerCase();
+        const matchesCompName = compName && (r.empresa_autuante || '').toLowerCase() === compName;
+
+        if (!matchesId && !matchesName && !matchesCompName) {
+          return false;
+        }
+      }
+
+      // 2. Busca por termo (linha, destino, origem ou empresa atuante)
+      if (search) {
+        const matchesPrefix = (r.prefixo_linha || '').toLowerCase().includes(search);
+        const matchesDest = (r.destination || '').toLowerCase().includes(search);
+        const matchesOrigin = (r.origin || '').toLowerCase().includes(search);
+        const matchesAutuante = (r.empresa_autuante || '').toLowerCase().includes(search);
+
+        const comp = companies.find(c => c.id === r.company_id || c.id === r.empresa_autuante_id);
+        const matchesComp = comp && (
+          (comp.name || '').toLowerCase().includes(search) || 
+          (comp.nome_fantasia || '').toLowerCase().includes(search)
+        );
+
+        if (!matchesPrefix && !matchesDest && !matchesOrigin && !matchesAutuante && !matchesComp) {
+          return false;
+        }
+      }
+
+      return true;
+    }).sort((a, b) => (a.prefixo_linha || '').localeCompare(b.prefixo_linha || '', undefined, { numeric: true }));
+  }, [routes, searchTerm, selectedAutuanteFilter, companies]);
 
   const allServiceClasses = useMemo(() => {
     const base = [
@@ -715,8 +796,21 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     setShowAllScopes(false);
     if (route) {
         setEditingId(route.id);
-        const data = { ...initialForm, ...route };
+        const data = { 
+          ...initialForm, 
+          ...route, 
+          exibir_codigo_letreiro: route.exibir_codigo_letreiro ?? false,
+          sections: (route.sections || []).filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination))
+        };
         setFormData(data);
+        if (route.letreiro_cor) {
+          setPanelLedColor(route.letreiro_cor);
+        } else {
+          try {
+            const saved = localStorage.getItem('vialivre_letreiro_custom_color');
+            if (saved) setPanelLedColor(saved);
+          } catch {}
+        }
 
         // Carrega legendas vinculadas
         try {
@@ -916,8 +1010,11 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     }
     const selectedAutuante = companies.find(c => c.id === (formData.empresa_autuante_id || formData.company_id));
     const autuanteName = selectedAutuante?.nome_fantasia || selectedAutuante?.name || formData.empresa_autuante || '';
+    const cleanSections = (formData.sections || []).filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
     const route = { 
       ...formData,
+      letreiro_cor: panelLedColor,
+      sections: cleanSections,
       empresa_autuante_id: formData.empresa_autuante_id || formData.company_id,
       empresa_autuante: autuanteName
     } as BusRoute;
@@ -934,16 +1031,94 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border-2 border-yellow-400 gap-4">
         <div className="flex-1 w-full">
             <h2 className="text-3xl font-black text-slate-800 dark:text-zinc-100 uppercase italic">Gestão de Itinerários</h2>
-            <div className="mt-6 relative max-w-md">
-              <Search className="absolute left-4 top-4 text-slate-400" size={18} />
-              <input 
-                type="text" 
-                placeholder="Buscar por linha ou destino..." 
-                className="w-full pl-12 pr-4 py-4 rounded-2xl bg-slate-50 dark:bg-zinc-800 border-2 border-yellow-400 text-[10px] font-black outline-none dark:text-zinc-300 shadow-inner" 
-                value={searchTerm} 
-                onChange={e => setSearchTerm(e.target.value)} 
-              />
+            <p className="text-xs font-bold text-slate-400 uppercase mt-1">Consulte e gerencie itinerários cadastrados por linha, destino ou empresa atuante</p>
+            
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mt-5">
+              <div className="relative flex-1">
+                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                <input 
+                  type="text" 
+                  placeholder="Buscar por linha, destino ou empresa atuante..." 
+                  className="w-full pl-12 pr-10 py-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800 border-2 border-yellow-400 text-xs font-bold outline-none dark:text-zinc-100 shadow-inner" 
+                  value={searchTerm} 
+                  onChange={e => setSearchTerm(e.target.value)} 
+                />
+                {searchTerm && (
+                  <button 
+                    type="button" 
+                    onClick={() => setSearchTerm('')} 
+                    className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-white p-1"
+                    title="Limpar busca"
+                  >
+                    <X size={16} />
+                  </button>
+                )}
+              </div>
+
+              {/* Seletor de Consulta por Empresa Atuante */}
+              <div className="relative min-w-[240px] sm:max-w-xs">
+                <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-500 pointer-events-none" size={18} />
+                <select
+                  value={selectedAutuanteFilter}
+                  onChange={e => setSelectedAutuanteFilter(e.target.value)}
+                  className="w-full pl-10 pr-8 py-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-800 border-2 border-yellow-400 text-xs font-bold outline-none text-slate-800 dark:text-zinc-100 shadow-inner appearance-none cursor-pointer"
+                  title="Consultar itinerários cadastrados por empresa atuante"
+                >
+                  <option value="">Todas as Empresas Atuantes ({routes.length})</option>
+                  {distinctAutuanteCompanies.map(item => (
+                    <option key={item.value} value={item.value}>
+                      {item.label}
+                    </option>
+                  ))}
+                </select>
+                <div className="absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400 text-xs">▼</div>
+              </div>
             </div>
+
+            {/* Badges de Filtros Ativos */}
+            {(selectedAutuanteFilter || searchTerm) && (
+              <div className="flex flex-wrap items-center gap-2 mt-3 pt-2">
+                <span className="text-[10px] font-black uppercase text-slate-400">Filtrando:</span>
+                {selectedAutuanteFilter && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/30 rounded-full font-black text-[10px] uppercase">
+                    <Building2 size={12} />
+                    Empresa Atuante: {distinctAutuanteCompanies.find(a => a.value === selectedAutuanteFilter)?.label || selectedAutuanteFilter}
+                    <button 
+                      type="button" 
+                      onClick={() => setSelectedAutuanteFilter('')} 
+                      className="hover:text-red-500 ml-1"
+                      title="Remover filtro"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                )}
+                {searchTerm && (
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-yellow-400/20 text-yellow-800 dark:text-yellow-300 border border-yellow-400/40 rounded-full font-black text-[10px] uppercase">
+                    <Search size={12} />
+                    "{searchTerm}"
+                    <button 
+                      type="button" 
+                      onClick={() => setSearchTerm('')} 
+                      className="hover:text-red-500 ml-1"
+                      title="Limpar busca"
+                    >
+                      <X size={12} />
+                    </button>
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { setSelectedAutuanteFilter(''); setSearchTerm(''); }}
+                  className="text-[10px] text-slate-400 hover:text-red-500 underline ml-2 cursor-pointer font-bold uppercase"
+                >
+                  Limpar filtros
+                </button>
+                <span className="text-slate-400 ml-auto font-mono text-[10px] font-bold">
+                  {filteredRoutes.length} de {routes.length} itinerário(s)
+                </span>
+              </div>
+            )}
         </div>
         <div className="flex items-center gap-3">
           <button 
@@ -1091,7 +1266,30 @@ const RouteManager: React.FC<RouteManagerProps> = ({
             </div>
           </motion.div>
         );
-      })() : (
+      })() : filteredRoutes.length === 0 ? (
+        <div className="bg-white dark:bg-zinc-900 p-12 rounded-[2.5rem] border-2 border-dashed border-amber-300 dark:border-zinc-800 text-center space-y-4">
+          <div className="w-16 h-16 bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-3xl mx-auto flex items-center justify-center">
+            <Building2 size={32} />
+          </div>
+          <h3 className="text-lg font-black uppercase text-slate-800 dark:text-zinc-100">
+            Nenhum Itinerário Encontrado
+          </h3>
+          <p className="text-xs text-slate-500 max-w-md mx-auto uppercase font-bold">
+            {selectedAutuanteFilter 
+              ? `Não há itinerários cadastrados para a empresa atuante selecionada.` 
+              : `Nenhum itinerário corresponde aos termos pesquisados.`}
+          </p>
+          {(selectedAutuanteFilter || searchTerm) && (
+            <button
+              type="button"
+              onClick={() => { setSelectedAutuanteFilter(''); setSearchTerm(''); }}
+              className="px-6 py-3 bg-yellow-400 text-slate-900 rounded-2xl font-black text-xs uppercase shadow-md hover:bg-yellow-300 transition-all cursor-pointer"
+            >
+              Limpar Filtros e Ver Todos ({routes.length})
+            </button>
+          )}
+        </div>
+      ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRoutes.map(route => (
             <div key={route.id} className="bg-white dark:bg-zinc-900 p-6 rounded-[2.5rem] border-2 border-yellow-400 shadow-sm hover:shadow-xl transition-all h-full flex flex-col">
@@ -1099,10 +1297,17 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                   <div className="h-12 min-w-fit px-4 bg-slate-900 text-yellow-400 rounded-2xl flex items-center justify-center font-black text-xl border-2 border-slate-800 shrink-0">{route.prefixo_linha}</div>
                   <div className="min-w-0 flex-1">
                     <h3 className="text-sm font-black dark:text-white uppercase italic leading-tight break-words">{route.origin} x {route.destination}</h3>
-                    <p className="text-[8px] font-black text-slate-400 uppercase flex items-center flex-wrap gap-1">
+                    <p className="text-[8px] font-black text-slate-400 uppercase flex items-center flex-wrap gap-1 mt-0.5">
                       <span>{route.route_type}</span>
                       {route.empresa_autuante && (
-                        <span className="text-amber-600 dark:text-amber-400 font-bold">• Autuante: {route.empresa_autuante}</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedAutuanteFilter(route.empresa_autuante_id || route.empresa_autuante || '')}
+                          className="text-amber-600 dark:text-amber-400 font-bold hover:underline cursor-pointer inline-flex items-center gap-0.5"
+                          title="Filtrar itinerários desta empresa atuante"
+                        >
+                          • Autuante: {route.empresa_autuante}
+                        </button>
                       )}
                     </p>
                     {route.origin_station_platform && route.destination_station_platform && (
@@ -1533,17 +1738,17 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <div className="flex flex-col">
-                                            <span className="text-[8px] font-black uppercase text-indigo-600 dark:text-indigo-400 truncate max-w-[170px]" title={selectedDirection === 'IDA' ? `Ponto de Destino: ${formData.destination || 'Não definido'}` : `Ponto de Origem: ${formData.origin || 'Não definido'}`}>
-                                                {selectedDirection === 'IDA' ? `Destino: ${formData.destination || 'Cadastro'}` : `Origem: ${formData.origin || 'Cadastro'}`}
+                                            <span className="text-[8px] font-black uppercase text-indigo-600 dark:text-indigo-400 truncate max-w-[200px]" title={selectedDirection === 'IDA' ? `Saída: ${formData.origin || 'Ponto de Origem'}` : `Saída: ${formData.destination || 'Ponto de Destino'}`}>
+                                                {selectedDirection === 'IDA' ? `Saída: ${formData.origin || 'Ponto de Origem'}` : `Saída: ${formData.destination || 'Ponto de Destino'}`}
                                             </span>
                                             <select 
                                                 className="px-3 py-3 bg-white dark:bg-zinc-800 border-2 border-slate-200 dark:border-zinc-700 rounded-2xl font-black text-[10px] dark:text-white"
                                                 value={selectedDirection}
                                                 onChange={e => setSelectedDirection(e.target.value as 'IDA' | 'VOLTA')}
-                                                title="IDA para Ponto de Destino | VOLTA para Ponto de Origem"
+                                                title="Selecione o sentido de partida"
                                             >
-                                                <option value="IDA">IDA ({formData.destination ? `Destino: ${formData.destination}` : 'Ponto de Destino'})</option>
-                                                <option value="VOLTA">VOLTA ({formData.origin ? `Origem: ${formData.origin}` : 'Ponto de Origem'})</option>
+                                                <option value="IDA">IDA (Saída: {formData.origin || 'Ponto de Origem'})</option>
+                                                <option value="VOLTA">VOLTA (Saída: {formData.destination || 'Ponto de Destino'})</option>
                                             </select>
                                         </div>
                                         <input 
@@ -1885,8 +2090,101 @@ const RouteManager: React.FC<RouteManagerProps> = ({
 
                 {activeTab === 'letreiro' && (
                     <div className="space-y-8 animate-in fade-in">
+                        {/* Seletor de Cor do Painel Digital (LED / Letreiro) */}
+                        <div className="bg-slate-900 border-2 border-slate-800 p-6 rounded-[2.5rem] shadow-xl text-white space-y-4">
+                            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-slate-800 pb-4">
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <Palette size={18} className="text-yellow-400" />
+                                        <h4 className="text-xs font-black uppercase tracking-wider text-slate-100">
+                                            Cor do Painel Digital (Preview LED)
+                                        </h4>
+                                        <span className="text-[9px] font-bold px-2.5 py-0.5 rounded-full bg-yellow-400/20 text-yellow-300 border border-yellow-400/40 uppercase">
+                                            Independente do Sistema
+                                        </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1 uppercase font-semibold">
+                                        A cor do letreiro é personalizada diretamente nesta área e não segue o tema do sistema. Escolha qualquer cor para o preview.
+                                    </p>
+                                </div>
+
+                                {/* Custom Color Picker & Hex Input */}
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2 bg-slate-950 px-3.5 py-2 rounded-2xl border border-slate-800 shadow-inner">
+                                        <input
+                                            type="color"
+                                            value={panelLedColor}
+                                            onChange={(e) => handleUpdateLedColor(e.target.value)}
+                                            className="w-8 h-8 rounded-xl cursor-pointer border-0 bg-transparent p-0 overflow-hidden"
+                                            title="Clique para escolher qualquer cor para o preview do letreiro"
+                                        />
+                                        <input
+                                            type="text"
+                                            value={panelLedColor.toUpperCase()}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (/^#[0-9A-Fa-f]{0,6}$/.test(val)) {
+                                                    handleUpdateLedColor(val);
+                                                }
+                                            }}
+                                            maxLength={7}
+                                            placeholder="#FFAA00"
+                                            className="w-20 bg-transparent text-xs font-mono font-black text-slate-100 uppercase outline-none"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Presets Rápidos de Cores LED */}
+                            <div>
+                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">
+                                    Tonalidades Rápidas de LED:
+                                </label>
+                                <div className="flex flex-wrap gap-2">
+                                    {[
+                                        { name: 'Âmbar Clássico', color: '#ffaa00' },
+                                        { name: 'Amarelo Canário', color: '#facc15' },
+                                        { name: 'Branco Cristal', color: '#ffffff' },
+                                        { name: 'Verde Esmeralda', color: '#00ff66' },
+                                        { name: 'Ciano Neon', color: '#00e5ff' },
+                                        { name: 'Azul Elétrico', color: '#3b82f6' },
+                                        { name: 'Laranja Forte', color: '#ff6600' },
+                                        { name: 'Vermelho Alerta', color: '#ff3333' },
+                                        { name: 'Rosa Magenta', color: '#ec4899' },
+                                        { name: 'Roxo Cyber', color: '#a855f7' }
+                                    ].map(preset => {
+                                        const isSelected = panelLedColor.toLowerCase() === preset.color.toLowerCase();
+                                        return (
+                                            <button
+                                                key={preset.color}
+                                                type="button"
+                                                onClick={() => handleUpdateLedColor(preset.color)}
+                                                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase transition-all border ${
+                                                    isSelected 
+                                                        ? 'bg-slate-800 text-white border-white shadow-[0_0_12px_rgba(255,255,255,0.3)] scale-105' 
+                                                        : 'bg-slate-950/80 text-slate-300 border-slate-800 hover:border-slate-700 hover:text-white'
+                                                }`}
+                                            >
+                                                <span 
+                                                    className="w-3 h-3 rounded-full shadow-sm" 
+                                                    style={{ 
+                                                        backgroundColor: preset.color, 
+                                                        boxShadow: `0 0 8px ${preset.color}` 
+                                                    }} 
+                                                />
+                                                {preset.name}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Digital Sign Preview */}
-                        <div className="bg-slate-950 p-6 md:p-8 rounded-[3.5rem] border-8 border-slate-800 shadow-2xl relative overflow-hidden group">
+                        <div 
+                            className="bg-slate-950 p-6 md:p-8 rounded-[3.5rem] border-8 border-slate-800 shadow-2xl relative overflow-hidden group"
+                            style={{ boxShadow: `0 20px 50px -10px ${panelLedColor}22` }}
+                        >
                            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(0,0,0,0)_0%,rgba(0,0,0,0.4)_100%)] pointer-events-none"></div>
                            
                            {/* Style tag for marquee animation */}
@@ -1907,8 +2205,11 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                {formData.exibir_codigo_letreiro && formData.prefixo_linha && (
                                    <div className="flex-shrink-0 flex items-center justify-center px-4 py-4 md:px-6 md:py-6 border-r-4 border-dashed border-slate-800 max-h-[120px] bg-slate-900 rounded-2xl select-none">
                                        <span 
-                                           className="text-5xl md:text-6xl font-normal tracking-wider text-yellow-400 font-pixel"
-                                           style={{ textShadow: '0 0 16px #facc15' }}
+                                           className="text-5xl md:text-6xl font-normal tracking-wider font-pixel"
+                                           style={{ 
+                                               color: panelLedColor,
+                                               textShadow: `0 0 16px ${panelLedColor}, 0 0 24px ${panelLedColor}88` 
+                                           }}
                                        >
                                            {formData.prefixo_linha}
                                        </span>
@@ -1920,21 +2221,28 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                    <AnimatePresence mode="wait">
                                        <div 
                                           key={currentSignIdx}
-                                          className="w-full flex items-center justify-start font-pixel text-yellow-400"
+                                          className="w-full flex items-center justify-start font-pixel"
+                                          style={{ color: panelLedColor }}
                                        >
                                           {activeSigns[currentSignIdx % activeSigns.length].modo === 'ROLANTE' ? (
                                               <div className="w-full overflow-hidden text-left py-2">
                                                   <span 
-                                                     className="letreiro-rolante text-6xl sm:text-7xl md:text-8xl font-bold uppercase tracking-wider text-yellow-400 font-pixel"
-                                                     style={{ textShadow: '0 0 20px #facc15' }}
+                                                     className="letreiro-rolante text-6xl sm:text-7xl md:text-8xl font-bold uppercase tracking-wider font-pixel"
+                                                     style={{ 
+                                                         color: panelLedColor,
+                                                         textShadow: `0 0 20px ${panelLedColor}, 0 0 32px ${panelLedColor}88` 
+                                                     }}
                                                   >
                                                       {activeSigns[currentSignIdx % activeSigns.length].text}
                                                   </span>
                                               </div>
                                           ) : (
                                               <span 
-                                                 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold uppercase tracking-wider text-yellow-400 font-pixel text-left text-ellipsis overflow-hidden px-2"
-                                                 style={{ textShadow: '0 0 20px #facc15' }}
+                                                 className="text-5xl sm:text-6xl md:text-7xl lg:text-8xl font-bold uppercase tracking-wider font-pixel text-left text-ellipsis overflow-hidden px-2"
+                                                 style={{ 
+                                                     color: panelLedColor,
+                                                     textShadow: `0 0 20px ${panelLedColor}, 0 0 32px ${panelLedColor}88` 
+                                                 }}
                                               >
                                                   {activeSigns[currentSignIdx % activeSigns.length].text}
                                               </span>
@@ -1946,7 +2254,11 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                            
                            <div className="mt-2 flex gap-2 justify-center">
                                {activeSigns.map((_, i) => (
-                                   <div key={i} className={`h-1.5 rounded-full transition-all duration-300 ${i === (currentSignIdx % activeSigns.length) ? 'w-8 bg-slate-100 shadow-[0_0_10px_rgba(241,245,249,0.8)]' : 'w-2 bg-slate-800'}`}></div>
+                                   <div 
+                                       key={i} 
+                                       className={`h-1.5 rounded-full transition-all duration-300 ${i === (currentSignIdx % activeSigns.length) ? 'w-8 shadow-sm' : 'w-2 bg-slate-800'}`}
+                                       style={i === (currentSignIdx % activeSigns.length) ? { backgroundColor: panelLedColor, boxShadow: `0 0 10px ${panelLedColor}` } : {}}
+                                   ></div>
                                ))}
                            </div>
                            
