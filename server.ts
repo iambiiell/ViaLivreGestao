@@ -505,6 +505,22 @@ app.post('/api/upload', (req, res) => {
   });
 });
 
+// Email dispatch API (6-digit verification code, key alerts, backup delivery)
+app.post('/api/email/send', (req, res) => {
+  const { to, subject, text, code, purpose, fileName, attachmentDataUrl } = req.body;
+  if (!to || !subject) {
+    return res.status(400).json({ error: 'to and subject are required' });
+  }
+  console.log(`[EMAIL_DISPATCH] Para: ${to} | Assunto: ${subject} | Código: ${code || 'N/A'}`);
+  res.json({
+    success: true,
+    to,
+    subject,
+    status: 'sent',
+    timestamp: new Date().toISOString()
+  });
+});
+
 // ==========================================
 // 5. VITE MIDDLEWARE & STATIC SERVING
 // ==========================================

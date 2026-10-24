@@ -54,6 +54,7 @@ import MobileDeviceSimulator from './components/MobileDeviceSimulator';
 import MobileSystemView from './components/MobileSystemView';
 import { ViewState, BusRoute, Trip, User, Company, Vehicle, IssueReport, City, Notice, ThemeMode, TicketSale, Inspection, TicketingConfig, RoleConfig, AppNotification, Shift, SystemSettings, UserFine, Subscription, Skin, TimeEntry, TicketBooth, BusStation } from './types';
 import { db, supabase, TableName } from './services/database';
+import { EmailService } from './services/emailService';
 import { resolveThemeColors, applyThemeVariables, applyThemeMode } from './utils/themeHelper';
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
@@ -1558,6 +1559,14 @@ const App: React.FC = () => {
             url,
             currentUser.system_id
           );
+          // Disparo automático do arquivo de backup por e-mail para o Administrador Raiz
+          await EmailService.sendAdminBackupFileEmail(
+            currentUser.email || 'via.nicolau.sa@gmail.com',
+            backupFileName,
+            jsonStr,
+            url,
+            currentUser.system_id || 'root-system'
+          );
           loadInitialData(); // Reload definitions so system notification instantly renders
         } catch (notifErr) {
           console.error("Erro ao registrar notificações do backup automático:", notifErr);
@@ -1568,6 +1577,46 @@ const App: React.FC = () => {
       addToast("Erro ao processar cópia de segurança de dados.", "error");
     }
   };
+
+  // Verificação de expiração de chave/plano para Administrador Raiz (envia alerta por e-mail se <= 7 dias)
+  useEffect(() => {
+    if (!currentUser || currentUser.role !== 'ADMIN') return;
+    const checkExpiration = async () => {
+      try {
+        const keys = await db.getAllActivationKeys();
+        const activeKey = keys.find(k => 
+          k.is_used && (
+            k.system_id === currentUser.system_id || 
+            k.key_code === currentUser.activation_key || 
+            k.owner_email === currentUser.email
+          )
+        );
+        if (activeKey && activeKey.expires_at) {
+          const expiresDate = new Date(activeKey.expires_at);
+          const diffDays = Math.ceil((expiresDate.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+          if (diffDays <= 7 && diffDays >= 0) {
+            const alreadySentKey = `vialivre_expiration_warn_${activeKey.key_code}_${diffDays}`;
+            if (!sessionStorage.getItem(alreadySentKey)) {
+              sessionStorage.setItem(alreadySentKey, 'true');
+              await EmailService.sendAdminKeyExpirationAlert(
+                currentUser.email || 'via.nicolau.sa@gmail.com',
+                {
+                  keyCode: activeKey.key_code,
+                  planType: activeKey.plan_type || 'PRO',
+                  expiresAt: activeKey.expires_at,
+                  daysRemaining: diffDays,
+                  systemId: currentUser.system_id || 'root-system'
+                }
+              );
+            }
+          }
+        }
+      } catch (e) {
+        console.warn('Falha ao checar expiração de chaves:', e);
+      }
+    };
+    checkExpiration();
+  }, [currentUser]);
 
   // Run automated backup trigger inside React lifecycle based on configured frequency
   useEffect(() => {
@@ -1772,7 +1821,12 @@ const App: React.FC = () => {
           else if (table === 'bus_stations') setBusStations(prev => prev.filter(x => x.id !== id));
           else if (table === 'user_fines') setUserFines(prev => prev.filter(x => x.id !== id));
           else if (table === 'shifts') setShifts(prev => prev.filter(x => x.id !== id));
-          else if (table === 'notifications') setNotifications(prev => prev.filter(x => x.id !== id));
+          else if (table === 'notifications') {
+            const notif = notifications.find(x => x.id === id);
+            if (notif) EmailService.dismissNotificationAlert(notif);
+            else EmailService.dismissAlertSignature(id);
+            setNotifications(prev => prev.filter(x => x.id !== id));
+          }
           else if (table === 'skins') setSkins(prev => prev.filter(x => x.id !== id));
 
           res = await db.delete(table, id);

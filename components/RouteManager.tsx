@@ -1014,6 +1014,8 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     const route = { 
       ...formData,
       letreiro_cor: panelLedColor,
+      display_main_color: panelLedColor,
+      letreiro_principal_cor: panelLedColor,
       sections: cleanSections,
       empresa_autuante_id: formData.empresa_autuante_id || formData.company_id,
       empresa_autuante: autuanteName

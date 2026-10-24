@@ -261,7 +261,7 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'schedule_sundays', 'estimated_travel_time_text', 'payment_methods_accepted', 'service_class',
     'origin_station_id', 'origin_station_platform', 'destination_station_id',
     'destination_station_platform', 'via1_cor', 'via2_cor', 'via3_cor', 'exibir_codigo_letreiro',
-    'created_by', 'updated_by', 'is_active', 'empresa_autuante', 'empresa_autuante_id', 'letreiro_cor'
+    'created_by', 'updated_by', 'is_active'
   ]),
   users: new Set([
     'id', 'full_name', 'email', 'created_at', 'active', 'admission_date', 'job_title', 'registration_id',
@@ -448,6 +448,17 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (!cleaned.tarifa_integral && cleaned.price) cleaned.tarifa_integral = Number(cleaned.price);
     if (cleaned.active === undefined) cleaned.active = true;
 
+    // Sincronizar Cor do Painel Digital (LED / Letreiro) nas colunas reais do Supabase
+    const chosenColor = obj.letreiro_cor || obj.display_main_color || obj.letreiro_principal_cor || '#ffaa00';
+    cleaned.display_main_color = chosenColor;
+    cleaned.letreiro_principal_cor = chosenColor;
+    delete cleaned.letreiro_cor;
+
+    const autuanteName = obj.empresa_autuante || '';
+    const autuanteId = obj.empresa_autuante_id || '';
+    delete cleaned.empresa_autuante;
+    delete cleaned.empresa_autuante_id;
+
     // Garantir que sections contenha APENAS seções reais criadas pelo usuário (não gerar seções automáticas)
     let cleanSections: any[] = [];
     if (Array.isArray(cleaned.sections)) {
@@ -460,15 +471,15 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
         }
       } catch {}
     }
+
+    // Preserva com segurança metadados da rota dentro do JSON de seções
+    cleanSections.push({
+      __route_meta__: true,
+      letreiro_cor: chosenColor,
+      empresa_autuante: autuanteName,
+      empresa_autuante_id: autuanteId
+    });
     cleaned.sections = cleanSections;
-    if (obj.letreiro_cor) {
-      cleaned.letreiro_cor = obj.letreiro_cor;
-      if (!cleaned.display_main_color) cleaned.display_main_color = obj.letreiro_cor;
-    } else if (obj.display_main_color && !cleaned.letreiro_cor) {
-      cleaned.letreiro_cor = obj.display_main_color;
-    }
-    if (obj.empresa_autuante) cleaned.empresa_autuante = obj.empresa_autuante;
-    if (obj.empresa_autuante_id) cleaned.empresa_autuante_id = obj.empresa_autuante_id;
   }
 
   if (table === 'drivers') {
@@ -1114,11 +1125,15 @@ export const db = {
             const rawSections = Array.isArray(item?.sections) ? item.sections : [];
             const realSections = rawSections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
             const meta = rawSections.find((s: any) => s && s.__route_meta__);
+            const routeColor = item.display_main_color || item.letreiro_principal_cor || item.letreiro_cor || meta?.letreiro_cor || '#ffaa00';
             return {
               ...item,
               sections: realSections,
-              empresa_autuante: item.empresa_autuante || meta?.empresa_autuante,
-              empresa_autuante_id: item.empresa_autuante_id || meta?.empresa_autuante_id
+              letreiro_cor: routeColor,
+              display_main_color: routeColor,
+              letreiro_principal_cor: routeColor,
+              empresa_autuante: item.empresa_autuante || meta?.empresa_autuante || '',
+              empresa_autuante_id: item.empresa_autuante_id || meta?.empresa_autuante_id || ''
             };
           }
           if (table === 'companies') {
@@ -1241,7 +1256,10 @@ export const db = {
           }
 
           // 1. Coluna não existe no cache de schema do PostgreSQL
-          const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i);
+          const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i) ||
+                           (error.message || '').match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+                           (error.message || '').match(/column "([^"]+)" does not exist/i) ||
+                           (error.message || '').match(/column ([a-zA-Z0-9_]+) does not exist/i);
           if (colMatch && colMatch[1]) {
             console.warn(`[SUPABASE_AUTO_HEAL] Removendo coluna desconhecida '${colMatch[1]}' na tabela ${table}`);
             delete currentPayload[colMatch[1]];
@@ -1384,7 +1402,10 @@ export const db = {
         lastError = error;
         if (!error) break;
 
-        const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i);
+        const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i) ||
+                         (error.message || '').match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
+                         (error.message || '').match(/column "([^"]+)" does not exist/i) ||
+                         (error.message || '').match(/column ([a-zA-Z0-9_]+) does not exist/i);
         if (colMatch && colMatch[1]) {
           console.warn(`[SUPABASE_AUTO_HEAL_UPDATE] Removendo coluna '${colMatch[1]}' na tabela ${table}`);
           delete currentPayload[colMatch[1]];

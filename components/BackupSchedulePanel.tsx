@@ -20,6 +20,7 @@ import {
 import { db, TableName } from '../services/database';
 import { User } from '../types';
 import { MockNotificationService } from '../services/MockNotificationService';
+import { EmailService } from '../services/emailService';
 
 export type BackupFrequency = 'DAILY' | 'WEEKLY' | 'MONTHLY';
 export type BackupDestination = 'DOWNLOAD' | 'CLOUD';
@@ -254,12 +255,26 @@ export const BackupSchedulePanel: React.FC<BackupSchedulePanelProps> = ({
         document.body.removeChild(link);
       }
 
+      // Envio de Backup por E-mail para o Administrador Raiz
+      const adminEmail = currentUser?.email || 'via.nicolau.sa@gmail.com';
+      try {
+        await EmailService.sendAdminBackupFileEmail(
+          adminEmail,
+          backupFileName,
+          jsonStr,
+          fileUrl,
+          currentUser?.system_id || 'root-system'
+        );
+      } catch (mailErr) {
+        console.warn('Erro ao disparar e-mail de backup:', mailErr);
+      }
+
       // Destino: Nuvem (Registrar evento / notificação no Supabase)
       if (currentUser) {
         try {
           await MockNotificationService.notifyAdminAboutBackup(
             currentUser.id,
-            currentUser.email || 'admin@vialivre.com',
+            adminEmail,
             backupFileName,
             fileUrl,
             currentUser.system_id

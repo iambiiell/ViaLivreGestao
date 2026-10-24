@@ -13,6 +13,8 @@ import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor } from '../uti
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { NotificationService } from '../services/NotificationService';
 import { safeLocalStorage, sanitizeCardForSession } from '../utils/storage';
+import { EmailService } from '../services/emailService';
+import VerificationCodeModal from './VerificationCodeModal';
 
 interface PassengerInterfaceProps {
   routes: BusRoute[];
@@ -370,60 +372,84 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
     relationship: ''
   });
 
+  const [showPassengerVerifyModal, setShowPassengerVerifyModal] = useState(false);
+  const [pendingPassengerData, setPendingPassengerData] = useState<{ email: string; name: string } | null>(null);
+
   const handleRegisterPassenger = async () => {
     if (!registrationForm.cpf || !registrationForm.name || !registrationForm.password) {
         addToast("CPF, Nome e Senha são obrigatórios.", "warning");
         return;
     }
-    
+
+    if (!registrationForm.email || !registrationForm.email.includes('@')) {
+        addToast("Informe um e-mail válido para receber o código de 6 dígitos.", "warning");
+        return;
+    }
+
     setIsRecharging(true);
     try {
-        const { id, ...cleanRegistrationForm } = registrationForm as any;
-        const cleanRegCpf = (cleanRegistrationForm.cpf || '').replace(/\D/g, '');
-
-        if (authModalTab === 'PASSENGER') {
-            // Register a permanent purchase/passenger buyer (always generate new record)
-            const newPassenger = await db.create<ImpCard>('imp_cards', {
-                ...cleanRegistrationForm,
-                card_number: 'PASS-' + Math.floor(100000 + Math.random() * 900000).toString(),
-                type: 'Especial',
-                is_passenger_buyer: true,
-                balance: 0,
-                created_at: new Date().toISOString()
-            } as any);
-
-            const sanitizedPassenger = sanitizeCardForSession(newPassenger);
-            addToast("Cadastro de Passageiro realizado! Sua conta de compras está pronta.", "success");
-            setLoggedInBuyer(sanitizedPassenger as ImpCard);
-            safeLocalStorage.setItem('fluxo_passenger_buyer_session', JSON.stringify(sanitizedPassenger));
-            setShowAuthModal(false);
-            
-            // If we are purchasing, pass it to selected route details
-            if (loginContext === 'PURCHASE') {
-              onOpenTicketing(undefined, sanitizedPassenger, selectedRouteDetails?.id);
-            }
-            return;
-        } else {
-            // Register a traditional transport card account (always generate new record)
-            const cardNumber = Math.floor(10000000 + Math.random() * 90000000).toString();
-            const newCard = await db.create<ImpCard>('imp_cards', {
-                ...cleanRegistrationForm,
-                card_number: cardNumber,
-                is_passenger_buyer: false,
-                created_at: new Date().toISOString()
-            } as ImpCard);
-
-            const sanitizedCard = sanitizeCardForSession(newCard);
-            addToast(`Vale Transporte cadastrado! Número do Cartão: ${cardNumber}`, "success");
-            setLoggedInCard(sanitizedCard as ImpCard);
-            safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedCard));
-            setShowAuthModal(false);
-            return;
-        }
-    } catch (error) {
-        addToast("Erro ao realizar cadastro.", "error");
+      await EmailService.sendVerificationCodeEmail(
+        registrationForm.email.trim(),
+        registrationForm.name.trim(),
+        'PASSENGER_REGISTER'
+      );
+      setPendingPassengerData({
+        email: registrationForm.email.trim(),
+        name: registrationForm.name.trim()
+      });
+      setShowPassengerVerifyModal(true);
+      addToast("Código de 6 dígitos enviado para o seu e-mail!", "info");
+    } catch (err: any) {
+      addToast(err?.message || "Erro ao enviar código de verificação.", "error");
     } finally {
-        setIsRecharging(false);
+      setIsRecharging(false);
+    }
+  };
+
+  const handleCompletePassengerRegistration = async () => {
+    setShowPassengerVerifyModal(false);
+    setIsRecharging(true);
+    try {
+      const { id, ...cleanRegistrationForm } = registrationForm as any;
+      if (authModalTab === 'PASSENGER') {
+        const newPassenger = await db.create<ImpCard>('imp_cards', {
+          ...cleanRegistrationForm,
+          card_number: 'PASS-' + Math.floor(100000 + Math.random() * 900000).toString(),
+          type: 'Especial',
+          is_passenger_buyer: true,
+          balance: 0,
+          created_at: new Date().toISOString()
+        } as any);
+
+        const sanitizedPassenger = sanitizeCardForSession(newPassenger);
+        addToast("Cadastro de Passageiro confirmado com sucesso! Conta pronta.", "success");
+        setLoggedInBuyer(sanitizedPassenger as ImpCard);
+        safeLocalStorage.setItem('fluxo_passenger_buyer_session', JSON.stringify(sanitizedPassenger));
+        setShowAuthModal(false);
+        if (loginContext === 'PURCHASE') {
+          onOpenTicketing(undefined, sanitizedPassenger, selectedRouteDetails?.id);
+        }
+      } else {
+        const cardNumber = Math.floor(10000000 + Math.random() * 90000000).toString();
+        const newCard = await db.create<ImpCard>('imp_cards', {
+          ...cleanRegistrationForm,
+          card_number: cardNumber,
+          is_passenger_buyer: false,
+          created_at: new Date().toISOString()
+        } as ImpCard);
+
+        const sanitizedCard = sanitizeCardForSession(newCard);
+        addToast(`Vale Transporte cadastrado! Número do Cartão: ${cardNumber}`, "success");
+        setLoggedInCard(sanitizedCard as ImpCard);
+        safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedCard));
+        setShowAuthModal(false);
+        setShowCardModal(true);
+      }
+      window.dispatchEvent(new CustomEvent('vialivre-vt-card-updated'));
+    } catch (error) {
+      addToast("Erro ao finalizar cadastro.", "error");
+    } finally {
+      setIsRecharging(false);
     }
   };
 
@@ -809,13 +835,11 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
       return;
     }
     const cleanIdentifier = loginIdentifier.replace(/\D/g, '');
+    const rawTrimmed = loginIdentifier.trim();
+
     if (authModalTab === 'CARD') {
-      if (cleanIdentifier.length !== 11) {
-        addToast("Digite um CPF válido com 11 dígitos.", "warning");
-        return;
-      }
-      if (!loginPassword) {
-        addToast("Digite sua senha cadastrada no sistema.", "warning");
+      if (cleanIdentifier.length > 0 && cleanIdentifier.length !== 11 && cleanIdentifier.length < 6) {
+        addToast("Digite um CPF válido com 11 dígitos ou número do seu cartão.", "warning");
         return;
       }
     } else {
@@ -824,23 +848,36 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
         return;
       }
     }
+
     try {
-      const cards = await db.getImpCards();
+      // Query cards across organizations via bypassSystemId so any VT cardholder can log in
+      const cards = await db.fetchAll<any>('imp_cards', { bypassSystemId: true }).catch(() => db.getImpCards());
+      
       const found = cards.find(c => {
         const cleanCpf = (c.cpf || '').replace(/\D/g, '');
         const cleanCard = (c.card_number || '').replace(/\D/g, '');
-        
-        // Scope search depending on authModalTab
-        const isTargetType = authModalTab === 'PASSENGER' ? c.is_passenger_buyer === true : !c.is_passenger_buyer;
-        if (!isTargetType) return false;
+        const rawCard = String(c.card_number || '').trim().toLowerCase();
+        const rawCpf = String(c.cpf || '').trim();
+        const rawEmail = String(c.email || '').trim().toLowerCase();
+        const inputLower = rawTrimmed.toLowerCase();
 
         if (authModalTab === 'CARD') {
-          return cleanCpf === cleanIdentifier || cleanCard === cleanIdentifier || c.cpf === loginIdentifier;
+          // In card / Vale Transporte tab: match CPF (clean or formatted) or Card Number
+          const matchesCpf = (cleanIdentifier.length === 11 && cleanCpf === cleanIdentifier) ||
+                             (cleanIdentifier.length > 0 && cleanCpf === cleanIdentifier) ||
+                             rawCpf === rawTrimmed;
+          const matchesCard = (cleanIdentifier.length >= 6 && cleanCard === cleanIdentifier) ||
+                              rawCard === inputLower;
+          return matchesCpf || matchesCard;
         }
 
+        // Scope search depending on PASSENGER tab
+        const isTargetType = c.is_passenger_buyer === true;
+        if (!isTargetType) return false;
+
         const matchesInput = (cleanIdentifier && (cleanCpf === cleanIdentifier || cleanCard === cleanIdentifier)) ||
-                             c.cpf === loginIdentifier || c.card_number === loginIdentifier ||
-                             (c.email && c.email.toLowerCase() === loginIdentifier.toLowerCase().trim());
+                             rawCpf === rawTrimmed || rawCard === inputLower ||
+                             (rawEmail && rawEmail === inputLower);
         
         return matchesInput;
       });
@@ -854,45 +891,56 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
         return;
       }
 
-      if (!found.password) {
+      const cardPassword = found.password || (found as any).senha;
+
+      if (!cardPassword) {
         setPendingCardForPassword(found);
         setIsRegisteringPassword(true);
-      } else {
-        if (found.password === loginPassword) {
-          if (authModalTab === 'PASSENGER') {
-            const sanitizedBuyer = sanitizeCardForSession(found) as ImpCard;
-            setLoggedInBuyer(sanitizedBuyer);
-            safeLocalStorage.setItem('fluxo_passenger_buyer_session', JSON.stringify(sanitizedBuyer));
-            
-            // Check if there is also a matching Vale Transporte card for this CPF
-            const cleanCpf = (found.cpf || '').replace(/\D/g, '');
-            if (cleanCpf) {
-              const matchingVt = cards.find(c => (c.cpf || '').replace(/\D/g, '') === cleanCpf && !c.is_passenger_buyer);
-              if (matchingVt) {
-                const sanitizedVt = sanitizeCardForSession(matchingVt) as ImpCard;
-                setLoggedInCard(sanitizedVt);
-                safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedVt));
-              }
-            }
+        addToast("Cadastro de Vale Transporte localizado! Crie sua senha de acesso inicial.", "info");
+        return;
+      }
 
-            setShowAuthModal(false);
-            addToast(`Bem-vindo(a), ${found.name}! Conta de compras conectada.`, "success");
-            if (loginContext === 'PURCHASE') {
-              onOpenTicketing(undefined, sanitizedBuyer, selectedRouteDetails?.id);
+      if (!loginPassword) {
+        addToast("Digite sua senha cadastrada no sistema.", "warning");
+        return;
+      }
+
+      if (cardPassword === loginPassword) {
+        if (authModalTab === 'PASSENGER') {
+          const sanitizedBuyer = sanitizeCardForSession(found) as ImpCard;
+          setLoggedInBuyer(sanitizedBuyer);
+          safeLocalStorage.setItem('fluxo_passenger_buyer_session', JSON.stringify(sanitizedBuyer));
+          
+          // Check if there is also a matching Vale Transporte card for this CPF
+          const cleanCpf = (found.cpf || '').replace(/\D/g, '');
+          if (cleanCpf) {
+            const matchingVt = cards.find(c => (c.cpf || '').replace(/\D/g, '') === cleanCpf && !c.is_passenger_buyer);
+            if (matchingVt) {
+              const sanitizedVt = sanitizeCardForSession(matchingVt) as ImpCard;
+              setLoggedInCard(sanitizedVt);
+              safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedVt));
             }
-          } else {
-            const sanitizedCard = sanitizeCardForSession(found) as ImpCard;
-            setLoggedInCard(sanitizedCard);
-            safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedCard));
-            setShowAuthModal(false);
-            addToast(`Vale Transporte conectado! Saldo: R$ ${Number(found.balance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, "success");
           }
-          window.dispatchEvent(new CustomEvent('vialivre-vt-card-updated'));
+
+          setShowAuthModal(false);
+          addToast(`Bem-vindo(a), ${found.name}! Conta de compras conectada.`, "success");
+          if (loginContext === 'PURCHASE') {
+            onOpenTicketing(undefined, sanitizedBuyer, selectedRouteDetails?.id);
+          }
         } else {
-          addToast("Senha incorreta.", "error");
+          const sanitizedCard = sanitizeCardForSession(found) as ImpCard;
+          setLoggedInCard(sanitizedCard);
+          safeLocalStorage.setItem('fluxo_vt_card_session', JSON.stringify(sanitizedCard));
+          setShowAuthModal(false);
+          setShowCardModal(true);
+          addToast(`Vale Transporte conectado! Titular: ${found.name || 'Passageiro'} | Saldo: R$ ${Number(found.balance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, "success");
         }
+        window.dispatchEvent(new CustomEvent('vialivre-vt-card-updated'));
+      } else {
+        addToast("Senha incorreta. Verifique e tente novamente.", "error");
       }
     } catch (error) {
+      console.error("Erro no login:", error);
       addToast("Erro no login.", "error");
     }
   };
@@ -1096,7 +1144,7 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
       
       {/* Modal de Autenticação / Cadastro Independente (Passageiro vs Vale Transporte) */}
       {showAuthModal && (
-          <div className="fixed inset-0 z-[800] bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[9999] bg-black/70 backdrop-blur-md flex items-center justify-center p-4">
               <div className={`bg-white dark:bg-zinc-900 w-full max-w-md rounded-[3rem] border-4 shadow-2xl overflow-hidden flex flex-col max-h-[92vh] transition-all duration-500 ${authModalTab === 'PASSENGER' ? 'border-indigo-600' : 'border-yellow-400'}`}>
                   {/* Header */}
                   <div className={`p-6 border-b flex justify-between items-center ${authModalTab === 'PASSENGER' ? 'bg-indigo-600 text-white border-indigo-700' : 'bg-yellow-400 text-slate-900 border-yellow-500'}`}>
@@ -1350,59 +1398,86 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
       )}
 
       {/* Modal de Gestão do Vale Transporte (Card) */}
-      {showCardModal && loggedInCard && (
-          <div className="fixed inset-0 z-[800] bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
+      {showCardModal && (
+          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
                <div className="bg-white dark:bg-zinc-900 w-full max-w-2xl rounded-[3rem] border-4 border-yellow-400 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                   <div className="p-8 border-b dark:border-zinc-800 flex justify-between items-center bg-yellow-400 text-slate-900">
                       <div>
                         <h3 className="text-2xl font-black uppercase italic">Meu Vale Transporte</h3>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-800">Cartão de Transporte Digital</p>
                       </div>
-                      <button onClick={() => setShowCardModal(false)} className="p-2 bg-slate-900 text-white rounded-xl"><X size={24}/></button>
+                      <button onClick={() => setShowCardModal(false)} className="p-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 active:scale-95 transition-all"><X size={24}/></button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-8 space-y-8 flex flex-col items-center custom-scrollbar">
-                      <TransportCard 
-                        card={loggedInCard}
-                        company={(companies || []).find(c => c.id === loggedInCard.company_id) || companies[0]}
-                        settings={systemSettings}
-                        name={`${loggedInCard.name} ${loggedInCard.surname}`} 
-                        cardNumber={loggedInCard.card_number} 
-                        internalCode={loggedInCard.internal_code}
-                        photoUrl={loggedInCard.photo_url} 
-                        category={loggedInCard.type.toUpperCase()} 
-                        city={loggedInCard.address_city}
-                        state={loggedInCard.address_state}
-                        viewMode="front"
-                        interactiveFlip={true}
-                      />
-                      
-                      <div className="w-full space-y-4">
-                          <div className="p-6 bg-slate-50 dark:bg-zinc-800 rounded-[2rem] border-2 border-slate-100 dark:border-zinc-700 text-center space-y-4">
-                              <div>
-                                  <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Disponível no Cartão</p>
-                                  <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400 mt-1">R$ {loggedInCard.balance?.toFixed(2) || '0.00'}</p>
-                              </div>
-                              <div className="flex gap-2">
-                                <button 
-                                  onClick={() => {
-                                    setShowCardModal(false);
-                                    setActiveTab('recharge');
-                                    setRechargeCard(loggedInCard);
-                                    setRechargeQuery(loggedInCard.card_number);
-                                  }}
-                                  className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2"
-                                >
-                                  <CreditCard size={14}/> Recarregar Agora
-                                </button>
-                                <button 
-                                  onClick={handleLogoutCard}
-                                  className="px-6 py-3 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all"
-                                >
-                                  Desconectar
-                                </button>
+                      {loggedInCard ? (
+                        <>
+                          <TransportCard 
+                            card={loggedInCard}
+                            company={(companies || []).find(c => c.id === loggedInCard.company_id) || companies[0]}
+                            settings={systemSettings}
+                            name={`${loggedInCard.name || ''} ${loggedInCard.surname || ''}`.trim() || 'PASSAGEIRO'} 
+                            cardNumber={loggedInCard.card_number || '0000 0000 0000'} 
+                            internalCode={loggedInCard.internal_code || '000000'}
+                            photoUrl={loggedInCard.photo_url} 
+                            category={((loggedInCard.type as string) || 'VALE TRANSPORTE').toUpperCase()} 
+                            city={loggedInCard.address_city || ''}
+                            state={loggedInCard.address_state || ''}
+                            viewMode="front"
+                            interactiveFlip={true}
+                          />
+                          
+                          <div className="w-full space-y-4">
+                              <div className="p-6 bg-slate-50 dark:bg-zinc-800 rounded-[2rem] border-2 border-slate-100 dark:border-zinc-700 text-center space-y-4">
+                                  <div>
+                                      <p className="text-[10px] font-black text-slate-400 uppercase">Saldo Disponível no Cartão</p>
+                                      <p className="text-4xl font-black text-emerald-600 dark:text-emerald-400 mt-1">
+                                        R$ {Number(loggedInCard.balance || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </p>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <button 
+                                      onClick={() => {
+                                        setShowCardModal(false);
+                                        setActiveTab('recharge');
+                                        setRechargeCard(loggedInCard);
+                                        setRechargeQuery(loggedInCard.card_number || loggedInCard.cpf || '');
+                                      }}
+                                      className="flex-1 py-3 bg-emerald-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-emerald-700 active:scale-95 transition-all shadow-md flex items-center justify-center gap-2"
+                                    >
+                                      <CreditCard size={14}/> Recarregar Agora
+                                    </button>
+                                    <button 
+                                      onClick={handleLogoutCard}
+                                      className="px-6 py-3 bg-red-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-red-700 active:scale-95 transition-all"
+                                    >
+                                      Desconectar
+                                    </button>
+                                  </div>
                               </div>
                           </div>
-                      </div>
+                        </>
+                      ) : (
+                        <div className="text-center py-10 space-y-4">
+                          <CreditCard size={48} className="mx-auto text-yellow-500 animate-pulse" />
+                          <p className="text-sm font-black uppercase text-slate-800 dark:text-zinc-200">
+                            Nenhum Cartão Vale Transporte Conectado
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-zinc-400 max-w-sm mx-auto">
+                            Entre com seu CPF e senha cadastrada para visualizar seu saldo e cartão digital.
+                          </p>
+                          <button
+                            onClick={() => {
+                              setShowCardModal(false);
+                              setAuthModalTab('CARD');
+                              setAuthModalMode('LOGIN');
+                              setShowAuthModal(true);
+                            }}
+                            className="px-6 py-3 bg-yellow-400 text-slate-900 rounded-xl font-black text-xs uppercase hover:bg-yellow-300 active:scale-95 transition-all shadow-md"
+                          >
+                            Acessar com CPF e Senha
+                          </button>
+                        </div>
+                      )}
                   </div>
                </div>
           </div>
@@ -1410,7 +1485,7 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
 
       {/* Modal de Gestão da Conta de Passageiro (Comprador de Passagens) */}
       {showBuyerModal && loggedInBuyer && (
-          <div className="fixed inset-0 z-[800] bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-lg flex items-center justify-center p-4">
                <div className="bg-white dark:bg-zinc-900 w-full max-w-xl rounded-[3rem] border-4 border-indigo-600 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
                   <div className="p-8 border-b dark:border-zinc-800 flex justify-between items-center bg-indigo-600 text-white">
                       <div>
@@ -2026,6 +2101,39 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
 
                 {activeTab === 'recharge' && (
                     <div className="space-y-6">
+                        {/* Banner de Acesso Rápido ao Cartão Digital */}
+                        <div className="bg-gradient-to-r from-yellow-400/20 via-amber-400/10 to-yellow-500/20 dark:from-yellow-400/10 dark:to-zinc-900 p-4 rounded-3xl border-2 border-yellow-400/40 flex flex-wrap items-center justify-between gap-3 shadow-xs">
+                          <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-2xl bg-yellow-400 text-slate-950 flex items-center justify-center font-black shadow-sm shrink-0">
+                              <CreditCard size={20} />
+                            </div>
+                            <div>
+                              <p className="text-xs font-black uppercase text-slate-900 dark:text-white">
+                                {loggedInCard ? `Cartão VT Conectado: ${loggedInCard.name}` : 'Cartão Vale Transporte Digital'}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase">
+                                {loggedInCard ? `Saldo: R$ ${Number(loggedInCard.balance || 0).toFixed(2)}` : 'Abra o pop-up com seu cartão digital'}
+                              </p>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (loggedInCard) {
+                                setShowCardModal(true);
+                              } else {
+                                setAuthModalTab('CARD');
+                                setAuthModalMode('LOGIN');
+                                setShowAuthModal(true);
+                              }
+                            }}
+                            className="px-4 py-2.5 rounded-xl bg-yellow-400 text-slate-950 font-black text-[10px] uppercase tracking-wider hover:bg-yellow-300 active:scale-95 transition-all shadow-sm flex items-center gap-1.5"
+                          >
+                            <CreditCard size={14} />
+                            <span>{loggedInCard ? 'Ver Cartão (Pop-up)' : 'Acessar Meu Cartão'}</span>
+                          </button>
+                        </div>
+
                         <div className="bg-white dark:bg-zinc-900 p-8 rounded-[2.5rem] border border-slate-100 dark:border-zinc-800 space-y-6">
                             <h2 className="text-2xl font-black uppercase italic">Meus <span className="text-yellow-600">Saldos</span></h2>
                             <div className="flex gap-2">
@@ -2319,6 +2427,18 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
                 </motion.div>
               )}
             </AnimatePresence>
+
+            {/* Modal de Validação de Código de 6 Dígitos */}
+            {showPassengerVerifyModal && pendingPassengerData && (
+              <VerificationCodeModal
+                isOpen={showPassengerVerifyModal}
+                email={pendingPassengerData.email}
+                userName={pendingPassengerData.name}
+                purpose="PASSENGER_REGISTER"
+                onSuccess={handleCompletePassengerRegistration}
+                onCancel={() => setShowPassengerVerifyModal(false)}
+              />
+            )}
             </div>
       </div>
     </div>

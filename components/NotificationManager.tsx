@@ -5,6 +5,7 @@ import { AppNotification, User, Trip, Vehicle, Route, OccurrenceReport, SystemSe
 import { db, supabase } from '../services/database';
 import { WebPushConfig } from './WebPushConfig';
 import { NotificationService } from '../services/NotificationService';
+import { EmailService } from '../services/emailService';
 
 interface NotificationManagerProps {
   notifications: AppNotification[];
@@ -124,6 +125,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
       const sysSettings = configSettingsList?.[0] as any;
       const timeEntries = timeTracking || [];
       const existingNotifs = notifications || [];
+      const dismissedSignatures = EmailService.getDismissedAlertSignatures();
 
       const parseMetadata = (meta: any) => {
         if (!meta) return {};
@@ -153,6 +155,16 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
 
         pendingTodayTrips.forEach(trip => {
           if (!trip.departure_time) return;
+
+          // Don't recreate if user permanently dismissed this alert
+          if (
+            dismissedSignatures.has(`trip_${trip.id}`) || 
+            dismissedSignatures.has(`trip_delay_${trip.id}`) ||
+            dismissedSignatures.has(trip.id)
+          ) {
+            return;
+          }
+
           const [depHourStr, depMinStr] = trip.departure_time.split(':');
           const depHour = parseInt(depHourStr, 10);
           const depMin = parseInt(depMinStr, 10);
@@ -196,6 +208,15 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
       // --- RULE 2: Maintenance Overdue (by configured days & km thresholds) ---
       if (rulesConfig.enableMaintenanceRule) {
         vehicles.forEach(v => {
+          // If vehicle alert permanently dismissed
+          if (
+            dismissedSignatures.has(`vehicle_${v.id}`) || 
+            dismissedSignatures.has(`maint_${v.id}`) || 
+            dismissedSignatures.has(v.id)
+          ) {
+            return;
+          }
+
           const vehicleLogs = logs.filter(l => l.vehicle_id === v.id);
           const lastPreventive = vehicleLogs
             .filter(l => l.service_type === 'PREVENTIVA')
@@ -252,6 +273,10 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
             // Unique signature combining vehicle ID and alert limits state to avoid redundancy
             const signature = `${v.id}-${lastDateStr}-${limitDays}-${limitKm}`;
 
+            if (dismissedSignatures.has(signature)) {
+              return;
+            }
+
             const alertAlreadyExists = existingNotifs.some(n => {
               const meta = parseMetadata(n.metadata);
               return n.category === 'MAINTENANCE' && meta && meta.signature === signature;
@@ -285,6 +310,10 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
 
       // --- RULE 3: Occurrences / Ocorrências ---
       occurrences.forEach(occ => {
+        if (dismissedSignatures.has(`occ_${occ.id}`) || dismissedSignatures.has(occ.id)) {
+          return;
+        }
+
         const alertAlreadyExists = existingNotifs.some(n => {
           const meta = parseMetadata(n.metadata);
           return n.category === 'OCCURRENCE' && meta && meta.occurrence_id === occ.id;
@@ -312,6 +341,10 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
       // --- RULE 4: Time Tracking / Ponto Eletrônico ---
       const todayStr = now.toLocaleDateString('en-CA');
       timeEntries.forEach(entry => {
+        if (dismissedSignatures.has(`time_${entry.id}`) || dismissedSignatures.has(entry.id)) {
+          return;
+        }
+
         const isMissingClockOut = entry.clock_in && !entry.clock_out && entry.date !== todayStr;
         const hasAnomaly = isMissingClockOut || (entry.total_daily_hours && entry.total_daily_hours > 12);
 
@@ -472,6 +505,14 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
   const handleDelete = async (id: string) => {
     if (!confirm('Excluir esta notificação?')) return;
     
+    // Dismiss signature permanently so automation rules don't recreate it
+    const targetNotif = notifications.find(n => n.id === id);
+    if (targetNotif) {
+      EmailService.dismissNotificationAlert(targetNotif);
+    } else {
+      EmailService.dismissAlertSignature(id);
+    }
+
     setAnimatingOutIds(prev => {
       const next = new Set(prev);
       next.add(id);
@@ -486,7 +527,7 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
           await db.delete('notifications', id);
         }
         onRefresh();
-        addToast("Notificação excluída.", "success");
+        addToast("Notificação excluída e alerta desativado.", "success");
       } catch (e) {
         console.error('Erro ao excluir notificação:', e);
         addToast("Erro ao excluir.", "error");
@@ -518,6 +559,9 @@ const NotificationManager: React.FC<NotificationManagerProps> = ({ notifications
     if (!confirm('Deseja realmente excluir todos os alertas listados?')) return;
     setIsLoading(true);
     try {
+      filteredNotifications.forEach(n => {
+        EmailService.dismissNotificationAlert(n);
+      });
       if (onDeleteNotification) {
         await Promise.all(filteredNotifications.map(n => onDeleteNotification(n.id)));
       } else {

@@ -25,13 +25,21 @@ import {
   Fingerprint,
   Smartphone,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  RotateCcw,
+  UploadCloud,
+  FileText,
+  Check,
+  HelpCircle,
+  Lock
 } from 'lucide-react';
-import { db, isValidUUID } from '../services/database';
+import { db, isValidUUID, TableName } from '../services/database';
 import { cpfMask } from '../utils/masks';
 import { webAuthnService, StoredBiometricCredential } from '../services/webauthn';
 import { triggerHaptic } from '../utils/haptic';
 import { formatActivationKey, isValidActivationKey, ACTIVATION_KEY_PLACEHOLDER, ACTIVATION_KEY_ERROR_MESSAGE } from '../utils/activationKey';
+import { EmailService } from '../services/emailService';
+import VerificationCodeModal from './VerificationCodeModal';
 
 interface LoginScreenProps {
   onLogin: (user: User) => void;
@@ -73,6 +81,24 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
   const [isBiometricsSupported, setIsBiometricsSupported] = useState(false);
   const [storedBiometricCredentials, setStoredBiometricCredentials] = useState<StoredBiometricCredential[]>([]);
   const [promptBiometricRegisterForUser, setPromptBiometricRegisterForUser] = useState<User | null>(null);
+
+  // 6-digit email confirmation & First Access Restore states
+  const [showRegisterVerifyModal, setShowRegisterVerifyModal] = useState(false);
+  const [createdAdminUser, setCreatedAdminUser] = useState<User | null>(null);
+  const [showFirstAccessRestoreModal, setShowFirstAccessRestoreModal] = useState(false);
+  const [firstAccessRestoreFile, setFirstAccessRestoreFile] = useState<File | null>(null);
+  const [isRestoringFirstAccess, setIsRestoringFirstAccess] = useState(false);
+  const [restoreProgress, setRestoreProgress] = useState(0);
+
+  // Forgot Password states
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [forgotInput, setForgotInput] = useState('');
+  const [forgotUser, setForgotUser] = useState<User | null>(null);
+  const [showForgotVerifyModal, setShowForgotVerifyModal] = useState(false);
+  const [showResetPasswordModal, setShowResetPasswordModal] = useState(false);
+  const [newResetPass, setNewResetPass] = useState('');
+  const [confirmResetPass, setConfirmResetPass] = useState('');
+  const [isResettingPassword, setIsResettingPassword] = useState(false);
 
   useEffect(() => {
     // Check if device supports WebAuthn / Biometrics
@@ -219,6 +245,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
       setIsLoading(true);
       setErrorModal(null);
 
+      try {
+          // Enviar código de verificação de 6 dígitos antes de autorizar a criação da conta
+          await EmailService.sendVerificationCodeEmail(
+            regEmail.trim(),
+            regName.trim(),
+            'REGISTER'
+          );
+          setIsLoading(false);
+          setShowRegisterVerifyModal(true);
+      } catch (err: any) {
+          console.error('[CADASTRO_ADMIN] Erro ao enviar código de verificação:', err);
+          setErrorModal(err?.message || "Falha ao enviar código de verificação por e-mail.");
+          setIsLoading(false);
+      }
+  };
+
+  const handleFinalizeRegistration = async () => {
+      setShowRegisterVerifyModal(false);
+      setIsLoading(true);
+      setErrorModal(null);
+
+      const keyCode = regActivationKey.trim().toUpperCase();
       try {
           const isMasterKey = keyCode === 'MASTER-2024-TEST-KEY';
 
@@ -400,11 +448,31 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               console.error('[CADASTRO_ADMIN] Aviso ao inicializar subscriptions no Supabase:', subErr);
             }
 
+            // Disparo automático de e-mail para o Administrador Raiz informando ativação de novas chaves
+            try {
+              await EmailService.sendAdminKeyActivationAlert(
+                'via.nicolau.sa@gmail.com',
+                {
+                  keyCode,
+                  planType: validKey.plan_type || 'PRO',
+                  companyName: regUnidade.trim(),
+                  activatedByName: regName.trim(),
+                  expiresAt: expiresAtISO,
+                  systemId: exclusiveSystemId
+                }
+              );
+            } catch (alertErr) {
+              console.warn('Erro ao disparar alerta de ativação de chave:', alertErr);
+            }
+
             triggerHaptic('success');
-            onRegister(createdAdmin);
+            setCreatedAdminUser(createdAdmin);
+            // Exibir pop-up interativo perguntando se possui arquivo de backup
+            setShowFirstAccessRestoreModal(true);
           } catch (initErr: any) {
             console.error('[CADASTRO_ADMIN] Erro durante o provisionamento de dados da organização:', initErr);
-            onRegister(createdAdmin);
+            setCreatedAdminUser(createdAdmin);
+            setShowFirstAccessRestoreModal(true);
           }
       } catch (e: any) {
           console.error('[CADASTRO_ADMIN] Exceção geral durante o cadastro:', e);
@@ -412,6 +480,126 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
       } finally {
           setIsLoading(false);
       }
+  };
+
+  const handleExecuteFirstAccessRestore = async () => {
+    if (!firstAccessRestoreFile || !createdAdminUser) {
+      return;
+    }
+    setIsRestoringFirstAccess(true);
+    setRestoreProgress(10);
+    try {
+      const text = await firstAccessRestoreFile.text();
+      const parsed = JSON.parse(text);
+      const tables = Object.keys(parsed);
+      const targetSysId = createdAdminUser.system_id || 'root-system';
+
+      let processed = 0;
+      for (let i = 0; i < tables.length; i++) {
+        const table = tables[i] as TableName;
+        const records = parsed[table];
+        if (Array.isArray(records) && records.length > 0) {
+          const remapped = records.map((r: any) => ({
+            ...r,
+            system_id: targetSysId,
+            id: r.id || crypto.randomUUID()
+          }));
+          for (const item of remapped) {
+            try {
+              await db.create(table, item);
+            } catch {}
+          }
+        }
+        processed++;
+        setRestoreProgress(Math.round(10 + (processed / tables.length) * 85));
+      }
+
+      setRestoreProgress(100);
+      triggerHaptic('success');
+      setTimeout(() => {
+        setShowFirstAccessRestoreModal(false);
+        onRegister(createdAdminUser);
+      }, 700);
+    } catch (err: any) {
+      console.error("Erro na restauração de primeiro acesso:", err);
+      setErrorModal("Arquivo de backup inválido ou incompatível.");
+      setIsRestoringFirstAccess(false);
+    }
+  };
+
+  // Forgot password routines
+  const handleStartForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const query = forgotInput.trim();
+    if (!query) {
+      setErrorModal("Informe seu e-mail, login ou CPF cadastrado.");
+      return;
+    }
+    setIsLoading(true);
+    setErrorModal(null);
+    try {
+      const users = await db.getAllUsers();
+      const cleanQ = query.replace(/\D/g, '');
+      const found = users.find(u => 
+        (u.email && u.email.toLowerCase() === query.toLowerCase()) ||
+        (u.login_acesso && u.login_acesso.toLowerCase() === query.toLowerCase()) ||
+        (cleanQ.length === 11 && u.cpf && u.cpf.replace(/\D/g, '') === cleanQ)
+      );
+
+      if (!found || !found.email) {
+        setIsLoading(false);
+        setErrorModal("Nenhum usuário com e-mail cadastrado localizado para esses dados.");
+        return;
+      }
+
+      setForgotUser(found);
+      await EmailService.sendVerificationCodeEmail(
+        found.email,
+        found.name || found.full_name || 'Usuário',
+        'PASSWORD_RESET'
+      );
+      setIsLoading(false);
+      setShowForgotPasswordModal(false);
+      setShowForgotVerifyModal(true);
+    } catch (err: any) {
+      setIsLoading(false);
+      setErrorModal(err?.message || "Erro ao localizar usuário ou enviar e-mail.");
+    }
+  };
+
+  const handleForgotCodeValidated = () => {
+    setShowForgotVerifyModal(false);
+    setShowResetPasswordModal(true);
+  };
+
+  const handleSaveResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newResetPass || newResetPass.length < 4) {
+      setErrorModal("A senha deve ter no mínimo 4 caracteres.");
+      return;
+    }
+    if (newResetPass !== confirmResetPass) {
+      setErrorModal("As senhas digitadas não coincidem.");
+      return;
+    }
+    if (!forgotUser) return;
+
+    setIsResettingPassword(true);
+    try {
+      await db.update('users', {
+        id: forgotUser.id,
+        senha_acesso: newResetPass
+      });
+      setIsResettingPassword(false);
+      setShowResetPasswordModal(false);
+      setNewResetPass('');
+      setConfirmResetPass('');
+      setForgotUser(null);
+      setSuccessInfo("Senha redefinida com sucesso! Você já pode entrar com sua nova senha.");
+    } catch (e: any) {
+      setIsResettingPassword(false);
+      setErrorModal("Erro ao atualizar a senha no servidor.");
+    }
   };
 
   return (
@@ -533,6 +721,21 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                     {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                     </button>
                 </div>
+
+                <div className="flex justify-end -mt-2">
+                  <button 
+                    type="button" 
+                    onClick={() => {
+                      setForgotInput(loginInput || '');
+                      setShowForgotPasswordModal(true);
+                      setErrorModal(null);
+                    }}
+                    className="text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-yellow-600 dark:hover:text-yellow-400 transition-colors"
+                  >
+                    Esqueceu a senha?
+                  </button>
+                </div>
+
                 <button 
                   disabled={isLoading} 
                   type="submit" 
@@ -726,6 +929,269 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                 Agora não, continuar login
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 1: Confirmação de 6 Dígitos no Cadastro Inicial do Administrador */}
+      {showRegisterVerifyModal && (
+        <VerificationCodeModal
+          isOpen={showRegisterVerifyModal}
+          email={regEmail.trim()}
+          userName={regName.trim()}
+          purpose="REGISTER"
+          onSuccess={handleFinalizeRegistration}
+          onCancel={() => setShowRegisterVerifyModal(false)}
+        />
+      )}
+
+      {/* Modal 2: Popup de Restauração no Primeiro Acesso */}
+      {showFirstAccessRestoreModal && createdAdminUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 rounded-[3rem] p-8 max-w-lg w-full border-4 border-yellow-400 shadow-2xl space-y-6 text-center">
+            <div className="w-16 h-16 bg-yellow-400 text-slate-950 rounded-3xl flex items-center justify-center mx-auto shadow-xl">
+              <RotateCcw size={32} />
+            </div>
+
+            <div>
+              <span className="text-[10px] font-black uppercase tracking-widest text-amber-600 dark:text-yellow-400">
+                Primeiro Acesso Confirmado
+              </span>
+              <h3 className="text-2xl font-black text-slate-900 dark:text-white uppercase italic mt-1">
+                Possui Arquivo de Backup?
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold mt-2">
+                Deseja restaurar seus dados operacionais, linhas, veículos e cadastros anteriores vinculados à nova conta?
+              </p>
+            </div>
+
+            {/* Drag & Drop ou Seleção de Arquivo */}
+            <div
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  setFirstAccessRestoreFile(e.dataTransfer.files[0]);
+                }
+              }}
+              className="p-6 border-2 border-dashed border-slate-300 dark:border-zinc-700 rounded-3xl bg-slate-50/70 dark:bg-zinc-800/40 hover:border-yellow-400 transition-colors flex flex-col items-center justify-center gap-3 cursor-pointer"
+              onClick={() => {
+                const el = document.getElementById('first-access-file-input') as HTMLInputElement;
+                if (el) el.click();
+              }}
+            >
+              <input
+                id="first-access-file-input"
+                type="file"
+                accept=".json"
+                className="hidden"
+                onChange={(e) => {
+                  if (e.target.files && e.target.files[0]) {
+                    setFirstAccessRestoreFile(e.target.files[0]);
+                  }
+                }}
+              />
+              <UploadCloud size={32} className={firstAccessRestoreFile ? "text-emerald-500" : "text-yellow-500"} />
+              {firstAccessRestoreFile ? (
+                <div>
+                  <p className="text-xs font-black text-slate-800 dark:text-zinc-100 uppercase">
+                    {firstAccessRestoreFile.name}
+                  </p>
+                  <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">
+                    Pronto para restaurar ({Math.round(firstAccessRestoreFile.size / 1024)} KB)
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p className="text-xs font-black text-slate-700 dark:text-zinc-300 uppercase">
+                    Clique ou arraste seu arquivo .JSON aqui
+                  </p>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-widest mt-1">
+                    Backup oficial ViaLivre Gestão
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* Barra de Progresso durante a Restauração */}
+            {isRestoringFirstAccess && (
+              <div className="space-y-2">
+                <div className="flex justify-between text-[10px] font-black uppercase text-slate-500">
+                  <span>Restaurando tabelas e registros...</span>
+                  <span>{restoreProgress}%</span>
+                </div>
+                <div className="w-full h-3 bg-slate-100 dark:bg-zinc-800 rounded-full overflow-hidden p-0.5 border">
+                  <div
+                    className="h-full bg-yellow-400 rounded-full transition-all duration-300"
+                    style={{ width: `${restoreProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-3 pt-2">
+              {firstAccessRestoreFile ? (
+                <button
+                  type="button"
+                  onClick={handleExecuteFirstAccessRestore}
+                  disabled={isRestoringFirstAccess}
+                  className="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-slate-950 rounded-2xl font-black uppercase text-xs tracking-wider shadow-xl border-2 border-slate-950 flex items-center justify-center gap-2 active:scale-95 transition-all disabled:opacity-50"
+                >
+                  {isRestoringFirstAccess ? (
+                    <>
+                      <Loader2 size={18} className="animate-spin" />
+                      <span>Restaurando Banco de Dados...</span>
+                    </>
+                  ) : (
+                    <>
+                      <RotateCcw size={18} />
+                      <span>Restaurar Backup e Entrar</span>
+                    </>
+                  )}
+                </button>
+              ) : null}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowFirstAccessRestoreModal(false);
+                  onRegister(createdAdminUser);
+                }}
+                disabled={isRestoringFirstAccess}
+                className="w-full py-3.5 bg-slate-100 dark:bg-zinc-800 hover:bg-slate-200 dark:hover:bg-zinc-700 text-slate-700 dark:text-zinc-300 rounded-2xl font-black uppercase text-[10px] tracking-widest transition-all"
+              >
+                Não possuo backup (Iniciar do zero)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 3: Solicitação de Redefinição de Senha */}
+      {showForgotPasswordModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 max-w-md w-full border border-slate-100 dark:border-zinc-800 shadow-2xl space-y-6">
+            <div className="flex justify-between items-center pb-2 border-b dark:border-zinc-800">
+              <div className="flex items-center gap-2">
+                <Lock className="text-yellow-500" size={20} />
+                <h3 className="text-lg font-black uppercase italic text-slate-900 dark:text-white">
+                  Esqueceu a Senha?
+                </h3>
+              </div>
+              <button onClick={() => setShowForgotPasswordModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-zinc-400 font-bold leading-relaxed">
+              Informe seu e-mail cadastrado, login de acesso ou CPF para enviarmos um código numérico de 6 dígitos para redefinir sua senha.
+            </p>
+
+            <form onSubmit={handleStartForgotPassword} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 block mb-1">
+                  E-mail, Usuário ou CPF:
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="exemplo@email.com ou 000.000.000-00"
+                  value={forgotInput}
+                  onChange={(e) => setForgotInput(e.target.value)}
+                  className="w-full px-5 py-4 border-2 border-slate-100 dark:border-zinc-800 rounded-2xl bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-white font-bold text-sm outline-none focus:border-yellow-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className="w-full py-4 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-2xl font-black uppercase text-xs tracking-wider shadow-lg border-2 border-slate-950 flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Mail size={16} />}
+                  <span>Enviar Código de 6 Dígitos</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowForgotPasswordModal(false)}
+                  className="w-full py-2.5 text-slate-400 font-black uppercase text-[10px] tracking-widest"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 4: Validação dos 6 Dígitos na Redefinição de Senha */}
+      {showForgotVerifyModal && forgotUser && (
+        <VerificationCodeModal
+          isOpen={showForgotVerifyModal}
+          email={forgotUser.email}
+          userName={forgotUser.name || forgotUser.full_name || 'Usuário'}
+          purpose="PASSWORD_RESET"
+          onSuccess={handleForgotCodeValidated}
+          onCancel={() => setShowForgotVerifyModal(false)}
+        />
+      )}
+
+      {/* Modal 5: Formulário para Definir Nova Senha */}
+      {showResetPasswordModal && forgotUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-md animate-in fade-in">
+          <div className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 max-w-md w-full border border-slate-100 dark:border-zinc-800 shadow-2xl space-y-6">
+            <div className="text-center space-y-2">
+              <div className="w-12 h-12 bg-emerald-100 text-emerald-600 rounded-2xl flex items-center justify-center mx-auto">
+                <CheckCircle2 size={24} />
+              </div>
+              <h3 className="text-lg font-black uppercase italic text-slate-900 dark:text-white">
+                Definir Nova Senha
+              </h3>
+              <p className="text-xs text-slate-400 font-bold">
+                Código confirmado com sucesso para <span className="text-slate-800 dark:text-white font-black">{forgotUser.name || forgotUser.full_name}</span>.
+              </p>
+            </div>
+
+            <form onSubmit={handleSaveResetPassword} className="space-y-4">
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 block mb-1">
+                  Nova Senha:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Mínimo 4 caracteres"
+                  value={newResetPass}
+                  onChange={(e) => setNewResetPass(e.target.value)}
+                  className="w-full px-5 py-4 border-2 border-slate-100 dark:border-zinc-800 rounded-2xl bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-white font-bold text-sm outline-none focus:border-yellow-400"
+                />
+              </div>
+
+              <div>
+                <label className="text-[10px] font-black uppercase text-slate-400 ml-2 block mb-1">
+                  Confirmar Nova Senha:
+                </label>
+                <input
+                  type="password"
+                  required
+                  placeholder="Repita a nova senha"
+                  value={confirmResetPass}
+                  onChange={(e) => setConfirmResetPass(e.target.value)}
+                  className="w-full px-5 py-4 border-2 border-slate-100 dark:border-zinc-800 rounded-2xl bg-slate-50 dark:bg-zinc-800 text-slate-900 dark:text-white font-bold text-sm outline-none focus:border-yellow-400"
+                />
+              </div>
+
+              <div className="flex flex-col gap-2 pt-2">
+                <button
+                  type="submit"
+                  disabled={isResettingPassword}
+                  className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase text-xs tracking-wider shadow-lg flex items-center justify-center gap-2 active:scale-95 disabled:opacity-50"
+                >
+                  {isResettingPassword ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                  <span>Salvar Nova Senha e Concluir</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

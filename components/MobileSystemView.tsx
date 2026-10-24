@@ -191,6 +191,47 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
     return trips.filter(t => !t.trip_date || t.trip_date === todayStr);
   }, [trips, todayStr]);
 
+  // Real KPIs synchronized with Supabase database (trips & vehicles)
+  const realPunctuality = useMemo(() => {
+    const list = trips.filter(t => t.status !== 'Cancelada');
+    if (list.length === 0) return '100%';
+    const onTime = list.filter(t => t.status !== 'Atrasada').length;
+    const pct = (onTime / list.length) * 100;
+    return `${pct % 1 === 0 ? pct.toFixed(0) : pct.toFixed(1)}%`;
+  }, [trips]);
+
+  const realPunctualitySubtitle = useMemo(() => {
+    const list = trips.filter(t => t.status !== 'Cancelada');
+    if (list.length === 0) return 'Sem viagens';
+    const delayed = list.filter(t => t.status === 'Atrasada').length;
+    if (delayed === 0) return '100% no horário';
+    return `${delayed} ${delayed === 1 ? 'atrasada' : 'atrasadas'}`;
+  }, [trips]);
+
+  const realPassengersCount = useMemo(() => {
+    const list = todayTrips.length > 0 ? todayTrips : trips;
+    return list.reduce((total, t) => {
+      let tripCount = 0;
+      if (t.final_turnstile !== undefined && t.initial_turnstile !== undefined && t.final_turnstile >= t.initial_turnstile) {
+        tripCount = t.final_turnstile - t.initial_turnstile;
+      } else if (t.final_turnstile) {
+        tripCount = t.final_turnstile;
+      } else if (t.occupied_seats) {
+        tripCount = t.occupied_seats;
+      } else if (t.passengers && typeof t.passengers === 'object') {
+        tripCount = Object.values(t.passengers).reduce((sub, p: any) => {
+          return sub + (Number(p?.pagantes || 0) + Number(p?.vale_transporte || 0) + Number(p?.imp_card || 0) + Number(p?.gratuitos || 0));
+        }, 0);
+      }
+      return total + (Number(tripCount) || 0);
+    }, 0);
+  }, [todayTrips, trips]);
+
+  const realActiveFleetCount = useMemo(() => {
+    const active = vehicles.filter(v => v.status === 'ATIVO');
+    return active.length;
+  }, [vehicles]);
+
   // Selected Active Trip
   const [selectedTripId, setSelectedTripId] = useState<string>('');
 
@@ -1104,19 +1145,19 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       </div>
 
       {/* 2. TOP APP HEADER BAR WITH FIXED HAMBURGER, DESIGN & PALETTE BUTTONS */}
-      <div id="tour-mobile-header" className="w-full px-4 py-2.5 flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-30 shrink-0">
-        <div className="flex items-center gap-2.5 min-w-0">
-          {/* Fixed Hamburger Trigger in Header (Touch target 44px) */}
+      <div id="tour-mobile-header" className="w-full px-2.5 sm:px-4 py-2 flex items-center justify-between border-b border-slate-200/80 dark:border-zinc-800/80 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md z-30 shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          {/* Fixed Hamburger Trigger in Header */}
           <button
             id="tour-mobile-hamburger"
             onClick={() => setIsHamburgerOpen(true)}
-            className="w-10 h-10 -ml-1 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-yellow-400 hover:text-slate-950 active:scale-95 transition-all shrink-0 shadow-xs"
+            className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 flex items-center justify-center hover:bg-yellow-400 hover:text-slate-950 active:scale-95 transition-all shrink-0 shadow-xs"
             title="Abrir Menu de Todas as Abas"
           >
-            <Menu size={20} />
+            <Menu size={18} />
           </button>
 
-          <div className="w-8 h-8 rounded-xl bg-yellow-400 flex items-center justify-center p-1.5 shadow-sm shrink-0">
+          <div className="w-7 h-7 rounded-lg bg-yellow-400 flex items-center justify-center p-1 shadow-sm shrink-0">
             <img 
               src={systemSettings?.system_logo || "/Logo_ViaLivre.png"} 
               alt="ViaLivre" 
@@ -1130,36 +1171,36 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
             />
           </div>
           <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h1 className="text-sm font-black uppercase tracking-tight truncate leading-none text-slate-950 dark:text-white">
-                Via<span className="text-yellow-500">Livre</span> Mobile
+            <div className="flex items-center gap-1">
+              <h1 className="text-xs sm:text-sm font-black uppercase tracking-tight truncate leading-none text-slate-950 dark:text-white">
+                Via<span className="text-yellow-500">Livre</span>
               </h1>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Online" />
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" title="Online" />
             </div>
-            <p className="text-[10px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest truncate leading-none mt-1">
-              412 × 732 px Standard
+            <p className="text-[9px] font-bold text-slate-500 dark:text-zinc-400 uppercase tracking-widest truncate leading-none mt-0.5">
+              Mobile CCO
             </p>
           </div>
         </div>
 
         {/* Quick Header Actions: Notifications, Tour, Sun/Moon Theme & Desktop */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1 shrink-0">
           <button
             onClick={() => startMobileGuidedTour()}
-            className="w-9 h-9 rounded-xl text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center transition-all active:scale-90"
+            className="w-8 h-8 rounded-lg text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center transition-all active:scale-90"
             title="Tour Guiado de Boas-Vindas Mobile"
           >
-            <Sparkles size={18} />
+            <Sparkles size={16} />
           </button>
 
           <button
             onClick={() => setActiveSubView(activeSubView === 'notifications' ? 'none' : 'notifications')}
-            className="w-9 h-9 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center relative transition-all active:scale-90"
+            className="w-8 h-8 rounded-lg text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center relative transition-all active:scale-90"
             title="Notificações"
           >
-            <Bell size={18} />
+            <Bell size={16} />
             {unreadNotifs.length > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] font-black flex items-center justify-center border-2 border-white dark:border-zinc-900">
+              <span className="absolute top-0.5 right-0.5 w-3.5 h-3.5 bg-red-500 text-white rounded-full text-[8px] font-black flex items-center justify-center border border-white dark:border-zinc-900">
                 {unreadNotifs.length > 9 ? '9+' : unreadNotifs.length}
               </span>
             )}
@@ -1168,18 +1209,18 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           <button
             id="tour-mobile-theme"
             onClick={() => setShowThemeModal(true)}
-            className="w-9 h-9 rounded-xl text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-all active:scale-90"
+            className="w-8 h-8 rounded-lg text-slate-600 dark:text-zinc-300 hover:bg-slate-100 dark:hover:bg-zinc-800 flex items-center justify-center transition-all active:scale-90"
             title="Design e Cores (Ajustar Tema, Cores e Alto Contraste)"
           >
-            {themeMode === 'light' ? <Moon size={18} /> : <Sun size={18} className="text-yellow-400" />}
+            {themeMode === 'light' ? <Moon size={16} /> : <Sun size={16} className="text-yellow-400" />}
           </button>
 
           <button
             onClick={onSwitchToDesktop}
-            className="h-9 px-2.5 rounded-xl bg-yellow-400 text-slate-950 font-black text-xs uppercase tracking-wider hover:bg-yellow-300 active:scale-95 transition-all shadow-sm flex items-center gap-1"
+            className="h-8 px-2 rounded-lg bg-yellow-400 text-slate-950 font-black text-[11px] uppercase tracking-wider hover:bg-yellow-300 active:scale-95 transition-all shadow-sm flex items-center gap-1"
             title="Alternar para visualização Desktop"
           >
-            <Monitor size={14} />
+            <Monitor size={13} />
             <span className="font-bold">PC</span>
           </button>
         </div>
@@ -1850,10 +1891,10 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Pontualidade</span>
                   <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
-                    98.4%
+                    {realPunctuality}
                   </p>
                   <span className="text-[9px] text-emerald-500 font-bold block mt-1">
-                    Meta CCO
+                    {realPunctualitySubtitle}
                   </span>
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
@@ -1865,10 +1906,10 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400">Frota Ativa</span>
                   <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
-                    {vehicles.length > 0 ? vehicles.length : 12}
+                    {realActiveFleetCount}
                   </p>
                   <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
-                    veículos
+                    {realActiveFleetCount === 1 ? 'veículo ativo' : 'veículos ativos'}
                   </span>
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0">
@@ -1880,10 +1921,10 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 <div>
                   <span className="text-[10px] font-black uppercase tracking-wider text-purple-600 dark:text-purple-400">Passageiros</span>
                   <p className="text-xl font-black mt-0.5 text-slate-900 dark:text-white leading-none">
-                    {todayTrips.reduce((acc, t) => acc + (t.final_turnstile || 0), 0) || 1240}
+                    {realPassengersCount}
                   </p>
                   <span className="text-[9px] text-slate-500 dark:text-zinc-400 font-bold block mt-1">
-                    catraca
+                    registrados no Supabase
                   </span>
                 </div>
                 <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0">
@@ -2658,40 +2699,40 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
               </div>
 
               {/* Action Buttons in Drawer Header: Tour, Sun/Moon for Design e Cores, Atalhos & Close */}
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => {
                     setIsHamburgerOpen(false);
                     startMobileGuidedTour();
                   }}
-                  className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-900 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
+                  className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-900 text-yellow-600 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
                   title="Tour Guiado de Boas-Vindas Mobile"
                 >
-                  <Sparkles size={16} />
+                  <Sparkles size={15} />
                 </button>
 
                 <button
                   onClick={() => setShowThemeModal(true)}
-                  className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
+                  className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-900 text-slate-700 dark:text-yellow-400 hover:bg-yellow-400/20 flex items-center justify-center active:scale-90 transition-all border border-slate-200 dark:border-zinc-700"
                   title="Design e Cores (Ajustar Tema, Cores e Alto Contraste)"
                 >
-                  {themeMode === 'light' ? <Moon size={17} /> : <Sun size={17} className="text-yellow-400" />}
+                  {themeMode === 'light' ? <Moon size={15} /> : <Sun size={15} className="text-yellow-400" />}
                 </button>
 
                 <button
                   onClick={() => { setIsEditingShortcuts(true); setIsHamburgerOpen(false); }}
-                  className="h-9 px-2 rounded-xl bg-yellow-400/15 text-yellow-700 dark:text-yellow-400 border border-yellow-400/40 text-[10px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all"
+                  className="h-8 px-1.5 rounded-lg bg-yellow-400/15 text-yellow-700 dark:text-yellow-400 border border-yellow-400/40 text-[9px] font-black uppercase tracking-wider flex items-center gap-1 active:scale-95 transition-all"
                   title="Personalizar Atalhos de Campo"
                 >
-                  <SlidersHorizontal size={13} />
+                  <SlidersHorizontal size={11} />
                   <span>Atalhos</span>
                 </button>
 
                 <button
                   onClick={() => setIsHamburgerOpen(false)}
-                  className="w-9 h-9 rounded-xl bg-slate-100 dark:bg-zinc-900 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center active:scale-90 border border-slate-200 dark:border-zinc-700"
+                  className="w-8 h-8 rounded-lg bg-slate-100 dark:bg-zinc-900 text-slate-500 hover:text-slate-900 dark:hover:text-white flex items-center justify-center active:scale-90 border border-slate-200 dark:border-zinc-700"
                 >
-                  <X size={18} />
+                  <X size={16} />
                 </button>
               </div>
             </div>

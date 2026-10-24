@@ -6,6 +6,7 @@ import { VIEW_LABELS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
 import BackupSchedulePanel from './BackupSchedulePanel';
+import RestorePanel from './RestorePanel';
 import TransportCard from './TransportCard';
 
 const SHIFTS = ['6x1', '5x1', '5x2', '12x36'];
@@ -44,7 +45,7 @@ const ACCESSIBLE_VIEWS: ViewState[] = [
 ];
 
 const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; currentUser: User | null }> = ({ addToast, currentUser }) => {
-  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics' | 'backup' | 'vt_data'>('roles');
+  const [activeTab, setActiveTab] = useState<'roles' | 'rubrics' | 'backup' | 'restore' | 'vt_data'>('roles');
   const [rubrics, setRubrics] = useState<PayrollRubric[]>([]);
   const [roles, setRoles] = useState<RoleConfig[]>([]);
   const [settings, setSettings] = useState<SystemSettings | null>(null);
@@ -457,6 +458,9 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
                 <button onClick={() => setActiveTab('backup')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'backup' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
                     <Database size={13} /> Backups Automáticos
                 </button>
+                <button onClick={() => setActiveTab('restore')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'restore' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
+                    <RotateCcw size={13} /> Restaurar
+                </button>
                 <button onClick={() => setActiveTab('vt_data')} className={`px-5 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${activeTab === 'vt_data' ? 'bg-yellow-400 text-slate-900 shadow-md' : 'text-slate-400'}`}>
                     <CreditCard size={13} /> Dados Vale Transporte
                 </button>
@@ -598,6 +602,12 @@ const ManagementView: React.FC<{ addToast: (m: string, t?: any) => void; current
         <BackupSchedulePanel 
           currentUser={currentUser} 
           addToast={addToast} 
+        />
+      ) : activeTab === 'restore' ? (
+        <RestorePanel 
+          currentUser={currentUser} 
+          addToast={addToast} 
+          onRestoreComplete={loadData}
         />
       ) : (
         /* ABA DADOS VALE TRANSPORTE */
