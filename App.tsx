@@ -59,6 +59,44 @@ import { resolveThemeColors, applyThemeVariables, applyThemeMode } from './utils
 
 export type ToastType = 'success' | 'error' | 'warning' | 'info';
 
+export const VIEW_LABELS: Record<string, string> = {
+  'dashboard': 'PAINEL GERAL',
+  'operation-center': 'CENTRO OPERACIONAL',
+  'monitoring': 'MONITORAMENTO',
+  'driver-urban': 'MOTORISTA URBANO',
+  'driver-road': 'MOTORISTA RODOVIÁRIO',
+  'conductor': 'COBRADOR',
+  'time-tracking': 'PONTO ELETRÔNICO',
+  'management': 'GESTÃO & CCO',
+  'reports-view': 'RELATÓRIOS',
+  'shifts': 'ESCALA DE PLANTÕES',
+  'ticketing': 'GUICHÊ DE VENDAS',
+  'ticketing-config': 'CONFIG. GUICHÊ',
+  'payroll': 'HOLERITES (RH)',
+  'observations': 'OCORRÊNCIAS',
+  'inspections': 'VISTORIAS',
+  'notices': 'MURAL DE AVISOS',
+  'maintenance': 'MANUTENÇÃO',
+  'companies': 'EMPRESAS',
+  'cities': 'MUNICÍPIOS',
+  'bus-stations': 'RODOVIÁRIAS',
+  'routes': 'ITINERÁRIOS',
+  'schedule': 'ESCALA DE VIAGENS',
+  'dispatcher': 'DESPACHANTE',
+  'sac': 'VALE TRANSPORTE',
+  'work-with-us': 'TRABALHE CONOSCO',
+  'vehicles': 'FROTA DE ÔNIBUS',
+  'drivers': 'COLABORADORES',
+  'recruitment': 'RECRUTAMENTO (RH)',
+  'users': 'CONTROLE DE ACESSOS',
+  'traffic-violations': 'MULTAS DE TRÂNSITO',
+  'skins': 'REPOSITÓRIO DE SKINS',
+  'subscriptions': 'ASSINATURAS (MASTER)',
+  'my-subscription': 'MINHA ASSINATURA',
+  'notifications': 'ALERTAS E AVISOS',
+  'about': 'SOBRE O SISTEMA'
+};
+
 interface Toast {
   id: number;
   message: string;
@@ -870,6 +908,92 @@ const App: React.FC = () => {
       setToasts(prev => (prev || []).filter(t => t.id !== id)); 
     }, 3200);
   }, []);
+
+  useEffect(() => {
+    const handleToastEvent = (e: any) => {
+      if (e.detail?.message) {
+        addToast(e.detail.message, e.detail.type || 'info');
+      }
+    };
+    window.addEventListener('vialivre-toast', handleToastEvent);
+    return () => window.removeEventListener('vialivre-toast', handleToastEvent);
+  }, [addToast]);
+
+  const getFirstAllowedViewAlphabetically = useCallback((user: User | null): ViewState => {
+    if (!user) return 'time-tracking';
+    const userRole = (user.role || '').toUpperCase();
+    const userJob = (user.job_title || '').toUpperCase();
+    const isFullAdmin = userRole === 'ADMIN' || user.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN');
+    if (isFullAdmin) return 'dashboard';
+
+    const targetJob = (user.job_title || user.role || '').toUpperCase();
+    const roleConf = roleConfigs.find(rc => rc.name?.toUpperCase() === targetJob);
+    const perms = new Set<string>();
+    if (user.permissions) user.permissions.forEach(p => perms.add(p));
+    if (roleConf?.permissions) roleConf.permissions.forEach(p => perms.add(p));
+
+    // Dual role rule: if urban driver has active/scheduled trip with no conductor
+    const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
+    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
+      const isMy = (t.driver_id && t.driver_id === user.id) || (t.driver_name && user.name && t.driver_name.toLowerCase().includes(user.name.toLowerCase()));
+      return isMy && !t.conductor_id && !t.conductor_name;
+    });
+    if (hasTripWithoutConductor) {
+      perms.add('conductor');
+      perms.add('operation-center');
+    }
+
+    const candidateViews = Array.from(perms).filter(v => v !== 'time-tracking' && v !== 'about' && (v !== 'dashboard' || isFullAdmin || perms.has('dashboard')));
+    if (candidateViews.length === 0) return 'time-tracking';
+
+    candidateViews.sort((a, b) => {
+      const labelA = VIEW_LABELS[a] || a;
+      const labelB = VIEW_LABELS[b] || b;
+      return labelA.localeCompare(labelB, 'pt-BR');
+    });
+
+    return (candidateViews[0] as ViewState) || 'time-tracking';
+  }, [roleConfigs, trips]);
+
+  useEffect(() => {
+    const handleClockedIn = () => {
+      setIsClockedIn(true);
+      if (currentUser) {
+        const firstView = getFirstAllowedViewAlphabetically(currentUser);
+        setCurrentView(firstView);
+      }
+    };
+    window.addEventListener('vialivre-clocked-in', handleClockedIn);
+    return () => window.removeEventListener('vialivre-clocked-in', handleClockedIn);
+  }, [currentUser, getFirstAllowedViewAlphabetically]);
+
+  useEffect(() => {
+    if (currentUser && isClockedIn === true) {
+      const userRole = (currentUser.role || '').toUpperCase();
+      const userJob = (currentUser.job_title || '').toUpperCase();
+      const isFullAdmin = userRole === 'ADMIN' || currentUser.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN');
+      if (!isFullAdmin && currentView === 'dashboard') {
+        const targetJob = (currentUser.job_title || currentUser.role || '').toUpperCase();
+        const roleConf = roleConfigs.find(rc => rc.name?.toUpperCase() === targetJob);
+        const hasDashboardPerm = (currentUser.permissions || []).includes('dashboard' as any) || (roleConf?.permissions || []).includes('dashboard' as any);
+        if (!hasDashboardPerm) {
+          const firstView = getFirstAllowedViewAlphabetically(currentUser);
+          setCurrentView(firstView);
+        }
+      }
+    }
+  }, [currentUser, isClockedIn, currentView, roleConfigs, getFirstAllowedViewAlphabetically]);
+
+  useEffect(() => {
+    if (currentUser && isClockedIn === false) {
+      const userRole = (currentUser.role || '').toUpperCase();
+      const userJob = (currentUser.job_title || '').toUpperCase();
+      const isFullAdmin = userRole === 'ADMIN' || currentUser.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN');
+      if (!isFullAdmin && currentView !== 'time-tracking' && currentView !== 'about') {
+        setCurrentView('time-tracking');
+      }
+    }
+  }, [currentUser, isClockedIn, currentView]);
 
   const toggleMobileMode = useCallback(() => {
     setIsMobileMode(prev => {
@@ -2193,7 +2317,10 @@ const App: React.FC = () => {
       },
       addToast,
       subscription,
-      onForceBackup: () => runBackupExport(true)
+      onForceBackup: () => runBackupExport(true),
+      isClockedIn,
+      roleConfigs,
+      currentView
     };
 
     return (
@@ -2216,6 +2343,7 @@ const App: React.FC = () => {
           onLogout={() => handleSetUser(null)} 
           onToggleMobileMode={toggleMobileMode}
           isMobileMode={isMobileMode}
+          isClockedIn={isClockedIn}
           onEditProfile={(user) => {
             setCurrentView('users');
             setImportUserData(user);

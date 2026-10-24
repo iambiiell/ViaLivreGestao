@@ -130,16 +130,87 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     direction: 'IDA' | 'VOLTA';
     section_name?: string;
     currentSymbol?: string;
+    originalSymbol?: string;
     currentText?: string;
   } | null>(null);
 
-  // Stored route legends
+  // Stored route legends (únicas por símbolo)
   const [routeLegends, setRouteLegends] = useState<Array<{
     id: string;
     symbol: string;
     text: string;
   }>>([]);
   const [exportModalLegends, setExportModalLegends] = useState<TimeLegendEntry[]>([]);
+
+  // Mapeamento de horários por símbolo a partir de formData.schedule
+  const symbolTimesMap = useMemo(() => {
+    const map: Record<string, Record<OperationDayKey, string[]>> = {};
+    (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+      (formData.schedule?.[day] || []).forEach(item => {
+        if (item.legend_symbol && item.time) {
+          const symKey = item.legend_symbol.trim().toLowerCase();
+          if (!map[symKey]) {
+            map[symKey] = { weekdays: [], saturday: [], sunday: [] };
+          }
+          if (!map[symKey][day].includes(item.time)) {
+            map[symKey][day].push(item.time);
+          }
+        }
+      });
+    });
+    Object.values(map).forEach(dayObj => {
+      dayObj.weekdays.sort((a, b) => a.localeCompare(b));
+      dayObj.saturday.sort((a, b) => a.localeCompare(b));
+      dayObj.sunday.sort((a, b) => a.localeCompare(b));
+    });
+    return map;
+  }, [formData.schedule]);
+
+  // Lista consolidada e estritamente desduplicada de legendas do itinerário
+  const distinctRouteLegends = useMemo(() => {
+    const map = new Map<string, { id: string; symbol: string; text: string; timesCount: number }>();
+
+    // 1. Horários no formulário atual
+    (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+      (formData.schedule?.[day] || []).forEach(item => {
+        if (item.legend_symbol) {
+          const sym = item.legend_symbol.trim();
+          const key = sym.toLowerCase();
+          if (!map.has(key)) {
+            map.set(key, {
+              id: `leg_${key}_${Date.now()}`,
+              symbol: sym,
+              text: item.legend_text || '',
+              timesCount: 0
+            });
+          }
+          const entry = map.get(key)!;
+          entry.timesCount += 1;
+          if (item.legend_text && !entry.text) entry.text = item.legend_text;
+        }
+      });
+    });
+
+    // 2. Legendas salvas em routeLegends
+    routeLegends.forEach(leg => {
+      if (leg && leg.symbol) {
+        const sym = leg.symbol.trim();
+        const key = sym.toLowerCase();
+        if (!map.has(key)) {
+          map.set(key, {
+            id: leg.id || `leg_${key}`,
+            symbol: sym,
+            text: leg.text || '',
+            timesCount: 0
+          });
+        } else if (leg.text && !map.get(key)!.text) {
+          map.get(key)!.text = leg.text;
+        }
+      }
+    });
+
+    return Array.from(map.values()).sort((a, b) => a.symbol.localeCompare(b.symbol));
+  }, [formData.schedule, routeLegends]);
 
   const handleOpenExportModal = async (route: BusRoute) => {
     setIsFetchingTimetable(true);
@@ -791,7 +862,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
   };
 
-  const handleOpenModal = (route?: BusRoute) => {
+  const handleOpenModal = (route?: BusRoute, defaultTab: ModalTab = 'geral') => {
     setSelectedScope('');
     setShowAllScopes(false);
     if (route) {
@@ -812,26 +883,51 @@ const RouteManager: React.FC<RouteManagerProps> = ({
           } catch {}
         }
 
-        // Carrega legendas vinculadas
+        // Carrega legendas vinculadas (estritamente desduplicadas por símbolo)
         try {
           const saved = localStorage.getItem(`consimp_route_legends_${route.id}`);
-          if (saved) {
-            setRouteLegends(JSON.parse(saved));
-          } else {
-            const recovered: Array<{ id: string; symbol: string; text: string }> = [];
-            ['weekdays', 'saturday', 'sunday'].forEach(day => {
-              (route.schedule?.[day as keyof typeof route.schedule] || []).forEach((item: any) => {
-                if (item.legend_symbol && !recovered.some(r => r.symbol === item.legend_symbol)) {
-                  recovered.push({
-                    id: `leg_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                    symbol: item.legend_symbol,
+          const parsed = saved ? JSON.parse(saved) : [];
+          const cleanMap = new Map<string, { id: string; symbol: string; text: string }>();
+
+          // 1. Extrai dos horários cadastrados na rota
+          (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
+            (route.schedule?.[day as keyof typeof route.schedule] || []).forEach((item: any) => {
+              if (item.legend_symbol) {
+                const sym = item.legend_symbol.trim();
+                const key = sym.toLowerCase();
+                if (!cleanMap.has(key)) {
+                  cleanMap.set(key, {
+                    id: `leg_${key}_${Date.now()}`,
+                    symbol: sym,
                     text: item.legend_text || ''
                   });
+                } else if (item.legend_text && !cleanMap.get(key)!.text) {
+                  cleanMap.get(key)!.text = item.legend_text;
                 }
-              });
+              }
             });
-            setRouteLegends(recovered);
+          });
+
+          // 2. Mescla com legendas do storage
+          if (Array.isArray(parsed)) {
+            parsed.forEach((l: any) => {
+              if (l && l.symbol) {
+                const sym = l.symbol.trim();
+                const key = sym.toLowerCase();
+                if (!cleanMap.has(key)) {
+                  cleanMap.set(key, {
+                    id: l.id || `leg_${key}`,
+                    symbol: sym,
+                    text: l.text || ''
+                  });
+                } else if (l.text && !cleanMap.get(key)!.text) {
+                  cleanMap.get(key)!.text = l.text;
+                }
+              }
+            });
           }
+
+          setRouteLegends(Array.from(cleanMap.values()));
         } catch {
           setRouteLegends([]);
         }
@@ -840,15 +936,22 @@ const RouteManager: React.FC<RouteManagerProps> = ({
         setFormData(initialForm);
         setRouteLegends([]);
     }
-    setActiveTab('geral');
+    setActiveTab(defaultTab);
     setIsModalOpen(true);
   };
 
   const handleSaveLegendForMultiTimes = (
     symbol: string,
     text: string,
-    selectedTimesByDay: Record<'weekdays' | 'saturday' | 'sunday', string[]>
+    selectedTimesByDay: Record<'weekdays' | 'saturday' | 'sunday', string[]>,
+    originalSymbol?: string
   ) => {
+    const cleanSym = symbol.trim();
+    const cleanText = text.trim();
+    const origSym = originalSymbol?.trim();
+    const cleanOrigKey = origSym ? origSym.toLowerCase() : null;
+    const cleanNewKey = cleanSym.toLowerCase();
+
     let appliedCount = 0;
 
     setFormData(prev => {
@@ -859,40 +962,50 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       };
 
       (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
-        const timesForDay = selectedTimesByDay[day] || [];
-        if (timesForDay.length > 0) {
-          const list = [...nextSchedule[day]];
-          const existingTimes = new Set(list.map(i => i.time));
+        const timesForDay = new Set(selectedTimesByDay[day] || []);
+        const list = [...nextSchedule[day]];
+        const existingTimes = new Set(list.map(i => i.time));
 
-          // 1. Atualiza horários existentes
-          const updatedList = list.map(item => {
-            if (timesForDay.includes(item.time)) {
-              appliedCount++;
-              return {
-                ...item,
-                legend_symbol: symbol,
-                legend_text: text
-              };
-            }
-            return item;
-          });
+        // 1. Atualiza horários existentes
+        const updatedList = list.map(item => {
+          const itemSymKey = item.legend_symbol ? item.legend_symbol.trim().toLowerCase() : null;
+          const wasThisLegend = itemSymKey === cleanNewKey || (cleanOrigKey && itemSymKey === cleanOrigKey);
 
-          // 2. Adiciona horários customizados inseridos no seletor caso não existam
-          timesForDay.forEach(t => {
-            if (!existingTimes.has(t)) {
-              appliedCount++;
-              updatedList.push({
-                time: t,
-                direction: 'IDA',
-                legend_symbol: symbol,
-                legend_text: text
-              });
-            }
-          });
+          if (timesForDay.has(item.time)) {
+            appliedCount++;
+            return {
+              ...item,
+              legend_symbol: cleanSym,
+              legend_text: cleanText
+            };
+          } else if (wasThisLegend) {
+            // Estava marcado com esta legenda, mas foi desmarcado no seletor: remove a legenda deste horário
+            const copy = { ...item };
+            delete copy.legend_symbol;
+            delete copy.legend_text;
+            return copy;
+          }
+          return item;
+        });
 
-          updatedList.sort((a, b) => a.time.localeCompare(b.time));
-          nextSchedule[day] = updatedList;
-        }
+        // 2. Adiciona horários customizados inseridos no seletor caso não existam
+        timesForDay.forEach(t => {
+          if (!existingTimes.has(t)) {
+            appliedCount++;
+            updatedList.push({
+              time: t,
+              direction: selectedDirection || 'IDA',
+              section_name: selectedScope || undefined,
+              destination: selectedDirection === 'IDA' ? (formData.destination || 'Ponto de Destino') : undefined,
+              origin: selectedDirection === 'VOLTA' ? (formData.origin || 'Ponto de Origem') : undefined,
+              legend_symbol: cleanSym,
+              legend_text: cleanText
+            });
+          }
+        });
+
+        updatedList.sort((a, b) => a.time.localeCompare(b.time));
+        nextSchedule[day] = updatedList;
       });
 
       return {
@@ -901,15 +1014,24 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       };
     });
 
+    // Mantém exatamente uma definição por símbolo em routeLegends
     setRouteLegends(prev => {
-      const existingIdx = prev.findIndex(l => l.symbol.trim().toLowerCase() === symbol.trim().toLowerCase());
-      let nextList;
-      if (existingIdx >= 0) {
-        nextList = [...prev];
-        nextList[existingIdx] = { ...nextList[existingIdx], text };
-      } else {
-        nextList = [...prev, { id: `leg_${Date.now()}`, symbol, text }];
-      }
+      const filtered = prev.filter(l => {
+        const k = l.symbol.trim().toLowerCase();
+        if (cleanOrigKey && k === cleanOrigKey && cleanOrigKey !== cleanNewKey) return false;
+        if (k === cleanNewKey) return false;
+        return true;
+      });
+
+      const nextList = [
+        ...filtered,
+        {
+          id: `leg_${cleanNewKey}_${Date.now()}`,
+          symbol: cleanSym,
+          text: cleanText
+        }
+      ];
+
       if (formData.id) {
         try {
           localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(nextList));
@@ -920,7 +1042,41 @@ const RouteManager: React.FC<RouteManagerProps> = ({
       return nextList;
     });
 
-    addToast(`Legenda [${symbol}] aplicada com sucesso a ${appliedCount} horário(s) selecionado(s)!`, 'success');
+    addToast(`Legenda [${cleanSym}] configurada para ${appliedCount} horário(s)!`, 'success');
+  };
+
+  const handleRemoveLegendFromSingleTime = (
+    dayType: 'weekdays' | 'saturday' | 'sunday',
+    time: string,
+    direction?: 'IDA' | 'VOLTA',
+    section_name?: string
+  ) => {
+    setFormData(prev => {
+      const nextSchedule = {
+        weekdays: [...(prev.schedule?.weekdays || [])],
+        saturday: [...(prev.schedule?.saturday || [])],
+        sunday: [...(prev.schedule?.sunday || [])]
+      };
+
+      nextSchedule[dayType] = nextSchedule[dayType].map(item => {
+        const matchDirection = !direction || item.direction === direction;
+        const matchSection = section_name === undefined || (item.section_name || '') === (section_name || '');
+        if (item.time === time && matchDirection && matchSection) {
+          const copy = { ...item };
+          delete copy.legend_symbol;
+          delete copy.legend_text;
+          return copy;
+        }
+        return item;
+      });
+
+      return {
+        ...prev,
+        schedule: nextSchedule
+      };
+    });
+
+    addToast(`Legenda desvinculada do horário ${time}.`, 'warning');
   };
 
   const handleRemoveLegendFromMultiTimes = (
@@ -928,6 +1084,8 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     targetDay?: 'weekdays' | 'saturday' | 'sunday',
     targetTime?: string
   ) => {
+    const cleanSymKey = symbol.trim().toLowerCase();
+
     setFormData(prev => {
       const nextSchedule = {
         weekdays: [...(prev.schedule?.weekdays || [])],
@@ -937,9 +1095,12 @@ const RouteManager: React.FC<RouteManagerProps> = ({
 
       (['weekdays', 'saturday', 'sunday'] as const).forEach(day => {
         nextSchedule[day] = nextSchedule[day].map(item => {
+          const itemSymKey = item.legend_symbol ? item.legend_symbol.trim().toLowerCase() : '';
+          const matchSym = itemSymKey === cleanSymKey;
+
           const shouldRemove = targetTime && targetDay
             ? (day === targetDay && item.time === targetTime)
-            : (item.legend_symbol?.trim().toLowerCase() === symbol.trim().toLowerCase());
+            : matchSym;
 
           if (shouldRemove && item.legend_symbol) {
             const copy = { ...item };
@@ -959,7 +1120,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
 
     if (!targetTime) {
       setRouteLegends(prev => {
-        const nextList = prev.filter(l => l.symbol.trim().toLowerCase() !== symbol.trim().toLowerCase());
+        const nextList = prev.filter(l => l.symbol.trim().toLowerCase() !== cleanSymKey);
         if (formData.id) {
           try {
             localStorage.setItem(`consimp_route_legends_${formData.id}`, JSON.stringify(nextList));
@@ -969,9 +1130,10 @@ const RouteManager: React.FC<RouteManagerProps> = ({
         }
         return nextList;
       });
+      addToast(`Legenda [${symbol}] removida de todos os horários da rota.`, 'warning');
+    } else {
+      addToast(`Legenda [${symbol}] removida do horário ${targetTime}.`, 'warning');
     }
-
-    addToast(`Legenda [${symbol}] removida com sucesso.`, 'warning');
   };
 
   const handleSaveLegendForTime = (
@@ -995,7 +1157,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     direction: 'IDA' | 'VOLTA',
     section_name: string | undefined
   ) => {
-    handleRemoveLegendFromMultiTimes('*', dayType, time);
+    handleRemoveLegendFromSingleTime(dayType, time, direction, section_name);
   };
 
   const handleSave = () => {
@@ -1811,26 +1973,40 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                             <div className="flex items-center justify-between gap-2">
                                                 <div className="flex items-center gap-2">
                                                   <span className="text-xl font-black font-mono dark:text-zinc-100">{item.time}</span>
-                                                  {/* Prévia visual instantânea (mini-card) do símbolo da legenda */}
+                                                  {/* Prévia visual instantânea do símbolo da legenda */}
                                                   {item.legend_symbol ? (
-                                                    <button 
-                                                      type="button"
-                                                      onClick={() => {
-                                                        setActiveLegendTimeContext({
-                                                          day: dayId as any,
-                                                          time: item.time,
-                                                          direction: item.direction,
-                                                          section_name: item.section_name,
-                                                          currentSymbol: item.legend_symbol,
-                                                          currentText: item.legend_text || ''
-                                                        });
-                                                        setLegendModalOpen(true);
-                                                      }}
-                                                      className="px-2 py-0.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 font-black text-xs font-mono rounded-lg border border-yellow-500 shadow-xs inline-flex items-center gap-1 cursor-pointer transition-transform active:scale-95"
-                                                      title={`Legenda: ${item.legend_symbol} (${item.legend_text || ''}) - Clique para editar`}
-                                                    >
-                                                      <span>{item.legend_symbol}</span>
-                                                    </button>
+                                                    <div className="inline-flex items-center gap-1 bg-yellow-400 text-slate-950 rounded-lg p-0.5 border border-yellow-500 shadow-xs">
+                                                      <button 
+                                                        type="button"
+                                                        onClick={() => {
+                                                          setActiveLegendTimeContext({
+                                                            day: dayId as any,
+                                                            time: item.time,
+                                                            direction: item.direction,
+                                                            section_name: item.section_name,
+                                                            currentSymbol: item.legend_symbol,
+                                                            originalSymbol: item.legend_symbol,
+                                                            currentText: item.legend_text || ''
+                                                          });
+                                                          setLegendModalOpen(true);
+                                                        }}
+                                                        className="px-1.5 py-0.5 font-black text-xs font-mono inline-flex items-center gap-1 cursor-pointer hover:bg-yellow-500 rounded transition-colors"
+                                                        title={`Legenda: ${item.legend_symbol} (${item.legend_text || ''}) - Clique para editar`}
+                                                      >
+                                                        <span>{item.legend_symbol}</span>
+                                                      </button>
+                                                      <button
+                                                        type="button"
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleRemoveLegendFromSingleTime(dayId as any, item.time, item.direction, item.section_name);
+                                                        }}
+                                                        className="p-0.5 hover:bg-red-600 hover:text-white rounded transition-colors"
+                                                        title={`Remover a legenda ${item.legend_symbol} apenas deste horário (${item.time})`}
+                                                      >
+                                                        <X size={11} className="stroke-[3]" />
+                                                      </button>
+                                                    </div>
                                                   ) : (
                                                     <button 
                                                       type="button"
@@ -1840,12 +2016,13 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                           time: item.time,
                                                           direction: item.direction,
                                                           section_name: item.section_name,
-                                                          currentSymbol: '*',
+                                                          currentSymbol: '',
+                                                          originalSymbol: undefined,
                                                           currentText: ''
                                                         });
                                                         setLegendModalOpen(true);
                                                       }}
-                                                      className="p-1 text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors"
+                                                      className="p-1 text-slate-300 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-950/40 rounded-lg transition-colors cursor-pointer"
                                                       title="Adicionar símbolo / legenda a este horário"
                                                     >
                                                       <Tag size={14}/>
@@ -1863,12 +2040,13 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                           direction: item.direction,
                                                           section_name: item.section_name,
                                                           currentSymbol: item.legend_symbol,
+                                                          originalSymbol: item.legend_symbol,
                                                           currentText: item.legend_text || ''
                                                         });
                                                         setLegendModalOpen(true);
                                                       }}
                                                       className="text-amber-500 hover:text-amber-600 p-1 rounded hover:bg-amber-50 dark:hover:bg-amber-950/30"
-                                                      title="Editar legenda deste horário"
+                                                      title="Editar horários e detalhes desta legenda"
                                                     >
                                                       <Pencil size={12} />
                                                     </button>
@@ -1919,27 +2097,28 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                     onClick={() => {
                                         setActiveLegendTimeContext({
                                             day: 'weekdays',
-                                            time: (formData.schedule?.weekdays?.[0]?.time || '06:00'),
-                                            direction: 'IDA',
-                                            currentSymbol: '*',
+                                            time: '',
+                                            direction: selectedDirection || 'IDA',
+                                            currentSymbol: '',
+                                            originalSymbol: undefined,
                                             currentText: ''
                                         });
                                         setLegendModalOpen(true);
                                     }}
-                                    className="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-xl font-black uppercase text-[10px] flex items-center gap-2 shadow-md transition-all active:scale-95 shrink-0"
+                                    className="px-4 py-2.5 bg-yellow-400 hover:bg-yellow-500 text-slate-950 rounded-xl font-black uppercase text-[10px] flex items-center gap-2 shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
                                 >
                                     <Plus size={15} /> Nova Legenda com Seletor Visual
                                 </button>
                             </div>
 
-                            {/* Lista de Legendas já cadastradas */}
-                            {routeLegends.length === 0 ? (
+                            {/* Lista de Legendas já cadastradas (Desduplicada) */}
+                            {distinctRouteLegends.length === 0 ? (
                                 <div className="text-center py-6 text-slate-400 text-xs font-bold uppercase italic">
                                     Nenhuma legenda cadastrada nesta rota. Clique no ícone de etiqueta ao lado de qualquer horário ou no botão acima para adicionar.
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-1">
-                                    {routeLegends.map((leg, idx) => (
+                                    {distinctRouteLegends.map((leg, idx) => (
                                         <div 
                                             key={leg.id || idx}
                                             className="bg-white/5 hover:bg-white/10 p-3.5 rounded-2xl border border-white/10 flex items-center justify-between gap-3 transition-colors"
@@ -1948,29 +2127,31 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                 <span className="px-2.5 py-1 bg-yellow-400 text-slate-950 font-black text-xs font-mono rounded-lg shrink-0 shadow-xs">
                                                     {leg.symbol}
                                                 </span>
-                                                <span className="text-xs font-black text-white uppercase truncate" title={leg.text}>
-                                                    {leg.text || 'Sem descrição'}
-                                                </span>
+                                                <div className="min-w-0 flex-1">
+                                                  <p className="text-xs font-black text-white uppercase truncate" title={leg.text}>
+                                                      {leg.text || 'Sem descrição'}
+                                                  </p>
+                                                  <span className="text-[9px] font-bold text-amber-300 uppercase block">
+                                                    {leg.timesCount} horário{leg.timesCount === 1 ? '' : 's'} vinculado{leg.timesCount === 1 ? '' : 's'}
+                                                  </span>
+                                                </div>
                                             </div>
                                             <div className="flex items-center gap-1 shrink-0">
                                                 <button
                                                     type="button"
                                                     onClick={() => {
-                                                        const firstDayWithTime = (['weekdays', 'saturday', 'sunday'] as const).find(d => 
-                                                          (formData.schedule?.[d] || []).some(i => i.legend_symbol === leg.symbol)
-                                                        ) || 'weekdays';
-                                                        const matchingTime = (formData.schedule?.[firstDayWithTime] || []).find(i => i.legend_symbol === leg.symbol)?.time || (formData.schedule?.weekdays?.[0]?.time || '');
                                                         setActiveLegendTimeContext({
-                                                            day: firstDayWithTime,
-                                                            time: matchingTime,
+                                                            day: 'weekdays',
+                                                            time: '',
                                                             direction: 'IDA',
                                                             currentSymbol: leg.symbol,
+                                                            originalSymbol: leg.symbol,
                                                             currentText: leg.text
                                                         });
                                                         setLegendModalOpen(true);
                                                     }}
-                                                    className="p-1.5 text-yellow-400 hover:bg-yellow-400/20 rounded-lg transition-colors"
-                                                    title="Editar símbolo / texto desta legenda"
+                                                    className="p-1.5 text-yellow-400 hover:bg-yellow-400/20 rounded-lg transition-colors cursor-pointer"
+                                                    title="Editar horários e descrição desta legenda"
                                                 >
                                                     <Pencil size={13} />
                                                 </button>
@@ -1979,7 +2160,7 @@ const RouteManager: React.FC<RouteManagerProps> = ({
                                                     onClick={() => {
                                                         handleRemoveLegendFromMultiTimes(leg.symbol);
                                                     }}
-                                                    className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-lg transition-colors"
+                                                    className="p-1.5 text-red-400 hover:bg-red-400/20 rounded-lg transition-colors cursor-pointer"
                                                     title="Excluir esta legenda de todos os horários da rota"
                                                 >
                                                     <Trash2 size={13} />
@@ -2370,6 +2551,10 @@ const RouteManager: React.FC<RouteManagerProps> = ({
           initialTimes={exportModalTimes}
           initialLegends={exportModalLegends}
           onSyncLegendsWithRoute={handleSyncLegendsWithRoute}
+          onAdjustSchedule={(targetRoute) => {
+            setExportModalRoute(null);
+            handleOpenModal(targetRoute, 'horario');
+          }}
           addToast={addToast}
         />
       )}
@@ -2398,46 +2583,51 @@ const RouteManager: React.FC<RouteManagerProps> = ({
           targetTime={activeLegendTimeContext.time}
           targetDay={activeLegendTimeContext.day}
           initialSymbol={activeLegendTimeContext.currentSymbol || '*'}
+          originalSymbol={activeLegendTimeContext.originalSymbol || (activeLegendTimeContext.currentSymbol !== '*' ? activeLegendTimeContext.currentSymbol : undefined)}
           initialText={activeLegendTimeContext.currentText || ''}
-          existingLegends={routeLegends}
+          existingLegends={distinctRouteLegends}
+          symbolTimesMap={symbolTimesMap}
           availableTimesByDay={{
             weekdays: Array.from(new Set((formData.schedule?.weekdays || []).map(i => i.time))).sort(),
             saturday: Array.from(new Set((formData.schedule?.saturday || []).map(i => i.time))).sort(),
             sunday: Array.from(new Set((formData.schedule?.sunday || []).map(i => i.time))).sort()
           }}
           initialSelectedTimesByDay={(() => {
-            const sym = activeLegendTimeContext.currentSymbol;
+            const sym = activeLegendTimeContext.originalSymbol || activeLegendTimeContext.currentSymbol;
             if (sym && sym !== '*') {
+              const symKey = sym.trim().toLowerCase();
+              if (symbolTimesMap[symKey]) {
+                return symbolTimesMap[symKey];
+              }
               return {
-                weekdays: (formData.schedule?.weekdays || []).filter(i => i.legend_symbol === sym).map(i => i.time),
-                saturday: (formData.schedule?.saturday || []).filter(i => i.legend_symbol === sym).map(i => i.time),
-                sunday: (formData.schedule?.sunday || []).filter(i => i.legend_symbol === sym).map(i => i.time)
+                weekdays: (formData.schedule?.weekdays || []).filter(i => (i.legend_symbol || '').trim().toLowerCase() === symKey).map(i => i.time),
+                saturday: (formData.schedule?.saturday || []).filter(i => (i.legend_symbol || '').trim().toLowerCase() === symKey).map(i => i.time),
+                sunday: (formData.schedule?.sunday || []).filter(i => (i.legend_symbol || '').trim().toLowerCase() === symKey).map(i => i.time)
               };
             }
             return {
               [activeLegendTimeContext.day]: activeLegendTimeContext.time ? [activeLegendTimeContext.time] : []
             };
           })()}
+          onDeleteFromTargetTime={activeLegendTimeContext.time ? () => {
+            handleRemoveLegendFromSingleTime(
+              activeLegendTimeContext.day,
+              activeLegendTimeContext.time,
+              activeLegendTimeContext.direction,
+              activeLegendTimeContext.section_name
+            );
+          } : undefined}
           onSave={(res) => {
-            const hasMultiple = Object.values(res.selectedTimesByDay).some(arr => arr.length > 0);
-            if (hasMultiple) {
-              handleSaveLegendForMultiTimes(res.symbol, res.text, res.selectedTimesByDay);
-            } else {
-              handleSaveLegendForTime(
-                activeLegendTimeContext.day,
-                activeLegendTimeContext.time,
-                activeLegendTimeContext.direction,
-                activeLegendTimeContext.section_name,
-                res.symbol,
-                res.text
-              );
-            }
+            handleSaveLegendForMultiTimes(
+              res.symbol,
+              res.text,
+              res.selectedTimesByDay,
+              res.originalSymbol || activeLegendTimeContext.originalSymbol || activeLegendTimeContext.currentSymbol
+            );
           }}
           onDelete={() => {
             handleRemoveLegendFromMultiTimes(
-              activeLegendTimeContext.currentSymbol || '*',
-              activeLegendTimeContext.day,
-              activeLegendTimeContext.time
+              activeLegendTimeContext.currentSymbol || activeLegendTimeContext.originalSymbol || '*'
             );
           }}
         />

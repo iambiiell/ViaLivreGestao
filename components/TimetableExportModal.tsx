@@ -32,7 +32,8 @@ import {
   Eye,
   ListChecks,
   Pencil,
-  FileText
+  FileText,
+  Clock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -64,6 +65,7 @@ export interface TimetableExportModalProps {
   };
   initialLegends?: TimeLegendEntry[];
   onSyncLegendsWithRoute?: (legends: TimeLegendEntry[]) => void;
+  onAdjustSchedule?: (route: BusRoute) => void;
   addToast?: (message: string, type?: 'success' | 'error' | 'warning') => void;
 }
 
@@ -120,6 +122,7 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
   initialTimes,
   initialLegends,
   onSyncLegendsWithRoute,
+  onAdjustSchedule,
   addToast
 }) => {
   const posterRef = useRef<HTMLDivElement>(null);
@@ -887,16 +890,30 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              onClick={() => {
+                if (onAdjustSchedule) {
+                  onAdjustSchedule(route);
+                } else {
+                  setShowConfigDrawer(!showConfigDrawer);
+                }
+              }}
+              className="px-3.5 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-1.5 transition-all border bg-amber-400 hover:bg-amber-300 text-slate-950 border-amber-300 shadow-md active:scale-95"
+              title="Abrir tela de cadastro da rota na área Grade Horária"
+            >
+              <Clock size={15} />
+              <span>Ajustar Horários</span>
+            </button>
+
+            <button
               onClick={() => setShowConfigDrawer(!showConfigDrawer)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-black uppercase flex items-center gap-1.5 transition-all border ${
+              className={`p-2 rounded-xl text-xs font-black uppercase flex items-center justify-center transition-all border ${
                 showConfigDrawer 
-                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-md' 
-                  : 'bg-slate-800 text-slate-200 border-slate-700 hover:bg-slate-700'
+                  ? 'bg-slate-700 text-amber-300 border-amber-400 shadow-sm' 
+                  : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'
               }`}
-              title="Ajustar dados e horários de ida e volta"
+              title="Ajuste rápido de horários para a folha A4"
             >
               <SlidersHorizontal size={15} />
-              <span className="hidden sm:inline">Ajustar Horários</span>
             </button>
 
             <button
@@ -1158,6 +1175,17 @@ export const TimetableExportModal: React.FC<TimetableExportModalProps> = ({
                       <ArrowLeftRight size={12} />
                       <span>Equalizar Ida/Volta</span>
                     </button>
+                    {onAdjustSchedule && (
+                      <button
+                        type="button"
+                        onClick={() => onAdjustSchedule(route)}
+                        className="px-2.5 py-1.5 bg-yellow-400 hover:bg-yellow-300 text-slate-950 font-black rounded-lg text-[10px] uppercase flex items-center gap-1.5 shadow-xs"
+                        title="Ir para o cadastro deste itinerário na aba Grade Horária"
+                      >
+                        <Clock size={12} />
+                        <span>Editar no Cadastro (Grade Horária)</span>
+                      </button>
+                    )}
                   </div>
                 </div>
 

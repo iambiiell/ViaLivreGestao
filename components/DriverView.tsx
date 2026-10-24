@@ -1,6 +1,6 @@
 
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { BusRoute, Trip, User, Vehicle, Company, TicketSale } from '../types';
+import { BusRoute, Trip, User, Vehicle, Company, TicketSale, TripStatus } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { supabase, db } from '../services/database';
 import { 
@@ -32,7 +32,8 @@ import {
   Coins,
   QrCode,
   Layers,
-  ChevronDown
+  ChevronDown,
+  Eye
 } from 'lucide-react';
 import TripSelectionModal from './TripSelectionModal';
 
@@ -78,6 +79,7 @@ const DriverView: React.FC<DriverViewProps> = ({
   const [showVTPrompt, setShowVTPrompt] = useState(false);
   const [vtInputTemp, setVtInputTemp] = useState('');
   const [tickets, setTickets] = useState<TicketSale[]>([]);
+  const [ticketQuantity, setTicketQuantity] = useState<number>(1);
   const [formData, setFormData] = useState<any>({
     odometer: '',
     fuel: 'CHEIO',
@@ -207,22 +209,40 @@ const DriverView: React.FC<DriverViewProps> = ({
 
   const activeTrip = useMemo(() => myTrips.find(t => t.status === 'Em Andamento' || t.status === 'Em Rota'), [myTrips]);
 
+  const isFiscalOrAdmin = isSupervision || 
+    (currentUser?.role || '').toUpperCase() === 'ADMIN' || 
+    currentUser?.is_full_admin || 
+    (currentUser?.job_title || '').toUpperCase().includes('ADMINISTRADOR') || 
+    (currentUser?.job_title || '').toUpperCase().includes('ADMIN') || 
+    (currentUser?.role || '').toUpperCase() === 'FISCAL' || 
+    (currentUser?.job_title || '').toUpperCase().includes('FISCAL');
+
   const isUserFiscal = (currentUser?.role || '').toUpperCase() === 'FISCAL' || (currentUser?.job_title || '').toUpperCase().includes('FISCAL');
 
   const handleStartTrip = (trip: Trip) => {
-    if (isUserFiscal) {
-      addToast("Fiscais de Pátio estão em modo de visualização e supervisão. Não é permitido iniciar ou finalizar viagens.", "error");
+    if (isFiscalOrAdmin) {
+      addToast("Fiscais e Administradores operam em modo de supervisão e auditoria. Não é permitido iniciar ou finalizar viagens.", "error");
       return;
     }
     if (activeTrip && activeTrip.id !== trip.id) {
         addToast("Você já possui uma viagem em andamento. Finalize-a antes de iniciar outra.", "error");
         return;
     }
+
+    // Sincronização automática com o veículo cadastrado
+    const assignedVehicle = vehicles.find(v => v.prefix === trip.bus_number || v.id === (trip as any).vehicle_id);
+    const initialOdo = (trip.initial_odometer !== undefined && trip.initial_odometer !== null && trip.initial_odometer !== 0)
+      ? trip.initial_odometer
+      : (assignedVehicle?.mileage ?? (assignedVehicle as any)?.last_odometer ?? '');
+    const initialTurnstile = (trip.initial_turnstile !== undefined && trip.initial_turnstile !== null && trip.initial_turnstile !== 0)
+      ? trip.initial_turnstile
+      : ((assignedVehicle as any)?.last_turnstile ?? assignedVehicle?.current_turnstile_count ?? '');
+
     setFormData({
-        odometer: trip.initial_odometer || '',
+        odometer: initialOdo,
         fuel: trip.fuel_level || 'CHEIO',
         checklist: !!trip.checklist_ok,
-        turnstile: trip.initial_turnstile || '',
+        turnstile: initialTurnstile,
         ticketNumber: trip.initial_ticket_number || '',
         confirm: false
     });
@@ -230,8 +250,8 @@ const DriverView: React.FC<DriverViewProps> = ({
   };
 
   const handleEndTrip = (trip: Trip) => {
-    if (isUserFiscal) {
-      addToast("Fiscais de Pátio estão em modo de visualização e supervisão. Não é permitido iniciar ou finalizar viagens.", "error");
+    if (isFiscalOrAdmin) {
+      addToast("Fiscais e Administradores operam em modo de supervisão e auditoria. Não é permitido iniciar ou finalizar viagens.", "error");
       return;
     }
     const route = routes.find(r => r.id === trip.route_id);
@@ -253,11 +273,15 @@ const DriverView: React.FC<DriverViewProps> = ({
       }
     });
 
+    const assignedVehicle = vehicles.find(v => v.prefix === trip.bus_number || v.id === (trip as any).vehicle_id);
+    const finalOdo = trip.final_odometer || assignedVehicle?.mileage || '';
+    const finalTurnstile = trip.final_turnstile || (assignedVehicle as any)?.last_turnstile || assignedVehicle?.current_turnstile_count || '';
+
     setFormData({
-        odometer: trip.final_odometer || '',
+        odometer: finalOdo,
         fuel: trip.fuel_level || 'CHEIO',
         checklist: !!trip.checklist_ok,
-        turnstile: trip.final_turnstile || '',
+        turnstile: finalTurnstile,
         ticketNumber: trip.final_ticket_number || '',
         cash: trip.cash_total !== undefined ? trip.cash_total : '',
         cardPix: trip.card_pix_total !== undefined ? trip.card_pix_total : '',
@@ -279,38 +303,68 @@ const DriverView: React.FC<DriverViewProps> = ({
 
     const now = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     const isUrban = trip.trip_type === 'Urbano';
+    const assignedVehicle = vehicles.find(v => v.prefix === trip.bus_number || v.id === (trip as any).vehicle_id);
 
     const updateData: Partial<Trip> = {
         ...trip,
-        status: mode === 'start' ? 'Em Andamento' : 'Concluída',
         fuel_level: formData.fuel,
         checklist_ok: formData.checklist,
     };
 
     if (mode === 'start') {
+        // Cálculo de pontualidade no início da viagem para contabilizar adiantamentos e atrasos no Pátio
+        const [schH, schM] = (trip.departure_time || '00:00').split(':').map(Number);
+        const [actH, actM] = now.split(':').map(Number);
+        const diffMinutes = (actH * 60 + actM) - (schH * 60 + schM);
+
+        let tripStatus: TripStatus = 'Em Andamento';
+        if (diffMinutes > 3) {
+          tripStatus = 'Atrasada';
+        }
+
+        updateData.status = tripStatus;
+        updateData.actual_start_time = now;
+        (updateData as any).started_at = new Date().toISOString();
+        (updateData as any).start_delay_minutes = diffMinutes;
+
         // Automatic Exit Log
         if (jobRole !== 'COBRADOR') {
             db.create('driver_logs', {
                 driver_id: currentUser?.id,
                 user_id: currentUser?.id,
                 created_by: currentUser?.id,
-                vehicle_id: vehicles.find(v => v.prefix === trip.bus_number)?.id,
-                odometer_start: Number(formData.odometer),
+                vehicle_id: assignedVehicle?.id,
+                odometer_start: Number(formData.odometer) || 0,
                 created_at: new Date().toISOString(),
                 status: 'OPEN',
                 system_id: currentUser?.system_id || db.getSystemId(),
-                notes: `Início automático via DriverView - Viagem ${trip.id}`
+                notes: `Início de viagem - Viagem ${trip.id} às ${now}`
             }).catch(err => console.error("Erro ao salvar log automático:", err));
         }
 
-        updateData.actual_start_time = now;
         if (jobRole !== 'COBRADOR') updateData.initial_odometer = Number(formData.odometer);
         if (isUrban || jobRole === 'COBRADOR') updateData.initial_turnstile = Number(formData.turnstile);
         if (jobRole === 'RODOVIARIO') updateData.initial_ticket_number = formData.ticketNumber;
     } else {
-        updateData.actual_end_time = now;
-        if (jobRole !== 'COBRADOR') updateData.final_odometer = Number(formData.odometer);
+        updateData.status = 'Concluída';
         updateData.finished = true;
+        updateData.actual_end_time = now;
+        (updateData as any).finished_at = new Date().toISOString();
+
+        if (jobRole !== 'COBRADOR') updateData.final_odometer = Number(formData.odometer);
+        
+        // Sincronizar de volta odômetro e roleta atualizados no veículo para as próximas viagens
+        if (assignedVehicle) {
+          const updatedMileage = Number(formData.odometer) || assignedVehicle.mileage;
+          const updatedTurnstile = Number(formData.turnstile) || (assignedVehicle as any).last_turnstile || assignedVehicle.current_turnstile_count;
+          db.update('vehicles', {
+            id: assignedVehicle.id,
+            mileage: updatedMileage,
+            last_turnstile: updatedTurnstile,
+            current_turnstile_count: updatedTurnstile
+          }).catch(err => console.warn('Erro ao sincronizar dados com o veículo:', err));
+        }
+
         if (isUrban || jobRole === 'COBRADOR') {
             updateData.final_turnstile = Number(formData.turnstile);
             
@@ -449,6 +503,25 @@ const DriverView: React.FC<DriverViewProps> = ({
     }
   };
 
+  // Viagens associadas ao Cobrador para fechar caixa apenas na última viagem do dia
+  const conductorTrips = useMemo(() => {
+    const currentId = currentUser?.id;
+    const currentName = (currentUser?.full_name || currentUser?.name || '').trim().toLowerCase();
+    return myTrips.filter(t => {
+      const isAssignedConductor = (t.conductor_id && t.conductor_id === currentId) || 
+        (t.conductor_name && t.conductor_name.trim().toLowerCase() === currentName);
+      const isAssignedDriverWithoutConductor = !t.conductor_id && !t.conductor_name && 
+        ((t.driver_id && t.driver_id === currentId) || (t.driver_name && t.driver_name.trim().toLowerCase() === currentName));
+      return isAssignedConductor || isAssignedDriverWithoutConductor;
+    }).sort((a, b) => (a.departure_time || '00:00').localeCompare(b.departure_time || '00:00'));
+  }, [myTrips, currentUser]);
+
+  const isLastTripForConductor = useMemo(() => {
+    if (conductorTrips.length <= 1) return true;
+    const lastTrip = conductorTrips[conductorTrips.length - 1];
+    return activeTrip?.id === lastTrip?.id;
+  }, [conductorTrips, activeTrip]);
+
   const handleRegisterPassage = async () => {
     if (!activeTrip) return;
     const route = routes.find(r => r.id === activeTrip.route_id);
@@ -472,8 +545,9 @@ const DriverView: React.FC<DriverViewProps> = ({
     
     if (basePrice === 0 && label === '') return;
 
-    // Apply discount
-    const price = Math.max(0, basePrice - discountValue);
+    const qty = Math.max(1, ticketQuantity || 1);
+    const unitPrice = Math.max(0, basePrice - discountValue);
+    const totalPrice = unitPrice * qty;
     const normMethod = (selectedPaymentMethod || 'DINHEIRO').toUpperCase().replace(/[ ]/g, '_');
 
     // Additional validations and deduction for VT / IMPCARD
@@ -486,11 +560,11 @@ const DriverView: React.FC<DriverViewProps> = ({
             const cards = await db.getImpCards();
             const card = cards.find((c: any) => c.number === paymentDetails.cardOrCpf || c.cpf === paymentDetails.cardOrCpf);
             if (card) {
-                if ((card.balance || 0) < price) {
+                if ((card.balance || 0) < totalPrice) {
                     addToast(`Saldo insuficiente no cartão VT (Saldo: R$ ${(card.balance || 0).toFixed(2)})`, "error");
                     return;
                 }
-                await db.update('imp_cards', { ...card, balance: (card.balance || 0) - price });
+                await db.update('imp_cards', { ...card, balance: (card.balance || 0) - totalPrice });
             }
         } catch (e) {
             console.warn("Não foi possível debitar saldo do cartão:", e);
@@ -501,10 +575,10 @@ const DriverView: React.FC<DriverViewProps> = ({
     try {
         const newSale: Partial<TicketSale> = {
             trip_id: activeTrip.id,
-            passenger_name: `Embarque Bordo (${currentUser?.name || 'Cobrador'})`,
-            seat_number: 0,
+            passenger_name: qty > 1 ? `Embarque Bordo (${qty}x)` : `Embarque Bordo (${currentUser?.name || 'Cobrador'})`,
+            seat_number: qty,
             payment_method: normMethod as any,
-            total_price: price,
+            total_price: totalPrice,
             status: 'boarded',
             seller_name: currentUser?.name || 'Cobrador',
             created_at: new Date().toISOString(),
@@ -521,33 +595,36 @@ const DriverView: React.FC<DriverViewProps> = ({
         console.error("Erro ao registrar venda de passagem a bordo:", err);
     }
 
-    addToast(`${label} (${normMethod.replace(/_/g, ' ')}) R$ ${price.toFixed(2)} registrada com sucesso! ${discountValue > 0 ? `(Desc: R$ ${discountValue.toFixed(2)})` : ''}`, 'success');
+    addToast(`${label} ${qty > 1 ? `(${qty}x) ` : ''}(${normMethod.replace(/_/g, ' ')}) R$ ${totalPrice.toFixed(2)} registrada com sucesso!`, 'success');
     
     const updateData: Partial<Trip> = { ...activeTrip };
     
+    // Contabilização rigorosa por forma de pagamento
     if (normMethod === 'DINHEIRO') {
-        updateData.cash_total = (activeTrip.cash_total || 0) + price;
+        updateData.cash_total = (activeTrip.cash_total || 0) + totalPrice;
     } else if (normMethod === 'GRATUIDADE' || normMethod === 'GRATUITO') {
-        updateData.gratuity_total = (activeTrip.gratuity_total || 0) + 1;
+        updateData.gratuity_total = (activeTrip.gratuity_total || 0) + qty;
     } else {
-        updateData.card_pix_total = (activeTrip.card_pix_total || 0) + price;
+        // Débito, Crédito, PIX, Vale Transporte, ImpCard contabilizam no faturamento digital/eletrônico
+        updateData.card_pix_total = (activeTrip.card_pix_total || 0) + totalPrice;
     }
 
     // Maintain payment breakdown and counts
     const prevBreakdown = { ...(activeTrip.payment_breakdown || {}) };
-    prevBreakdown[normMethod] = (prevBreakdown[normMethod] || 0) + price;
+    prevBreakdown[normMethod] = (prevBreakdown[normMethod] || 0) + totalPrice;
     updateData.payment_breakdown = prevBreakdown;
 
     const prevCounts = { ...(activeTrip.payment_counts || {}) };
-    prevCounts[normMethod] = (prevCounts[normMethod] || 0) + 1;
+    prevCounts[normMethod] = (prevCounts[normMethod] || 0) + qty;
     updateData.payment_counts = prevCounts;
     
     onUpdateTrip(updateData as Trip);
     
-    // Reset payment details
+    // Reset payment details and quantity back to 1
     setPaymentDetails({ received: '', change: 0, cardOrCpf: '' });
     setCouponCode('');
     setDiscountValue(0);
+    setTicketQuantity(1);
   };
 
   const isUrbanCurrentView = routes.find(r => r.id === activeTrip?.route_id)?.route_type === 'URBANO';
@@ -675,7 +752,7 @@ const DriverView: React.FC<DriverViewProps> = ({
                             <Ticket size={14} /> Mapa
                         </button>
                     )}
-                    {!isUserFiscal && (
+                    {!isFiscalOrAdmin && (
                       <button 
                         onClick={() => handleEndTrip(activeTrip)}
                         className="bg-white text-emerald-600 px-6 py-3 rounded-xl font-black uppercase text-[10px] tracking-widest shadow-lg hover:bg-slate-100 transition-all flex items-center gap-2"
@@ -753,11 +830,11 @@ const DriverView: React.FC<DriverViewProps> = ({
                   </div>
               )}
               
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="md:col-span-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="col-span-1">
                       <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Trecho da Viagem</label>
                       <select 
-                        className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
+                        className="w-full px-4 py-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-xs text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
                         value={activeTrip.current_section_index ?? -1}
                         onChange={(e) => onUpdateTrip({...activeTrip, current_section_index: Number(e.target.value)})}
                       >
@@ -772,10 +849,10 @@ const DriverView: React.FC<DriverViewProps> = ({
                       </select>
                   </div>
 
-                  <div className="md:col-span-1">
+                  <div className="col-span-1">
                       <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Forma de Pagamento</label>
                       <select 
-                        className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
+                        className="w-full px-4 py-4 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-xs text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
                         value={selectedPaymentMethod}
                         onChange={(e) => {
                             const val = e.target.value;
@@ -802,29 +879,61 @@ const DriverView: React.FC<DriverViewProps> = ({
                       </select>
                   </div>
 
-                  <div className="md:col-span-1">
+                  {/* Seletor de Quantidade de Passagens */}
+                  <div className="col-span-1">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Qtd. de Passagens</label>
+                      <div className="flex items-center justify-between bg-slate-50 dark:bg-zinc-800 rounded-2xl border-2 border-slate-100 dark:border-zinc-700 p-1.5 h-[58px]">
+                          <button 
+                            type="button"
+                            onClick={() => setTicketQuantity(prev => Math.max(1, prev - 1))}
+                            className="w-10 h-10 rounded-xl bg-white dark:bg-zinc-700 text-slate-900 dark:text-white font-black text-lg hover:bg-slate-200 dark:hover:bg-zinc-600 flex items-center justify-center transition-colors shadow-sm active:scale-95 shrink-0"
+                            title="Diminuir quantidade"
+                          >
+                            -
+                          </button>
+                          <div className="flex flex-col items-center justify-center px-1">
+                              <span className="text-lg font-black text-slate-900 dark:text-white leading-none">{ticketQuantity}</span>
+                              <span className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider">
+                                {ticketQuantity === 1 ? 'passagem' : 'passagens'}
+                              </span>
+                          </div>
+                          <button 
+                            type="button"
+                            onClick={() => setTicketQuantity(prev => Math.min(50, prev + 1))}
+                            className="w-10 h-10 rounded-xl bg-yellow-400 text-slate-950 font-black text-lg hover:bg-yellow-300 flex items-center justify-center transition-colors shadow-sm active:scale-95 shrink-0"
+                            title="Aumentar quantidade"
+                          >
+                            +
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Cupom de Desconto com ajuste perfeito de margem */}
+                  <div className="col-span-1 min-w-0">
                       <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Cupom de Desconto</label>
-                      <div className="flex gap-2">
+                      <div className="flex items-center rounded-2xl border-2 border-slate-100 dark:border-zinc-700 bg-slate-50 dark:bg-zinc-800 p-1 overflow-hidden focus-within:border-yellow-400 transition-colors h-[58px] min-w-0">
                         <input 
                             placeholder="CÓDIGO"
-                            className="flex-1 px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400 uppercase"
+                            className="min-w-0 flex-1 px-3 py-2 bg-transparent font-black text-xs text-slate-900 dark:text-white border-none outline-none uppercase placeholder:text-slate-400"
                             value={couponCode}
                             onChange={(e) => setCouponCode(e.target.value)}
                         />
                         <button 
+                            type="button"
                             onClick={handleApplyCoupon}
-                            className="px-6 py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-transform"
+                            className="px-4 py-2.5 bg-slate-900 dark:bg-yellow-400 hover:bg-slate-800 dark:hover:bg-yellow-300 text-white dark:text-slate-950 rounded-xl font-black uppercase text-[10px] tracking-wider shrink-0 active:scale-95 transition-all shadow-sm"
                         >
                             Aplicar
                         </button>
                       </div>
                       {ticketingConfig?.active_coupons && ticketingConfig.active_coupons.length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-2">
-                              {ticketingConfig.active_coupons.map((c: any) => (
+                          <div className="mt-1.5 flex flex-wrap gap-1">
+                              {ticketingConfig.active_coupons.slice(0, 2).map((c: any) => (
                                   <button 
+                                    type="button"
                                     key={c.code}
                                     onClick={() => { setCouponCode(c.code); }}
-                                    className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/20 text-[8px] font-bold text-indigo-600 rounded border border-indigo-100 dark:border-indigo-800 uppercase"
+                                    className="px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/20 text-[8px] font-bold text-indigo-600 rounded border border-indigo-100 dark:border-indigo-800 uppercase"
                                   >
                                       {c.code} ({c.type === 'PERCENT' ? `${c.discount}%` : `R$ ${c.discount}`})
                                   </button>
@@ -832,75 +941,89 @@ const DriverView: React.FC<DriverViewProps> = ({
                           </div>
                       )}
                   </div>
+              </div>
 
-                  <div className="md:col-span-1">
-                      {selectedPaymentMethod === 'DINHEIRO' && (
-                          <div>
-                              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Valor Recebido (Troco)</label>
-                              <div className="flex gap-2">
-                                  <input 
-                                    type="number" 
-                                    placeholder="0.00"
-                                    className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
-                                    value={paymentDetails.received}
-                                    onChange={(e) => {
-                                        const received = e.target.value;
-                                        const route = routes.find(r => r.id === activeTrip.route_id);
-                                        const price = activeTrip.current_section_index === -1 ? (route?.price || 0) : (route?.sections?.[activeTrip.current_section_index || 0]?.price || 0);
-                                        setPaymentDetails({
-                                            ...paymentDetails,
-                                            received,
-                                            change: Number(received) > price ? Number(received) - price : 0
-                                        });
-                                    }}
-                                  />
-                                  {paymentDetails.change > 0 && (
-                                      <div className="bg-yellow-100 text-yellow-800 px-4 py-5 rounded-2xl font-black text-xs flex items-center justify-center whitespace-nowrap">
-                                          T: R$ {paymentDetails.change.toFixed(2)}
-                                      </div>
-                                  )}
-                              </div>
-                          </div>
-                      )}
-                      {(selectedPaymentMethod === 'IMPCARD' || selectedPaymentMethod === 'VALE_TRANSPORTE') && (
-                          <div>
-                              <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Cartão ou CPF (VT)</label>
+              {/* Informações de Troco ou Cartão VT quando aplicável */}
+              {selectedPaymentMethod === 'DINHEIRO' && (
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/60 rounded-2xl border border-slate-100 dark:border-zinc-700/60">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Valor Recebido do Passageiro (Cálculo de Troco)</label>
+                      <div className="flex flex-col sm:flex-row gap-3 items-center">
+                          <div className="relative flex-1 w-full">
+                              <span className="absolute left-4 top-1/2 -translate-y-1/2 text-sm font-black text-slate-400">R$</span>
                               <input 
-                                type="text" 
-                                placeholder="000.000.000-00"
-                                className="w-full px-6 py-5 bg-slate-50 dark:bg-zinc-800 rounded-2xl font-black text-slate-900 dark:text-white border-2 border-slate-100 dark:border-zinc-700 outline-none focus:border-yellow-400"
-                                value={paymentDetails.cardOrCpf}
-                                onChange={(e) => setPaymentDetails({...paymentDetails, cardOrCpf: e.target.value})}
+                                type="number" 
+                                placeholder="0.00"
+                                className="w-full pl-10 pr-4 py-3 bg-white dark:bg-zinc-900 rounded-xl font-black text-slate-900 dark:text-white border-2 border-slate-200 dark:border-zinc-700 outline-none focus:border-yellow-400"
+                                value={paymentDetails.received}
+                                onChange={(e) => {
+                                    const received = e.target.value;
+                                    const route = routes.find(r => r.id === activeTrip.route_id);
+                                    const unitPrice = activeTrip.current_section_index === -1 ? (route?.price || 0) : (route?.sections?.[activeTrip.current_section_index || 0]?.price || 0);
+                                    const totalToPay = Math.max(0, unitPrice - discountValue) * Math.max(1, ticketQuantity);
+                                    setPaymentDetails({
+                                        ...paymentDetails,
+                                        received,
+                                        change: Number(received) > totalToPay ? Number(received) - totalToPay : 0
+                                    });
+                                }}
                               />
                           </div>
-                      )}
-                      {(['PIX', 'CARD', 'CREDITO', 'DEBITO', 'GRATUIDADE'].includes(selectedPaymentMethod)) && (
-                          <div className="flex items-center justify-center h-full pt-6">
-                              <div className="text-[10px] font-black text-slate-400 uppercase italic">Registro Digital Automático</div>
-                          </div>
-                      )}
+                          {paymentDetails.change > 0 && (
+                              <div className="bg-yellow-400 text-slate-950 px-6 py-3 rounded-xl font-black text-sm flex items-center justify-center whitespace-nowrap shadow-sm border border-yellow-500">
+                                  Troco: R$ {paymentDetails.change.toFixed(2)}
+                              </div>
+                          )}
+                      </div>
                   </div>
-              </div>
+              )}
+
+              {(selectedPaymentMethod === 'IMPCARD' || selectedPaymentMethod === 'VALE_TRANSPORTE') && (
+                  <div className="p-4 bg-slate-50 dark:bg-zinc-800/60 rounded-2xl border border-slate-100 dark:border-zinc-700/60">
+                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-1">Número do Cartão ou CPF do Titular (VT)</label>
+                      <input 
+                        type="text" 
+                        placeholder="000.000.000-00 ou Número do Cartão"
+                        className="w-full px-5 py-3 bg-white dark:bg-zinc-900 rounded-xl font-black text-slate-900 dark:text-white border-2 border-slate-200 dark:border-zinc-700 outline-none focus:border-yellow-400"
+                        value={paymentDetails.cardOrCpf}
+                        onChange={(e) => setPaymentDetails({...paymentDetails, cardOrCpf: e.target.value})}
+                      />
+                  </div>
+              )}
               
-              <div className="flex items-end gap-2">
-                {!isUserFiscal ? (
+              <div className="flex flex-col sm:flex-row items-center gap-3 pt-2">
+                {!isFiscalOrAdmin ? (
                   <>
                     <button 
                       onClick={handleRegisterPassage}
-                      className="flex-1 py-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+                      className="w-full sm:flex-1 py-5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
                     >
-                       <DollarSign size={14} /> Registrar Passagem
+                       <DollarSign size={14} /> Registrar {ticketQuantity > 1 ? `${ticketQuantity} Passagens` : 'Passagem'}
                     </button>
-                    <button 
-                      onClick={() => handleEndTrip(activeTrip)}
-                      className="flex-1 py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                       <CheckCircle2 size={14} /> Fechar Caixa
-                    </button>
+
+                    {isLastTripForConductor ? (
+                      <button 
+                        onClick={() => handleEndTrip(activeTrip)}
+                        className="w-full sm:flex-1 py-5 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 border-2 border-slate-700"
+                      >
+                         <CheckCircle2 size={14} /> Fechar Caixa (Última Viagem)
+                      </button>
+                    ) : (
+                      <button 
+                        type="button"
+                        onClick={() => {
+                          const lastT = conductorTrips[conductorTrips.length - 1];
+                          addToast(`O Fechamento de Caixa só é realizado na última viagem da sua escala de hoje (${lastT?.departure_time || 'última'}).`, "warning");
+                        }}
+                        className="w-full sm:flex-1 py-5 bg-slate-100 dark:bg-zinc-800 text-slate-400 dark:text-zinc-500 rounded-2xl font-black uppercase text-[9px] tracking-widest cursor-not-allowed border-2 border-dashed border-slate-300 dark:border-zinc-700 flex items-center justify-center gap-2 opacity-80"
+                        title="Fechamento de Caixa bloqueado até a última viagem associada"
+                      >
+                         <Square size={14} /> Fechar Caixa (Apenas na Última Viagem)
+                      </button>
+                    )}
                   </>
                 ) : (
-                  <div className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black uppercase text-[10px] tracking-widest text-center">
-                    Modo Fiscal de Pátio — Visualização de Caixa e Vendas
+                  <div className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black uppercase text-[10px] tracking-widest text-center flex items-center justify-center gap-2">
+                    <Eye size={14} /> Modo Fiscal de Pátio / Supervisão — Visualização de Caixa e Vendas (Sem Ação Operacional)
                   </div>
                 )}
               </div>
@@ -1061,38 +1184,26 @@ const DriverView: React.FC<DriverViewProps> = ({
                       </button>
                     )}
 
-                    {isUserFiscal ? (
+                    {isFiscalOrAdmin ? (
                       <div className="w-full flex items-center justify-center">
-                        {trip.status === 'Agendada' && (
-                          <div className="w-full py-4 bg-yellow-50 dark:bg-yellow-950/30 text-yellow-800 dark:text-yellow-400 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 border border-yellow-200 dark:border-yellow-800/40">
-                            <Clock size={16} /> Viagem Agendada (Fiscalização)
-                          </div>
-                        )}
-                        {trip.status === 'Em Rota' && (
-                          <div className="w-full py-4 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2 border border-emerald-200 dark:border-emerald-800/40">
-                            <Play size={16} fill="currentColor" /> Viagem em Andamento (Em Rota)
-                          </div>
-                        )}
-                        {trip.status === 'Concluída' && (
-                          <div className="w-full py-4 bg-slate-100 dark:bg-zinc-800 text-slate-400 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-2">
-                            <CheckCircle2 size={16} /> Viagem Concluída
-                          </div>
-                        )}
+                        <div className="w-full py-3.5 bg-slate-100 dark:bg-zinc-800 text-slate-500 rounded-2xl font-black uppercase text-[9px] tracking-widest flex items-center justify-center gap-2 border border-slate-200 dark:border-zinc-700">
+                          <Eye size={14} /> Modo Supervisão / Fiscalização (Apenas Leitura)
+                        </div>
                       </div>
                     ) : (
                       <>
-                        {trip.status === 'Agendada' && !activeTrip && (
+                        {(trip.status === 'Agendada' || trip.status === 'Atrasada') && !activeTrip && (
                           <button 
                             onClick={() => handleStartTrip(trip)}
-                            className="w-full py-4 bg-slate-900 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
+                            className="w-full py-4 bg-slate-900 hover:bg-black text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all"
                           >
                             <Play size={16} fill="white" /> Iniciar Viagem
                           </button>
                         )}
-                        {trip.status === 'Em Rota' && (
+                        {(trip.status === 'Em Rota' || trip.status === 'Em Andamento') && (
                           <button 
                             onClick={() => handleEndTrip(trip)}
-                            className="w-full py-4 bg-emerald-500 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all border-2 border-emerald-400"
+                            className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-black uppercase text-[10px] tracking-widest shadow-xl flex items-center justify-center gap-2 active:scale-95 transition-all border-2 border-emerald-400"
                           >
                             <Square size={16} fill="white" /> Finalizar Viagem
                           </button>
@@ -1161,10 +1272,18 @@ const DriverView: React.FC<DriverViewProps> = ({
 
             <div className="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
               <form className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="col-span-full bg-blue-50 dark:bg-blue-950/30 p-3.5 rounded-2xl border border-blue-200 dark:border-blue-900/40 flex items-center gap-3 text-blue-900 dark:text-blue-200 text-xs">
+                    <Gauge size={18} className="text-blue-600 dark:text-blue-400 shrink-0" />
+                    <div>
+                      <p className="font-black uppercase text-[10px] tracking-wider">Odômetro e Roleta Sincronizados com a Viatura #{checkinModal.trip.bus_number}</p>
+                      <p className="text-[9px] font-bold opacity-80 mt-0.5">Valores recuperados automaticamente do cadastro do veículo. Por favor, confira se o valor do painel confere.</p>
+                    </div>
+                  </div>
+
                   {jobRole !== 'COBRADOR' && (
                     <>
                       <div className="col-span-1">
-                          <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Odômetro</label>
+                          <label className="block text-[10px] font-black text-slate-400 uppercase mb-2 ml-2">Odômetro (Km) *</label>
                           <div className="relative">
                               <Gauge className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
                               <input 

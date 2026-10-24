@@ -63,7 +63,8 @@ import {
   ArrowDown,
   Star,
   Trash2,
-  RotateCcw
+  RotateCcw,
+  Lock
 } from 'lucide-react';
 import { motion, Reorder, AnimatePresence } from 'framer-motion';
 import { 
@@ -77,7 +78,8 @@ import {
   User, 
   SystemSettings, 
   Subscription,
-  ViewState 
+  ViewState,
+  RoleConfig
 } from '../types';
 import { formatDate } from '../utils/dateFormatter';
 import { db, supabase } from '../services/database';
@@ -117,6 +119,9 @@ export interface MobileSystemViewProps {
   subscription?: Subscription | null;
   onForceBackup?: () => Promise<void>;
   isEmbedded?: boolean;
+  isClockedIn?: boolean | null;
+  roleConfigs?: RoleConfig[];
+  currentView?: ViewState | string;
 }
 
 export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
@@ -146,10 +151,21 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
   addToast,
   subscription,
   onForceBackup,
-  isEmbedded = false
+  isEmbedded = false,
+  isClockedIn = null,
+  roleConfigs = [],
+  currentView
 }) => {
-  // Navigation State
-  const [activeTab, setActiveTab] = useState<MobileTab>('dashboard');
+  const userRole = (currentUser?.role || '').toUpperCase();
+  const userJob = (currentUser?.job_title || '').toUpperCase();
+  const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com' || currentUser?.email === 'via.nicolau.sa@gmail.com';
+  const isFullAdmin = userRole === 'ADMIN' || currentUser?.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN') || isMasterEmail;
+
+  // Navigation State - defaults to timetracking for collaborators before clock-in
+  const [activeTab, setActiveTab] = useState<MobileTab>(() => {
+    if (!isFullAdmin && isClockedIn === false) return 'timetracking';
+    return 'dashboard';
+  });
   const [activeSubView, setActiveSubView] = useState<MobileSubView>('none');
   const [isHamburgerOpen, setIsHamburgerOpen] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -315,10 +331,55 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
   const [activeTabCategory, setActiveTabCategory] = useState<string>('TODAS');
 
   // Permissions & Role Evaluation
-  const userRole = (currentUser?.role || '').toUpperCase();
-  const userJob = (currentUser?.job_title || '').toUpperCase();
-  const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com' || currentUser?.email === 'via.nicolau.sa@gmail.com';
-  const isFullAdmin = userRole === 'ADMIN' || currentUser?.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN') || isMasterEmail;
+  const userRoleConfig = useMemo(() => {
+    if (!roleConfigs || roleConfigs.length === 0) return null;
+    const targetJob = (currentUser?.job_title || currentUser?.role || '').toUpperCase();
+    return roleConfigs.find(rc => rc.name?.toUpperCase() === targetJob) || null;
+  }, [roleConfigs, currentUser]);
+
+  const assignedPerms = useMemo(() => {
+    const perms = new Set<string>();
+    if (currentUser?.permissions && Array.isArray(currentUser.permissions)) {
+      currentUser.permissions.forEach(p => perms.add(p));
+    }
+    if (userRoleConfig?.permissions && Array.isArray(userRoleConfig.permissions)) {
+      userRoleConfig.permissions.forEach(p => perms.add(p));
+    }
+    // Dual role rule: if user is urban driver and has an active/scheduled trip with no conductor, auto-grant conductor & operation-center
+    const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
+    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
+      const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
+      return isMy && !t.conductor_id && !t.conductor_name;
+    });
+    if (hasTripWithoutConductor) {
+      perms.add('conductor');
+      perms.add('operation-center');
+    }
+    return perms;
+  }, [currentUser, userRoleConfig, userRole, userJob, trips]);
+
+  const isTabAllowed = (tabId: string): boolean => {
+    if (tabId === 'about' || tabId === 'guided-tour') return true;
+    if (isFullAdmin) return true;
+    if (tabId === 'timetracking' || tabId === 'time-tracking') return true;
+    if (tabId === 'dashboard') {
+      return assignedPerms.has('dashboard');
+    }
+    if (tabId === 'operations' || tabId === 'operation-center') {
+      return assignedPerms.has('operation-center') || assignedPerms.has('operations') || assignedPerms.has('driver-urban') || assignedPerms.has('driver-road') || assignedPerms.has('conductor');
+    }
+    if (tabId === 'inspection' || tabId === 'inspections') {
+      return assignedPerms.has('inspections') || assignedPerms.has('inspection');
+    }
+    if (tabId === 'occurrences' || tabId === 'observations') {
+      return assignedPerms.has('observations') || assignedPerms.has('occurrences');
+    }
+    if (tabId === 'new-trip') {
+      return assignedPerms.has('schedule') || assignedPerms.has('operation-center');
+    }
+    return assignedPerms.has(tabId);
+  };
+
   const isFiscal = userRole === 'FISCAL' || userJob.includes('FISCAL');
   const isDriverOrConductor = userRole === 'DRIVER' || userRole === 'CONDUCTOR' || userJob.includes('MOTORISTA') || userJob.includes('COBRADOR') || userRole === 'URBANO' || userRole === 'RODOVIARIO';
   const isMechanic = userRole === 'MECHANIC' || userJob.includes('MECANICO') || userJob.includes('MECÂNICO');
@@ -327,6 +388,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
   const isDispatcher = userRole === 'DESPACHANTE' || userJob.includes('DESPACHANTE');
 
   const handleOpenFullView = (viewId: string) => {
+    if (!isFullAdmin && isClockedIn === false && viewId !== 'time-tracking' && viewId !== 'about') {
+      addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+      setActiveTab('timetracking');
+      setActiveFullView(null);
+      setIsHamburgerOpen(false);
+      return;
+    }
     setIsHamburgerOpen(false);
     setActiveFullView(viewId);
     if (onSelectFullView) {
@@ -334,7 +402,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
     }
   };
 
-  // Definition of ALL available system tabs with roles and actions (todas liberadas no mobile)
+  // Definition of ALL available system tabs with strict role permissions
   const allAvailableTabs = useMemo(() => {
     const list = [
       {
@@ -700,9 +768,37 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
     ];
 
     return list
+      .map(item => ({
+        ...item,
+        allowed: isTabAllowed(item.id)
+      }))
       .filter(item => item.allowed)
       .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
-  }, [currentUser, isFullAdmin, isFiscal, isDriverOrConductor, isMechanic, isRH, isTicketAgent, isDispatcher, isMasterEmail, userRole, onSelectFullView]);
+  }, [currentUser, userRoleConfig, assignedPerms, isFullAdmin, isMasterEmail, trips, onSelectFullView]);
+
+  // Auto-redirect if dashboard is active but not allowed for role or if employee is not clocked in yet
+  useEffect(() => {
+    if (!isFullAdmin && isClockedIn === false) {
+      if (activeTab !== 'timetracking') {
+        setActiveTab('timetracking');
+        setActiveFullView(null);
+      }
+      return;
+    }
+
+    if (allAvailableTabs.length > 0) {
+      const hasDashboard = allAvailableTabs.some(t => t.id === 'dashboard');
+      if (!isFullAdmin && !hasDashboard && activeTab === 'dashboard' && !activeFullView) {
+        const firstTab = allAvailableTabs[0];
+        if (firstTab) {
+          if (firstTab.id === 'operations') setActiveTab('operations');
+          else if (firstTab.id === 'inspection') setActiveTab('inspection');
+          else if (firstTab.id === 'timetracking') setActiveTab('timetracking');
+          else handleOpenFullView(firstTab.id);
+        }
+      }
+    }
+  }, [allAvailableTabs, activeTab, activeFullView, isFullAdmin, isClockedIn]);
 
   // User Customizable Quick Shortcuts State
   const defaultShortcuts = useMemo(() => {
@@ -965,6 +1061,31 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       NotificationService.sendLocalNotification('Ponto Registrado', {
         body: `Sua marcação de ${selectedPontoType} foi confirmada com sucesso às ${timeStr}.`
       });
+
+      // Notificar sistema sobre batida de ponto para liberar abas
+      window.dispatchEvent(new CustomEvent('vialivre-clocked-in', { detail: { userId: currentUser?.id } }));
+      window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
+
+      // Ao registrar o ponto, as demais abas são liberadas e abre a primeira aba associada ao cargo por ordem alfabética
+      const operationalTabs = allAvailableTabs.filter(t => t.id !== 'timetracking' && t.id !== 'about');
+      const firstTab = operationalTabs.length > 0 ? operationalTabs[0] : allAvailableTabs[0];
+      if (firstTab) {
+        if (firstTab.id === 'operations') {
+          setActiveTab('operations');
+          setActiveSubView('none');
+          setActiveFullView(null);
+        } else if (firstTab.id === 'dashboard') {
+          setActiveTab('dashboard');
+          setActiveSubView('none');
+          setActiveFullView(null);
+        } else if (firstTab.id === 'inspection') {
+          setActiveTab('inspection');
+          setActiveSubView('none');
+          setActiveFullView(null);
+        } else {
+          handleOpenFullView(firstTab.id);
+        }
+      }
     } catch {
       addToast('Erro ao registrar ponto eletrônico', 'error');
     } finally {
@@ -2553,22 +2674,52 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         id="tour-mobile-bottom-nav"
         className="w-full h-[70px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-zinc-800/90 flex items-center justify-around px-3 z-30 shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]"
       >
-        {/* Shortcut 1: Início */}
-        <button
-          onClick={() => { setActiveTab('dashboard'); setActiveSubView('none'); setActiveFullView(null); }}
-          className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
-            activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView
-              ? 'text-yellow-600 dark:text-yellow-400 font-black' 
-              : 'text-slate-500 dark:text-zinc-400 font-bold'
-          }`}
-        >
-          <div className={`p-1.5 rounded-xl transition-colors ${activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
-            <LayoutDashboard size={22} strokeWidth={activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView ? 2.5 : 2} />
-          </div>
-          <span className="text-[10px] uppercase tracking-wider mt-0.5">Início</span>
-        </button>
+        {/* Shortcut 1: Início ou Primeiro tab permitido */}
+        {(() => {
+          const hasDashboard = isFullAdmin || assignedPerms.has('dashboard');
+          const firstAllowed = allAvailableTabs[0];
+          const isSlotActive = hasDashboard 
+            ? activeTab === 'dashboard' && activeSubView === 'none' && !activeFullView
+            : (firstAllowed ? (activeTab === firstAllowed.id || activeFullView === firstAllowed.id) : false);
 
-        {/* Shortcut 2: Personalized Slot #1 (Reordered by user via Drag & Drop, default: Ponto) */}
+          const handleClick = () => {
+            if (!isFullAdmin && isClockedIn === false) {
+              addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+              setActiveTab('timetracking');
+              setActiveSubView('none');
+              setActiveFullView(null);
+              return;
+            }
+            if (hasDashboard) {
+              setActiveTab('dashboard');
+              setActiveSubView('none');
+              setActiveFullView(null);
+            } else if (firstAllowed) {
+              firstAllowed.action();
+            }
+          };
+
+          const label = hasDashboard ? 'Início' : (firstAllowed?.label?.split('/')[0]?.split('&')[0]?.trim() || 'Início');
+          const Icon = hasDashboard ? LayoutDashboard : (firstAllowed?.icon || LayoutDashboard);
+
+          return (
+            <button
+              onClick={handleClick}
+              className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
+                isSlotActive
+                  ? 'text-yellow-600 dark:text-yellow-400 font-black' 
+                  : 'text-slate-500 dark:text-zinc-400 font-bold'
+              }`}
+            >
+              <div className={`p-1.5 rounded-xl transition-colors ${isSlotActive ? 'bg-yellow-400/20' : 'bg-transparent'}`}>
+                <Icon size={22} strokeWidth={isSlotActive ? 2.5 : 2} />
+              </div>
+              <span className="text-[10px] uppercase tracking-wider mt-0.5 truncate max-w-[62px]">{label}</span>
+            </button>
+          );
+        })()}
+
+        {/* Shortcut 2: Personalized Slot #1 */}
         {(() => {
           const slot = bottomBarSlot1;
           const Icon = slot.icon;
@@ -2576,6 +2727,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           return (
             <button
               onClick={() => {
+                if (!isFullAdmin && isClockedIn === false && slot.id !== 'timetracking' && slot.id !== 'about') {
+                  addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+                  setActiveTab('timetracking');
+                  setActiveSubView('none');
+                  setActiveFullView(null);
+                  return;
+                }
                 slot.action();
               }}
               className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
@@ -2597,7 +2755,18 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
         {/* Shortcut 3: Central Elevated Primary Action Button - OPERAÇÃO / VIAGEM */}
         <button
-          onClick={() => { setActiveTab('operations'); setActiveSubView('none'); setActiveFullView(null); }}
+          onClick={() => {
+            if (!isFullAdmin && isClockedIn === false) {
+              addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+              setActiveTab('timetracking');
+              setActiveSubView('none');
+              setActiveFullView(null);
+              return;
+            }
+            setActiveTab('operations');
+            setActiveSubView('none');
+            setActiveFullView(null);
+          }}
           className="flex flex-col items-center justify-center -translate-y-2.5 z-40 active:scale-95 transition-all group"
           title="Operação e Viagens"
         >
@@ -2609,7 +2778,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           </span>
         </button>
 
-        {/* Shortcut 4: Personalized Slot #2 (Reordered by user via Drag & Drop, default: Vistoria) */}
+        {/* Shortcut 4: Personalized Slot #2 */}
         {(() => {
           const slot = bottomBarSlot2;
           const Icon = slot.icon;
@@ -2617,6 +2786,13 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
           return (
             <button
               onClick={() => {
+                if (!isFullAdmin && isClockedIn === false && slot.id !== 'timetracking' && slot.id !== 'about') {
+                  addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+                  setActiveTab('timetracking');
+                  setActiveSubView('none');
+                  setActiveFullView(null);
+                  return;
+                }
                 slot.action();
               }}
               className={`flex flex-col items-center justify-center min-w-[56px] min-h-[50px] rounded-2xl transition-all active:scale-90 ${
@@ -2789,14 +2965,29 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                 })
                 .map((tab) => {
                   const Icon = tab.icon;
+                  const isLocked = !isFullAdmin && isClockedIn === false && tab.id !== 'timetracking' && tab.id !== 'about';
+
                   return (
                     <button
                       key={tab.id}
-                      onClick={tab.action}
-                      className="w-full min-h-[52px] p-3 rounded-2xl flex items-center justify-between bg-slate-50/80 dark:bg-zinc-900/80 hover:bg-yellow-400/15 dark:hover:bg-yellow-400/15 border border-slate-200/80 dark:border-zinc-800 active:scale-98 transition-all group"
+                      onClick={() => {
+                        if (isLocked) {
+                          addToast('Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', 'warning');
+                          setActiveTab('timetracking');
+                          setActiveFullView(null);
+                          setIsHamburgerOpen(false);
+                          return;
+                        }
+                        tab.action();
+                      }}
+                      className={`w-full min-h-[52px] p-3 rounded-2xl flex items-center justify-between border active:scale-98 transition-all group ${
+                        isLocked
+                          ? 'opacity-40 grayscale cursor-not-allowed bg-slate-100/50 dark:bg-zinc-900/50 border-slate-200/50 dark:border-zinc-800/50'
+                          : 'bg-slate-50/80 dark:bg-zinc-900/80 hover:bg-yellow-400/15 dark:hover:bg-yellow-400/15 border-slate-200/80 dark:border-zinc-800'
+                      }`}
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${tab.color}`}>
+                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${isLocked ? 'bg-slate-200 dark:bg-zinc-800 text-slate-400' : tab.color}`}>
                           <Icon size={18} />
                         </div>
                         <div className="min-w-0 text-left">
@@ -2811,7 +3002,11 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
                           <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate">{tab.description}</p>
                         </div>
                       </div>
-                      <ChevronRight size={16} className="text-slate-400 group-hover:text-yellow-500 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                      {isLocked ? (
+                        <Lock size={15} className="text-slate-400 shrink-0 ml-2" />
+                      ) : (
+                        <ChevronRight size={16} className="text-slate-400 group-hover:text-yellow-500 group-hover:translate-x-0.5 transition-all shrink-0 ml-2" />
+                      )}
                     </button>
                   );
                 })}

@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { LayoutDashboard, Map, Calendar, LogOut, UsersRound, Building2, ShieldCheck, Bus, ClipboardList, MapPin, UserCircle, X, Menu, Bell, Sun, Moon, BusFront, BarChart, Wrench, Ticket, ClipboardCheck, Settings2, Timer, Banknote, Briefcase, HelpCircle, Headphones, Sparkles, ShieldAlert, Key, CreditCard, PlayCircle, DollarSign, Activity, Palette, Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle2, Pipette, Check, Layers, ChevronRight, Search, ArrowRight, User as UserIcon, AlertCircle, Pencil, Bot, Smartphone } from 'lucide-react';
+import { LayoutDashboard, Map, Calendar, LogOut, UsersRound, Building2, ShieldCheck, Bus, ClipboardList, MapPin, UserCircle, X, Menu, Bell, Sun, Moon, BusFront, BarChart, Wrench, Ticket, ClipboardCheck, Settings2, Timer, Banknote, Briefcase, HelpCircle, Headphones, Sparkles, ShieldAlert, Key, CreditCard, PlayCircle, DollarSign, Activity, Palette, Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle2, Pipette, Check, Layers, ChevronRight, Search, ArrowRight, User as UserIcon, AlertCircle, Pencil, Bot, Smartphone, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, User, ThemeMode, RoleConfig, SystemSettings, BusRoute, Vehicle, Notice, Trip, ImpCard } from '../types';
 import { db, DbStatus, supabase } from '../services/database';
@@ -36,6 +36,7 @@ interface SidebarProps {
   onEditProfile?: (user: User) => void;
   onToggleMobileMode?: () => void;
   isMobileMode?: boolean;
+  isClockedIn?: boolean | null;
 }
 
 const getDisplaySystemName = (settings?: SystemSettings | null): string => {
@@ -87,7 +88,8 @@ const Sidebar: React.FC<SidebarProps> = ({
   trips = [],
   onEditProfile,
   onToggleMobileMode,
-  isMobileMode = false
+  isMobileMode = false,
+  isClockedIn = null
 }) => {
   const [showThemePopup, setShowThemePopup] = React.useState(false);
   const [showAiModal, setShowAiModal] = useState(false);
@@ -259,110 +261,67 @@ const Sidebar: React.FC<SidebarProps> = ({
   ];
 
   const filteredItems = useMemo(() => {
+    const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com' || currentUser?.email === 'via.nicolau.sa@gmail.com';
+    const userRole = (currentUser?.role || '').toUpperCase();
+    const userJob = (currentUser?.job_title || '').toUpperCase();
+    const isFullAdmin = userRole === 'ADMIN' || currentUser?.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN') || isMasterEmail;
+
+    // Gather explicitly configured permissions for the user/cargo
+    const assignedPerms = new Set<string>();
+    if (currentUser?.permissions && Array.isArray(currentUser.permissions)) {
+      currentUser.permissions.forEach(p => assignedPerms.add(p));
+    }
+    if (userRoleConfig?.permissions && Array.isArray(userRoleConfig.permissions)) {
+      userRoleConfig.permissions.forEach(p => assignedPerms.add(p));
+    }
+
+    // Dual role rule: if user is urban driver and has an active/scheduled trip with no conductor, auto-grant conductor & operation-center
+    const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
+    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
+      const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
+      return isMy && !t.conductor_id && !t.conductor_name;
+    });
+    if (hasTripWithoutConductor) {
+      assignedPerms.add('conductor');
+      assignedPerms.add('operation-center');
+    }
+
     return allMenuItems.filter(item => {
+      // Utilities always available
       if (item.id === 'about' || item.id === 'guided-tour' || item.id === 'mobile-view') return true;
+      if (item.id === 'operational-ai') return isFullAdmin || assignedPerms.has('operational-ai');
 
-      const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com';
-
-      // Case-insensitive role and job title check
-      const userRole = (currentUser?.role || '').toUpperCase();
-      const userJob = (currentUser?.job_title || '').toUpperCase();
-      const isFullAdmin = userRole === 'ADMIN' || currentUser?.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN');
-      const isFiscal = userRole === 'FISCAL' || userJob.includes('FISCAL');
-      const isOperationEligible = 
-        isFullAdmin || 
-        isFiscal ||
-        userRole === 'DRIVER' || 
-        userRole === 'CONDUCTOR' ||
-        userJob.includes('MOTORISTA') || 
-        userJob.includes('COBRADOR');
-
-      if (item.id === 'operation-center') {
-        return isOperationEligible;
-      }
-
+      // Master subscription controls
       if (item.id === 'subscriptions') {
-        return isFullAdmin || isMasterEmail || currentUser?.email === 'via.nicolau.sa@gmail.com';
-      }
-
-      if (item.id === 'dashboard') {
         return isFullAdmin;
       }
-
       if (item.id === 'my-subscription') {
         return isFullAdmin;
       }
 
-      if (isFullAdmin) return true;
-
-      // Always allow time-tracking, notices, sac, notifications, work-with-us, about and operational-ai for all logged-in workers
-      if (['time-tracking', 'notices', 'sac', 'notifications', 'work-with-us', 'about', 'operational-ai'].includes(item.id)) {
-        return true;
+      // Painel Geral (dashboard) must NEVER appear for roles without it explicitly assigned!
+      if (item.id === 'dashboard') {
+        return isFullAdmin || assignedPerms.has('dashboard');
       }
 
-      // Check role-based access booleans
+      if (isFullAdmin) return true;
+
+      // Base tab: Ponto Eletrônico is always required for all employees to clock in
+      if (item.id === 'time-tracking') return true;
+
+      // Check role config boolean access key if configured
       if (userRoleConfig && (item as any).accessKey) {
         const key = (item as any).accessKey;
         if ((userRoleConfig as any)[key] === true) return true;
         if ((userRoleConfig as any)[key] === false) return false;
       }
 
-      if (currentUser?.permissions && currentUser.permissions.length > 0) {
-        if (currentUser.permissions.includes(item.id as ViewState)) return true;
-      }
-
-      if (userRoleConfig?.permissions && userRoleConfig.permissions.length > 0) {
-        if (userRoleConfig.permissions.includes(item.id as ViewState)) return true;
-      }
-
-      // Fallback to role-based logic
-      const legacyRoles: Record<string, string[]> = {
-        'operation-center': ['ADMIN', 'DRIVER', 'CONDUCTOR', 'FISCAL', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'dashboard': ['ADMIN'],
-        'management': ['ADMIN', 'RH'],
-        'monitoring': ['ADMIN', 'FISCAL', 'DESPACHANTE'],
-        'reports-view': ['ADMIN', 'FISCAL', 'RH'],
-        'time-tracking': ['ADMIN', 'DRIVER', 'CONDUCTOR', 'MECHANIC', 'FISCAL', 'TICKET_AGENT', 'RH', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'payroll': ['ADMIN', 'RH'],
-        'ticketing': ['ADMIN', 'TICKET_AGENT', 'CONDUCTOR', 'Cobrador', 'COBRADOR', 'Agente de Guichê'],
-        'ticketing-config': ['ADMIN'],
-        'notices': ['ADMIN', 'RH', 'DRIVER', 'CONDUCTOR', 'FISCAL', 'MECHANIC', 'TICKET_AGENT', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'observations': ['ADMIN', 'MECHANIC', 'DRIVER', 'CONDUCTOR', 'FISCAL', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'inspections': ['ADMIN', 'MECHANIC', 'FISCAL', 'DRIVER', 'CONDUCTOR', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'maintenance': ['ADMIN', 'MECHANIC'],
-        'companies': ['ADMIN'],
-        'cities': ['ADMIN'],
-        'bus-stations': ['ADMIN'],
-        'routes': ['ADMIN', 'FISCAL'],
-        'schedule': ['ADMIN', 'FISCAL', 'DRIVER', 'CONDUCTOR', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'dispatcher': ['ADMIN', 'FISCAL', 'DESPACHANTE'],
-        'shifts': ['ADMIN', 'RH'],
-        'vehicles': ['ADMIN', 'MECHANIC', 'FISCAL'],
-        'drivers': ['ADMIN', 'RH'],
-        'recruitment': ['ADMIN', 'RH'],
-        'skins': ['ADMIN', 'FISCAL', 'DRIVER', 'CONDUCTOR', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'users': ['ADMIN'],
-        'sac': ['ADMIN', 'FISCAL', 'TICKET_AGENT', 'RH', 'DRIVER', 'CONDUCTOR', 'MECHANIC', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'work-with-us': ['ADMIN', 'RH', 'FISCAL', 'TICKET_AGENT', 'DRIVER', 'CONDUCTOR', 'MECHANIC', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'notifications': ['ADMIN', 'RH', 'FISCAL', 'MECHANIC', 'TICKET_AGENT', 'DRIVER', 'CONDUCTOR', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'],
-        'about': ['ADMIN', 'RH', 'FISCAL', 'MECHANIC', 'TICKET_AGENT', 'DRIVER', 'CONDUCTOR', 'PASSENGER']
-      };
-
-      return legacyRoles[item.id]?.some(r => {
-        const rUpper = r.toUpperCase();
-        return rUpper === userRole || userRole.includes(rUpper) || userJob.includes(rUpper);
-      }) || false;
+      // Strictly allow ONLY tabs associated with this cargo/user permissions!
+      return assignedPerms.has(item.id);
     }).sort((a, b) => {
-      // Custom sort: dashboard first, then operation-center, about last, others alphabetical
-      if (a.id === 'dashboard') return -1;
-      if (b.id === 'dashboard') return 1;
-      if (a.id === 'operation-center') return -1;
-      if (b.id === 'operation-center') return 1;
-      if (a.id === 'about') return 1;
-      if (b.id === 'about') return -1;
-      return a.label.localeCompare(b.label);
+      return a.label.localeCompare(b.label, 'pt-BR');
     });
-  }, [currentUser, userRoleConfig]);
+  }, [currentUser, userRoleConfig, trips]);
 
   const query = (activeSearch || '').trim().toLowerCase();
 
@@ -936,10 +895,21 @@ const Sidebar: React.FC<SidebarProps> = ({
                 {filteredItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = currentView === item.id;
+                  const isUserFullAdmin = (currentUser?.role || '').toUpperCase() === 'ADMIN' || currentUser?.is_full_admin || (currentUser?.job_title || '').toUpperCase().includes('ADMINISTRADOR') || (currentUser?.job_title || '').toUpperCase().includes('ADMIN');
+                  const isLocked = !isUserFullAdmin && isClockedIn === false && item.id !== 'time-tracking' && item.id !== 'about';
+
                   return (
                     <button 
                       key={item.id} 
                       onClick={() => { 
+                        if (isLocked) {
+                          window.dispatchEvent(new CustomEvent('vialivre-toast', { 
+                            detail: { message: 'Bata o ponto no Ponto Eletrônico primeiro para liberar as abas de trabalho!', type: 'warning' } 
+                          }));
+                          onChangeView('time-tracking');
+                          onClose();
+                          return;
+                        }
                         if (item.id === 'guided-tour') {
                           onOpenGuidedTour?.();
                           onClose();
@@ -955,22 +925,28 @@ const Sidebar: React.FC<SidebarProps> = ({
                         }
                       }} 
                       className={`w-full flex items-center justify-between px-4 py-3 sm:py-3.5 rounded-2xl text-[10px] font-black uppercase tracking-wider transition-all group ${
-                        isActive 
-                          ? 'bg-yellow-400 text-slate-950 shadow-md ring-2 ring-yellow-400/40' 
-                          : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-100/80 dark:hover:bg-zinc-900/80 hover:text-slate-950 dark:hover:text-white'
+                        isLocked
+                          ? 'opacity-40 grayscale cursor-not-allowed hover:bg-slate-100/40 dark:hover:bg-zinc-900/40'
+                          : isActive 
+                            ? 'bg-yellow-400 text-slate-950 shadow-md ring-2 ring-yellow-400/40' 
+                            : 'text-slate-700 dark:text-zinc-300 hover:bg-slate-100/80 dark:hover:bg-zinc-900/80 hover:text-slate-950 dark:hover:text-white'
                       }`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div className={`w-7 h-7 rounded-xl flex items-center justify-center shrink-0 transition-colors ${
-                          isActive ? 'bg-slate-950 text-yellow-400' : 'bg-slate-100 dark:bg-zinc-800/80 text-slate-600 dark:text-zinc-400 group-hover:bg-yellow-400/20 group-hover:text-yellow-600'
+                          isLocked
+                            ? 'bg-slate-200 dark:bg-zinc-800 text-slate-400'
+                            : isActive ? 'bg-slate-950 text-yellow-400' : 'bg-slate-100 dark:bg-zinc-800/80 text-slate-600 dark:text-zinc-400 group-hover:bg-yellow-400/20 group-hover:text-yellow-600'
                         }`}>
                           <Icon size={16} />
                         </div>
                         <span className="truncate">{item.label}</span>
                       </div>
-                      {isActive && (
+                      {isLocked ? (
+                        <Lock size={14} className="text-slate-400 shrink-0" />
+                      ) : isActive ? (
                         <ChevronRight size={14} className="text-slate-950 shrink-0" />
-                      )}
+                      ) : null}
                     </button>
                   );
                 })}

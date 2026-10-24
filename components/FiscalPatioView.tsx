@@ -549,6 +549,67 @@ export const FiscalPatioView: React.FC<FiscalPatioViewProps> = ({
                 }
               }
 
+              // Cálculo de pontualidade: atraso ou adiantamento em relação ao horário programado
+              const calcPunctuality = () => {
+                const sch = trip.departure_time || '00:00';
+                const [sH, sM] = sch.split(':').map(Number);
+                const scheduledMin = (sH || 0) * 60 + (sM || 0);
+
+                if (trip.actual_start_time) {
+                  const [aH, aM] = trip.actual_start_time.split(':').map(Number);
+                  const actualMin = (aH || 0) * 60 + (aM || 0);
+                  const diff = actualMin - scheduledMin;
+
+                  if (diff > 3) {
+                    return {
+                      label: `Atrasada (+${diff}m)`,
+                      detail: `Partida real: ${trip.actual_start_time}`,
+                      badgeColor: 'bg-red-500 text-white border-red-600',
+                      isDelay: true
+                    };
+                  } else if (diff < -3) {
+                    return {
+                      label: `Adiantada (-${Math.abs(diff)}m)`,
+                      detail: `Partida real: ${trip.actual_start_time}`,
+                      badgeColor: 'bg-blue-600 text-white border-blue-700',
+                      isDelay: false
+                    };
+                  } else {
+                    return {
+                      label: 'Pontual',
+                      detail: `Partida real: ${trip.actual_start_time}`,
+                      badgeColor: 'bg-emerald-600 text-white border-emerald-700',
+                      isDelay: false
+                    };
+                  }
+                }
+
+                // Viagem ainda não iniciada: calcular se já está em atraso em relação ao relógio atual
+                const now = new Date();
+                const currentMin = now.getHours() * 60 + now.getMinutes();
+                const pendingDiff = currentMin - scheduledMin;
+
+                if (trip.status === 'Agendada' || trip.status === 'Atrasada') {
+                  if (pendingDiff > 3) {
+                    return {
+                      label: `Partida Atrasada (+${pendingDiff}m)`,
+                      detail: `Deveria ter partido às ${sch}`,
+                      badgeColor: 'bg-amber-500 text-slate-950 font-black animate-pulse border-amber-600',
+                      isDelay: true
+                    };
+                  }
+                }
+
+                return {
+                  label: 'No Horário Previsto',
+                  detail: `Partida: ${sch}`,
+                  badgeColor: 'bg-slate-100 dark:bg-zinc-800 text-slate-600 dark:text-zinc-300 border-slate-200 dark:border-zinc-700',
+                  isDelay: false
+                };
+              };
+
+              const punctuality = calcPunctuality();
+
               return (
                 <div 
                   key={trip.id}
@@ -567,7 +628,7 @@ export const FiscalPatioView: React.FC<FiscalPatioViewProps> = ({
                         <BusFront size={24} />
                       </div>
                       <div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <span className="text-xs font-black text-slate-900 dark:text-white tracking-wider bg-slate-100 dark:bg-zinc-800 px-2.5 py-0.5 rounded-lg">
                             {route?.prefixo_linha || 'LINHA'}
                           </span>
@@ -585,16 +646,26 @@ export const FiscalPatioView: React.FC<FiscalPatioViewProps> = ({
                           }`}>
                             {trip.status}
                           </span>
+                          
+                          {/* Badge de Atraso / Adiantamento / Pontualidade */}
+                          <span className={`px-2.5 py-0.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm ${punctuality.badgeColor}`}>
+                            {punctuality.label}
+                          </span>
                         </div>
                         <h4 className="text-lg font-black font-mono tracking-tight text-slate-900 dark:text-white uppercase mt-1">
                           {route?.origin || 'Origem'} <ArrowRight className="inline mx-1.5 text-yellow-500" size={16} /> {route?.destination || 'Destino'}
                         </h4>
+                        {punctuality.detail && (
+                          <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+                            {punctuality.detail}
+                          </p>
+                        )}
                       </div>
                     </div>
 
                     <div className="flex items-center gap-4 self-end sm:self-auto">
                       <div className="text-right">
-                        <p className="text-[9px] font-black text-slate-400 uppercase">Horário de Partida</p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase">Horário Programado</p>
                         <p className="text-lg font-black text-slate-900 dark:text-white flex items-center justify-end gap-1">
                           <Clock size={14} className="text-yellow-500" />
                           {trip.departure_time || '--:--'}

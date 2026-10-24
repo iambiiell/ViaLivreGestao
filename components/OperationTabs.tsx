@@ -20,63 +20,80 @@ interface OperationTabsProps {
 const OperationTabs: React.FC<OperationTabsProps> = (props) => {
   const { currentUser } = props;
   
-  const isAdmin = currentUser?.role === 'ADMIN' || (currentUser?.job_title || '').toUpperCase().includes('ADMINISTRADOR') || currentUser?.is_full_admin;
+  const isAdmin = currentUser?.role === 'ADMIN' || (currentUser?.job_title || '').toUpperCase().includes('ADMINISTRADOR') || (currentUser?.job_title || '').toUpperCase().includes('ADMIN') || currentUser?.is_full_admin;
   const isFiscal = (currentUser?.role || '').toUpperCase() === 'FISCAL' || (currentUser?.job_title || '').toUpperCase().includes('FISCAL');
-  const isDespachante = (currentUser?.role || '').toUpperCase() === 'DESPACHANTE' || (currentUser?.job_title || '').toUpperCase().includes('DESPACHANTE');
   
   const userBaseRole = useMemo(() => {
     const role = (currentUser?.role || '').toUpperCase();
     const title = (currentUser?.job_title || '').toUpperCase();
 
     if (isFiscal) return 'FISCAL';
-    if (title.includes('RODOVIÁRIO') || title.includes('RODOVIARIO')) return 'RODOVIARIO';
-    if (title.includes('COBRADOR')) return 'COBRADOR';
-    if (title.includes('URBANO')) return 'URBANO';
-    
-    if (role.includes('RODOVIARIO')) return 'RODOVIARIO';
-    if (role.includes('COBRADOR')) return 'COBRADOR';
-    if (role.includes('URBANO')) return 'URBANO';
-
+    if (title.includes('RODOVIÁRIO') || title.includes('RODOVIARIO') || role.includes('RODOVIARIO')) return 'RODOVIARIO';
+    if (title.includes('COBRADOR') || role.includes('COBRADOR')) return 'COBRADOR';
+    if (title.includes('URBANO') || role.includes('URBANO') || role === 'DRIVER') return 'URBANO';
     return 'URBANO';
   }, [currentUser, isFiscal]);
 
-  const [activeTab, setActiveTab] = useState<'URBANO' | 'RODOVIARIO' | 'COBRADOR' | 'OVERVIEW' | 'FISCAL'>(
-    props.initialTab || (isFiscal ? 'FISCAL' : ((isAdmin || isDespachante) ? 'OVERVIEW' : (userBaseRole as any)))
-  );
+  // Dual role check: If urban driver is assigned to a trip with no conductor, conductor tab must appear automatically
+  const hasUrbanTripWithoutConductor = useMemo(() => {
+    if (userBaseRole !== 'URBANO') return false;
+    const currentId = currentUser?.id;
+    const currentName = (currentUser?.full_name || currentUser?.name || '').trim().toLowerCase();
+    return props.trips.some(t => {
+      const isMyTrip = (t.driver_id && t.driver_id === currentId) || (t.driver_name && t.driver_name.trim().toLowerCase() === currentName);
+      const hasNoConductor = !t.conductor_id && !t.conductor_name;
+      return isMyTrip && hasNoConductor;
+    });
+  }, [userBaseRole, props.trips, currentUser]);
 
   const availableTabs = useMemo(() => {
-    const tabs = [];
-    const hasMonitoringPermission = currentUser?.permissions?.includes('monitoring');
-    const isSupervisor = isAdmin || isFiscal || isDespachante || hasMonitoringPermission;
+    const tabs: Array<{ id: 'URBANO' | 'RODOVIARIO' | 'COBRADOR' | 'OVERVIEW' | 'FISCAL'; label: string; icon: any }> = [];
 
-    if (isFiscal || isSupervisor) {
+    // Fiscalização de Pátio e Painel de Supervisão devem aparecer APENAS para o Fiscal e Administrador
+    if (isAdmin || isFiscal) {
       tabs.push({ id: 'FISCAL', label: 'Fiscalização de Pátio', icon: ShieldCheck });
+      tabs.push({ id: 'OVERVIEW', label: 'Painel de Supervisão', icon: PlayCircle });
     }
-    if (isSupervisor && !isFiscal) {
-      tabs.push({ id: 'OVERVIEW', label: 'Monitoramento', icon: PlayCircle });
-    }
-    if (isSupervisor || userBaseRole === 'URBANO') {
-      tabs.push({ id: 'URBANO', label: 'Motorista Urbano', icon: BusFront });
-    }
-    if (isSupervisor || userBaseRole === 'RODOVIARIO') {
-      tabs.push({ id: 'RODOVIARIO', label: 'Motorista Rodoviário', icon: Ticket });
-    }
-    if (isSupervisor || userBaseRole === 'COBRADOR') {
-      tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
-    }
-    return tabs.sort((a, b) => {
-      if (a.id === 'FISCAL') return -1;
-      if (b.id === 'FISCAL') return 1;
-      return a.label.localeCompare(b.label);
-    });
-  }, [currentUser, userBaseRole, isAdmin, isFiscal, isDespachante]);
 
-  // If user role changed and current tab is not available, switch
-  useEffect(() => {
-    if (!availableTabs.find(t => t.id === activeTab)) {
-      setActiveTab(availableTabs[0]?.id as any || (isFiscal ? 'FISCAL' : 'URBANO'));
+    if (isAdmin) {
+      tabs.push({ id: 'URBANO', label: 'Motorista Urbano', icon: BusFront });
+      tabs.push({ id: 'RODOVIARIO', label: 'Motorista Rodoviário', icon: Ticket });
+      tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
+    } else if (!isFiscal) {
+      // Para cargos específicos, mostrar estritamente o cargo cadastrado
+      if (userBaseRole === 'URBANO') {
+        tabs.push({ id: 'URBANO', label: 'Motorista Urbano', icon: BusFront });
+        // Se associado a rota sem cobrador, a aba de cobrador deve aparecer automaticamente
+        if (hasUrbanTripWithoutConductor) {
+          tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
+        }
+      } else if (userBaseRole === 'RODOVIARIO') {
+        tabs.push({ id: 'RODOVIARIO', label: 'Motorista Rodoviário', icon: Ticket });
+      } else if (userBaseRole === 'COBRADOR') {
+        tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
+      }
     }
-  }, [availableTabs, activeTab, isFiscal]);
+
+    return tabs;
+  }, [isAdmin, isFiscal, userBaseRole, hasUrbanTripWithoutConductor]);
+
+  const [activeTab, setActiveTab] = useState<'URBANO' | 'RODOVIARIO' | 'COBRADOR' | 'OVERVIEW' | 'FISCAL'>(() => {
+    if (props.initialTab && (isAdmin || (isFiscal && (props.initialTab === 'FISCAL' || props.initialTab === 'OVERVIEW')))) {
+      return props.initialTab;
+    }
+    if (isFiscal) return 'FISCAL';
+    if (isAdmin) return 'OVERVIEW';
+    if (userBaseRole === 'RODOVIARIO') return 'RODOVIARIO';
+    if (userBaseRole === 'COBRADOR') return 'COBRADOR';
+    return 'URBANO';
+  });
+
+  // If activeTab is not in availableTabs, switch to the first available tab
+  useEffect(() => {
+    if (availableTabs.length > 0 && !availableTabs.some(t => t.id === activeTab)) {
+      setActiveTab(availableTabs[0].id);
+    }
+  }, [availableTabs, activeTab]);
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -148,7 +165,7 @@ const OperationTabs: React.FC<OperationTabsProps> = (props) => {
                 <DriverView 
                   {...props} 
                   forcedRole={activeTab as any} 
-                  isSupervision={isAdmin || isFiscal || isDespachante}
+                  isSupervision={isAdmin || isFiscal}
                 />
             )}
           </motion.div>

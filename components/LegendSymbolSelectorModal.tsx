@@ -31,15 +31,19 @@ export interface LegendSymbolSelectorModalProps {
     symbol: string; 
     text: string;
     selectedTimesByDay: Record<OperationDayKey, string[]>;
+    originalSymbol?: string;
   }) => void;
   onDelete?: () => void;
+  onDeleteFromTargetTime?: () => void;
   initialSymbol?: string;
   initialText?: string;
+  originalSymbol?: string;
   targetTime?: string;
   targetDay?: OperationDayKey;
   availableTimesByDay?: Record<OperationDayKey, string[]>;
   initialSelectedTimesByDay?: Partial<Record<OperationDayKey, string[]>>;
   existingLegends?: { symbol: string; text: string }[];
+  symbolTimesMap?: Record<string, Record<OperationDayKey, string[]>>;
   title?: string;
 }
 
@@ -139,13 +143,16 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
   onClose,
   onSave,
   onDelete,
+  onDeleteFromTargetTime,
   initialSymbol = '*',
   initialText = '',
+  originalSymbol,
   targetTime,
   targetDay = 'weekdays',
   availableTimesByDay = { weekdays: [], saturday: [], sunday: [] },
   initialSelectedTimesByDay,
   existingLegends = [],
+  symbolTimesMap = {},
   title = 'Identificação do Símbolo da Legenda'
 }) => {
   const [symbol, setSymbol] = useState(initialSymbol);
@@ -167,8 +174,8 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
 
   useEffect(() => {
     if (isOpen) {
-      setSymbol(initialSymbol || '*');
-      setText(initialText || '');
+      const activeSym = initialSymbol || '*';
+      setSymbol(activeSym);
       setCurrentDayTab(targetDay);
 
       // Prepara seleção inicial
@@ -178,13 +185,41 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
         sunday: initialSelectedTimesByDay?.sunday ? [...initialSelectedTimesByDay.sunday] : []
       };
 
+      // Se temos horários já mapeados para o símbolo inicial, mescla-os
+      const cleanSymKey = activeSym.trim().toLowerCase();
+      if (cleanSymKey && cleanSymKey !== '*' && symbolTimesMap[cleanSymKey]) {
+        const mapped = symbolTimesMap[cleanSymKey];
+        (['weekdays', 'saturday', 'sunday'] as OperationDayKey[]).forEach(d => {
+          if (mapped[d]) {
+            mapped[d].forEach(t => {
+              if (!initialMap[d].includes(t)) initialMap[d].push(t);
+            });
+            initialMap[d].sort((a, b) => a.localeCompare(b));
+          }
+        });
+      }
+
+      // Se um horário alvo específico foi acionado, assegura que ele está incluído
       if (targetTime && targetDay) {
         if (!initialMap[targetDay].includes(targetTime)) {
           initialMap[targetDay].push(targetTime);
+          initialMap[targetDay].sort((a, b) => a.localeCompare(b));
         }
       }
 
       setSelectedTimesByDay(initialMap);
+
+      // Sincroniza descrição inicial caso vazia
+      if (initialText) {
+        setText(initialText);
+      } else {
+        const matched = existingLegends.find(l => l.symbol.trim().toLowerCase() === cleanSymKey && l.text && l.text.trim());
+        if (matched) {
+          setText(matched.text.trim());
+        } else {
+          setText('');
+        }
+      }
 
       // Define abas ativas
       const activeDays: OperationDayKey[] = [];
@@ -194,7 +229,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
       if (activeDays.length === 0) activeDays.push('weekdays', 'saturday');
       setActiveDayTabs(activeDays);
     }
-  }, [isOpen, initialSymbol, initialText, targetTime, targetDay, initialSelectedTimesByDay]);
+  }, [isOpen, initialSymbol, initialText, targetTime, targetDay, initialSelectedTimesByDay, symbolTimesMap, existingLegends]);
 
   // Contagem total de horários selecionados em todos os dias
   const totalSelectedTimesCount = useMemo(() => {
@@ -264,7 +299,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
     setCustomInputTime('');
   };
 
-  // Sincroniza a descrição do símbolo ao selecionar um símbolo
+  // Sincroniza a descrição do símbolo e os horários já vinculados ao selecionar um símbolo
   const handleSelectSymbol = (newSym: string, defaultTextSuggestion?: string) => {
     setSymbol(newSym);
 
@@ -273,10 +308,7 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
     
     if (matched) {
       setText(matched.text.trim());
-      return;
-    }
-
-    if (!text || text.trim().length === 0) {
+    } else if (!text || text.trim().length === 0) {
       if (defaultTextSuggestion) {
         setText(defaultTextSuggestion);
       } else {
@@ -289,6 +321,31 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
         }
       }
     }
+
+    // Mescla automaticamente os horários já vinculados a este símbolo para não excluí-los acidentalmente
+    const mapped = symbolTimesMap?.[cleanSym];
+    if (mapped) {
+      setSelectedTimesByDay(prev => {
+        const merged: Record<OperationDayKey, string[]> = {
+          weekdays: Array.from(new Set([...(prev.weekdays || []), ...(mapped.weekdays || [])])).sort((a, b) => a.localeCompare(b)),
+          saturday: Array.from(new Set([...(prev.saturday || []), ...(mapped.saturday || [])])).sort((a, b) => a.localeCompare(b)),
+          sunday: Array.from(new Set([...(prev.sunday || []), ...(mapped.sunday || [])])).sort((a, b) => a.localeCompare(b))
+        };
+        if (targetTime && targetDay && !merged[targetDay].includes(targetTime)) {
+          merged[targetDay].push(targetTime);
+          merged[targetDay].sort((a, b) => a.localeCompare(b));
+        }
+        return merged;
+      });
+
+      setActiveDayTabs(prev => {
+        const set = new Set(prev);
+        if (mapped.weekdays && mapped.weekdays.length > 0) set.add('weekdays');
+        if (mapped.saturday && mapped.saturday.length > 0) set.add('saturday');
+        if (mapped.sunday && mapped.sunday.length > 0) set.add('sunday');
+        return Array.from(set);
+      });
+    }
   };
 
   const handleManualSymbolChange = (val: string) => {
@@ -298,6 +355,21 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
       const matched = existingLegends.find(l => l.symbol.trim().toLowerCase() === cleanSym && l.text && l.text.trim());
       if (matched) {
         setText(matched.text.trim());
+      }
+      const mapped = symbolTimesMap?.[cleanSym];
+      if (mapped) {
+        setSelectedTimesByDay(prev => {
+          const merged: Record<OperationDayKey, string[]> = {
+            weekdays: Array.from(new Set([...(prev.weekdays || []), ...(mapped.weekdays || [])])).sort((a, b) => a.localeCompare(b)),
+            saturday: Array.from(new Set([...(prev.saturday || []), ...(mapped.saturday || [])])).sort((a, b) => a.localeCompare(b)),
+            sunday: Array.from(new Set([...(prev.sunday || []), ...(mapped.sunday || [])])).sort((a, b) => a.localeCompare(b))
+          };
+          if (targetTime && targetDay && !merged[targetDay].includes(targetTime)) {
+            merged[targetDay].push(targetTime);
+            merged[targetDay].sort((a, b) => a.localeCompare(b));
+          }
+          return merged;
+        });
       }
     }
   };
@@ -310,7 +382,8 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
     onSave({ 
       symbol: finalSym, 
       text: finalText,
-      selectedTimesByDay
+      selectedTimesByDay,
+      originalSymbol: originalSymbol || initialSymbol
     });
     onClose();
   };
@@ -563,10 +636,51 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
               </span>
             </div>
 
+            {/* Seção: Legendas já existentes no itinerário para reutilização imediata */}
+            {existingLegends && existingLegends.length > 0 && (
+              <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-zinc-700">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black uppercase text-amber-600 dark:text-amber-400 block tracking-wider">
+                    Legendas Já Criadas no Itinerário (Clique para Reutilizar):
+                  </span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase">
+                    Não precisa redigitar a descrição
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-32 overflow-y-auto p-1 custom-scrollbar">
+                  {existingLegends.map((leg, idx) => {
+                    const isSelected = symbol.trim().toLowerCase() === leg.symbol.trim().toLowerCase();
+                    return (
+                      <button
+                        key={`${leg.symbol}-${idx}`}
+                        type="button"
+                        onClick={() => handleSelectSymbol(leg.symbol, leg.text)}
+                        className={`p-2 rounded-xl text-left transition-all flex items-center justify-between gap-2 border cursor-pointer ${
+                          isSelected
+                            ? 'bg-amber-400 border-amber-500 text-slate-950 font-black shadow-xs scale-[1.01]'
+                            : 'bg-white dark:bg-zinc-900 border-slate-200 dark:border-zinc-800 text-slate-700 dark:text-zinc-200 hover:border-amber-400 hover:bg-amber-50/50'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono font-black text-xs px-2 py-0.5 bg-slate-900 text-amber-300 rounded shadow-xs shrink-0">
+                            {leg.symbol}
+                          </span>
+                          <span className="text-[11px] font-bold truncate" title={leg.text}>
+                            {leg.text || 'Sem descrição'}
+                          </span>
+                        </div>
+                        {isSelected && <Check size={14} className="text-slate-950 shrink-0 stroke-[3]" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             {/* Paleta de Símbolos por Categorias */}
-            <div className="space-y-2 pt-1">
+            <div className="space-y-2 pt-1 border-t border-slate-200 dark:border-zinc-700">
               <span className="text-[10px] font-black uppercase text-slate-400 block tracking-wider">
-                Catálogo de Símbolos Recomendados:
+                Ou Escolha Novos Símbolos Recomendados:
               </span>
 
               {/* Abas de Categorias */}
@@ -616,8 +730,22 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
           </div>
 
           {/* Modal Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex items-center justify-between gap-3 shrink-0">
-            <div>
+          <div className="pt-3 border-t border-slate-200 dark:border-zinc-800 flex flex-wrap items-center justify-between gap-3 shrink-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              {targetTime && onDeleteFromTargetTime && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onDeleteFromTargetTime();
+                    onClose();
+                  }}
+                  className="px-3 py-2 rounded-xl text-[11px] font-black uppercase text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/50 flex items-center gap-1.5 border border-amber-300 dark:border-amber-700 transition-colors"
+                  title={`Remover a legenda apenas deste horário (${targetTime})`}
+                >
+                  <Trash2 size={13} />
+                  <span>Desvincular de {targetTime}</span>
+                </button>
+              )}
               {onDelete && (
                 <button
                   type="button"
@@ -625,10 +753,11 @@ export const LegendSymbolSelectorModal: React.FC<LegendSymbolSelectorModalProps>
                     onDelete();
                     onClose();
                   }}
-                  className="px-4 py-2.5 rounded-xl text-xs font-black uppercase text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center gap-1.5 border border-red-200 dark:border-red-900 transition-colors"
+                  className="px-3 py-2 rounded-xl text-[11px] font-black uppercase text-red-600 hover:bg-red-50 dark:hover:bg-red-950/50 flex items-center gap-1.5 border border-red-200 dark:border-red-900 transition-colors"
+                  title="Excluir esta legenda de todos os horários cadastrados da rota"
                 >
-                  <Trash2 size={14} />
-                  <span>Remover Legenda</span>
+                  <Trash2 size={13} />
+                  <span>Excluir de Todos</span>
                 </button>
               )}
             </div>

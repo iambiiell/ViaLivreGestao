@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { LayoutDashboard, Map, Calendar, Menu, BrainCircuit, Timer, BusFront, Ticket, CreditCard, DollarSign, PlayCircle } from 'lucide-react';
-import { ViewState, User } from '../types';
+import { ViewState, User, RoleConfig } from '../types';
 import { motion } from 'framer-motion';
 
 interface MobileBottomNavProps {
@@ -9,31 +9,36 @@ interface MobileBottomNavProps {
   onChangeView: (view: ViewState | string) => void;
   onOpenMenu: () => void;
   currentUser: User | null;
+  isClockedIn?: boolean | null;
+  roleConfigs?: RoleConfig[];
 }
 
-const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, onChangeView, onOpenMenu, currentUser }) => {
+const MobileBottomNav: React.FC<MobileBottomNavProps> = ({ currentView, onChangeView, onOpenMenu, currentUser, isClockedIn = null, roleConfigs = [] }) => {
+  const userRole = (currentUser?.role || '').toUpperCase();
+  const userJob = (currentUser?.job_title || '').toUpperCase();
+  const isMasterEmail = currentUser?.email === 'suporte@vialivre.com.br' || currentUser?.email === 'consorcio.imperial.ltda@gmail.com' || currentUser?.email === 'via.nicolau.sa@gmail.com';
+  const isFullAdmin = userRole === 'ADMIN' || currentUser?.is_full_admin || userJob.includes('ADMINISTRADOR') || userJob.includes('ADMIN') || isMasterEmail;
+
+  const userRoleConfig = roleConfigs.find(rc => rc.name?.toUpperCase() === (currentUser?.job_title || currentUser?.role || '').toUpperCase()) || null;
+  const assignedPerms = new Set<string>();
+  if (currentUser?.permissions) currentUser.permissions.forEach(p => assignedPerms.add(p));
+  if (userRoleConfig?.permissions) userRoleConfig.permissions.forEach(p => assignedPerms.add(p));
+
   const allTabs = [
-    { id: 'dashboard', label: 'INÍCIO', icon: LayoutDashboard, roles: ['ADMIN', 'RH', 'MECHANIC', 'TICKET_AGENT'] },
-    { id: 'operation-center', label: 'OPERACIONAL', icon: PlayCircle, roles: ['ADMIN', 'DRIVER', 'CONDUCTOR', 'FISCAL', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'] },
-    { id: 'schedule', label: 'ESCALA', icon: Calendar, roles: ['ADMIN', 'FISCAL'] },
-    { id: 'time-tracking', label: 'PONTO', icon: Timer, roles: ['ADMIN', 'DRIVER', 'CONDUCTOR', 'MECHANIC', 'FISCAL', 'TICKET_AGENT', 'RH', 'Motorista Urbano', 'Motorista Rodoviário', 'Cobrador', 'URBANO', 'RODOVIARIO', 'COBRADOR'] },
-    { id: 'passenger-view', label: 'VIAGENS', icon: Ticket, roles: ['PASSENGER'] },
-    { id: 'passenger-view', label: 'RECARGA', icon: CreditCard, roles: ['PASSENGER'], metadata: { tab: 'recharge' } },
+    { id: 'dashboard', label: 'INÍCIO', icon: LayoutDashboard, isAllowed: isFullAdmin || assignedPerms.has('dashboard') },
+    { id: 'operation-center', label: 'OPERACIONAL', icon: PlayCircle, isAllowed: isFullAdmin || assignedPerms.has('operation-center') || assignedPerms.has('driver-urban') || assignedPerms.has('driver-road') || assignedPerms.has('conductor') },
+    { id: 'schedule', label: 'ESCALA', icon: Calendar, isAllowed: isFullAdmin || assignedPerms.has('schedule') },
+    { id: 'time-tracking', label: 'PONTO', icon: Timer, isAllowed: true },
+    { id: 'passenger-view', label: 'VIAGENS', icon: Ticket, isAllowed: userRole === 'PASSENGER' },
+    { id: 'passenger-view', label: 'RECARGA', icon: CreditCard, isAllowed: userRole === 'PASSENGER', metadata: { tab: 'recharge' } },
   ];
 
   const filteredTabs = allTabs.filter(tab => {
-      const isFullAdmin = currentUser?.role === 'ADMIN' || currentUser?.is_full_admin || (currentUser?.job_title || '').toUpperCase().includes('ADMINISTRADOR') || (currentUser?.job_title || '').toUpperCase().includes('ADMIN');
-      if (isFullAdmin) return true;
-      const userRole = (currentUser?.role || '').toUpperCase();
-      const userJob = (currentUser?.job_title || '').toUpperCase();
-      return tab.roles.some(r => r.toUpperCase() === userRole || userJob.includes(r.toUpperCase()));
+    if (!tab.isAllowed) return false;
+    if (!isFullAdmin && isClockedIn === false && tab.id !== 'time-tracking') return false;
+    return true;
   }).sort((a, b) => {
-    // Custom sort: operation-center first, dashboard second, then alphabetical
-    if (a.id === 'operation-center') return -1;
-    if (b.id === 'operation-center') return 1;
-    if (a.id === 'dashboard') return -1;
-    if (b.id === 'dashboard') return 1;
-    return a.label.localeCompare(b.label);
+    return a.label.localeCompare(b.label, 'pt-BR');
   });
 
   return (
