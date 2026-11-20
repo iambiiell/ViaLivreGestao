@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { Trip, BusRoute, TicketSale, PassengerDetails, Company, City, RoleConfig, TicketingConfig, VehicleClass, User, Vehicle } from '../types';
 import { Bus, CheckCircle2, AlertTriangle, Fuel, Gauge, FileText, DollarSign, Droplets, Lightbulb, Disc, Sparkles, Save, Loader2, Plus, UserPlus, X, Briefcase, Hash, MapPin, Building2, Info, UserCheck, Users, PlayCircle, Clock, Zap, Armchair, Send, Printer, Layout, ArrowRight } from 'lucide-react';
 import { useTicketSales } from '../hooks/useTicketSales';

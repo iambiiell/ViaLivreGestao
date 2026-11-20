@@ -8,7 +8,7 @@
  */
 
 import { TimeEntry } from '../types';
-import { supabase, cleanPayload, isNetworkError, generateUUID } from './database';
+import { postgresClient, cleanPayload, isNetworkError, generateUUID } from './database';
 
 export interface OfflinePunch {
   id: string;
@@ -461,8 +461,8 @@ class PontoIndexedDBService {
       try {
         punch.sync_attempts = (punch.sync_attempts || 0) + 1;
 
-        // 1. Verificar se já existe um registro para o usuário nessa data na nuvem
-        const { data: existingRows, error: searchError } = await supabase
+        // 1. Verificar se já existe um registro para o usuário nessa data no PostgreSQL
+        const { data: existingRows, error: searchError } = await postgresClient
           .from('time_tracking')
           .select('*')
           .eq('user_id', punch.user_id)
@@ -504,7 +504,7 @@ class PontoIndexedDBService {
             : syncNote;
 
           const cleaned = cleanPayload('time_tracking', updatePayload, true);
-          const { error: updateError } = await supabase
+          const { error: updateError } = await postgresClient
             .from('time_tracking')
             .update(cleaned)
             .eq('id', remoteEntry.id);
@@ -516,7 +516,7 @@ class PontoIndexedDBService {
           // Inserir novo registro inicial
           const insertPayload: any = {
             id: generateUUID(),
-            system_id: punch.system_id || 'sys-vialivre-default',
+            system_id: punch.system_id || '44d472ca-9311-45e1-9297-c442e016e1a6',
             user_id: punch.user_id,
             date: punch.date,
             clock_in: punch.action === 'clock_in' ? punch.time : '',
@@ -527,7 +527,7 @@ class PontoIndexedDBService {
           };
 
           const cleaned = cleanPayload('time_tracking', insertPayload, true);
-          const { error: insertError } = await supabase
+          const { error: insertError } = await postgresClient
             .from('time_tracking')
             .insert(cleaned);
 

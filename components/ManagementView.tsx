@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { DollarSign, Timer, Briefcase, Save, ShieldCheck, List, Plus, Search, Trash2, Edit3, X, Loader2, Info, ChevronRight, Calculator, CheckSquare, Square, Database, CreditCard, Building2, Globe, Phone, Clock, Image as ImageIcon, QrCode as QrCodeIcon, Sparkles, ExternalLink, UploadCloud, RotateCcw, Palette, Check } from 'lucide-react';
 import { PayrollRubric, RoleConfig, ViewState, SystemSettings, User, Company, VtCardCompanySettings, ImpCard } from '../types';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { VIEW_LABELS } from '../constants';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Upload, Copy, Trash2, Search, Plus, CheckCircle2, AlertCircle, X, Download, Edit2, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { db, supabase } from '../services/database';
+import { db, postgresClient } from '../services/database';
 import { Skin, Company, User } from '../types';
 
 interface SkinRepositoryProps {
@@ -51,13 +51,13 @@ export default function SkinRepository({ currentUser, companies, skins }: SkinRe
       const systemPath = currentUser?.system_id ? `${currentUser.system_id}/` : '';
       const filePath = `skins/${systemPath}${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await postgresClient.storage
         .from('skins')
         .upload(filePath, selectedFile);
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = postgresClient.storage
         .from('skins')
         .getPublicUrl(filePath);
 
@@ -91,7 +91,7 @@ export default function SkinRepository({ currentUser, companies, skins }: SkinRe
       // Extract file path from URL
       const path = fileUrl.split('/storage/v1/object/public/skins/')[1];
       if (path) {
-        await supabase.storage.from('skins').remove([path]);
+        await postgresClient.storage.from('skins').remove([path]);
       }
       await db.delete('skins', id);
       showNotification('success', 'Skin excluída.');
@@ -131,7 +131,7 @@ export default function SkinRepository({ currentUser, companies, skins }: SkinRe
         // Delete old file if it exists
         const oldPath = editingSkin.file_url.split('/storage/v1/object/public/skins/')[1];
         if (oldPath) {
-          await supabase.storage.from('skins').remove([oldPath]);
+          await postgresClient.storage.from('skins').remove([oldPath]);
         }
 
         // Upload new file
@@ -140,13 +140,13 @@ export default function SkinRepository({ currentUser, companies, skins }: SkinRe
         const systemPath = currentUser?.system_id ? `${currentUser.system_id}/` : '';
         const filePath = `skins/${systemPath}${fileName}`;
 
-        const { error: uploadError } = await supabase.storage
+        const { error: uploadError } = await postgresClient.storage
           .from('skins')
           .upload(filePath, editingFile);
 
         if (uploadError) throw uploadError;
 
-        const { data: { publicUrl } } = supabase.storage
+        const { data: { publicUrl } } = postgresClient.storage
           .from('skins')
           .getPublicUrl(filePath);
         

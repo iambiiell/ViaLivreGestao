@@ -1,91 +1,217 @@
-import { 
-  BusRoute, 
-  Company, 
-  Trip, 
-  User, 
-  Vehicle, 
-  IssueReport, 
-  City, 
-  Notice, 
-  TicketSale, 
-  Inspection, 
-  TicketingConfig, 
-  PayrollRubric, 
-  RoleConfig, 
-  AppNotification, 
-  Shift, 
-  SystemSettings, 
-  TimeEntry 
+import {
+  BusRoute,
+  Company,
+  Trip,
+  User,
+  Vehicle,
+  IssueReport,
+  City,
+  Notice,
+  TicketSale,
+  Inspection,
+  TicketingConfig,
+  PayrollRubric,
+  RoleConfig,
+  AppNotification,
+  Shift,
+  SystemSettings,
+  TimeEntry
 } from '../types';
-import { 
-  supabase, 
-  isSupabaseConfigured, 
-  SUPABASE_URL as RAW_SB_URL, 
-  SUPABASE_ANON_KEY as RAW_SB_KEY,
-  getCleanSupabaseConfig 
-} from './supabaseClient';
+import { postgresClient, isPostgresConfigured, initSSE } from './postgresClient';
 import { safeLocalStorage } from '../utils/storage';
 import { pontoIndexedDB } from './pontoIndexedDB';
-export { pontoIndexedDB };
+
+export { pontoIndexedDB, postgresClient, isPostgresConfigured };
+export const dbClient = postgresClient;
+// Aliases mantidos apenas para compatibilidade transitória — backend usa 100% Aiven PostgreSQL via Express (/api/*)
+export const supabase = postgresClient;
+export const isSupabaseConfigured = isPostgresConfigured;
 export type RealtimeChannel = any;
 
-const SAFE_DEFAULT_SB_URL = 'https://kkvmtqthahbcobsqmugl.supabase.co';
-const SAFE_DEFAULT_SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imtrdm10cXRoYWhiY29ic3FtdWdsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njg3MDM0MDUsImV4cCI6MjA4NDI3OTQwNX0.cYc8Qx8bpZFoxZ6RR-kgrE12l-4wDQx2MGcWBPvd24g';
-
-export const SUPABASE_URL = RAW_SB_URL || SAFE_DEFAULT_SB_URL;
-export const SUPABASE_ANON_KEY = RAW_SB_KEY || SAFE_DEFAULT_SB_KEY;
-export { supabase, isSupabaseConfigured };
-
-export type TableName = 
-  | 'routes' 
-  | 'trips' 
-  | 'users' 
-  | 'companies' 
-  | 'vehicles' 
-  | 'occurrences' 
-  | 'cities' 
-  | 'notices' 
-  | 'push_subscriptions' 
-  | 'ticket_sales' 
-  | 'maintenance' 
+export type TableName =
+  | 'routes'
+  | 'trips'
+  | 'users'
+  | 'companies'
+  | 'vehicles'
+  | 'occurrences'
+  | 'cities'
+  | 'notices'
+  | 'push_subscriptions'
+  | 'ticket_sales'
+  | 'bilhetes_passagem'
+  | 'schedules'
+  | 'timetables'
+  | 'maintenance'
   | 'maintenance_logs'
-  | 'inspections' 
-  | 'ticketing_config' 
-  | 'payroll_rubrics' 
+  | 'inspections'
+  | 'ticketing_config'
+  | 'payroll_rubrics'
   | 'payroll'
   | 'payroll_details'
   | 'salary_items'
-  | 'role_configs' 
-  | 'notifications' 
-  | 'shifts' 
+  | 'role_configs'
+  | 'notifications'
+  | 'shifts'
   | 'daily_schedules'
-  | 'time_tracking' 
+  | 'time_tracking'
   | 'drivers'
-  | 'driver_logs' 
+  | 'driver_logs'
   | 'conductor_logs'
   | 'dispatcher_logs'
-  | 'routes_logs' 
-  | 'system_settings' 
+  | 'routes_logs'
+  | 'system_settings'
   | 'system_versions'
-  | 'imp_cards' 
-  | 'imp_card_recharges' 
-  | 'user_occurrences' 
-  | 'traffic_violations' 
-  | 'user_fines' 
-  | 'job_applications' 
-  | 'job_vacancies' 
-  | 'skins' 
-  | 'trips_audit' 
-  | 'activation_keys' 
-  | 'subscriptions' 
-  | 'ticket_booths' 
+  | 'imp_cards'
+  | 'imp_card_recharges'
+  | 'user_occurrences'
+  | 'traffic_violations'
+  | 'user_fines'
+  | 'job_applications'
+  | 'job_vacancies'
+  | 'skins'
+  | 'trips_audit'
+  | 'activation_keys'
+  | 'subscriptions'
+  | 'ticket_booths'
   | 'bus_stations'
   | 'bus_terminals'
   | 'itineraries'
   | 'itinerary_sections'
   | 'route_sections'
   | 'passengers'
-  | 'cashier_logs';
+  | 'cashier_logs'
+  | 'uploads';
+
+export const ALL_BACKUP_TABLES: TableName[] = [
+  'system_settings',
+  'subscriptions',
+  'activation_keys',
+  'role_configs',
+  'payroll_rubrics',
+  'ticketing_config',
+  'companies',
+  'cities',
+  'bus_stations',
+  'bus_terminals',
+  'users',
+  'drivers',
+  'vehicles',
+  'skins',
+  'routes',
+  'itineraries',
+  'itinerary_sections',
+  'route_sections',
+  'timetables',
+  'ticket_booths',
+  'schedules',
+  'daily_schedules',
+  'shifts',
+  'trips',
+  'ticket_sales',
+  'bilhetes_passagem',
+  'imp_cards',
+  'imp_card_recharges',
+  'notices',
+  'occurrences',
+  'user_occurrences',
+  'maintenance',
+  'maintenance_logs',
+  'inspections',
+  'time_tracking',
+  'driver_logs',
+  'conductor_logs',
+  'dispatcher_logs',
+  'routes_logs',
+  'trips_audit',
+  'cashier_logs',
+  'traffic_violations',
+  'user_fines',
+  'payroll',
+  'payroll_details',
+  'salary_items',
+  'job_vacancies',
+  'job_applications',
+  'passengers',
+  'notifications'
+];
+
+const SUPPORTED_RESTORE_TABLES = new Set<string>([
+  ...ALL_BACKUP_TABLES,
+  'push_subscriptions',
+  'system_versions',
+  'uploads'
+]);
+
+export const extractNormalizedBackupTables = (rawInput: any): Record<string, any[]> => {
+  if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
+    return {};
+  }
+  const aliases: Record<string, string> = {
+    empresas: 'companies',
+    company: 'companies',
+    cidades: 'cities',
+    city: 'cities',
+    municipios: 'cities',
+    usuarios: 'users',
+    user: 'users',
+    colaboradores: 'users',
+    motoristas: 'drivers',
+    driver: 'drivers',
+    veiculos: 'vehicles',
+    onibus: 'vehicles',
+    vehicle: 'vehicles',
+    linhas: 'routes',
+    rotas: 'routes',
+    route: 'routes',
+    viagens: 'trips',
+    trip: 'trips',
+    escalas: 'schedules',
+    schedule: 'schedules',
+    escalas_diarias: 'daily_schedules',
+    rodoviarias: 'bus_stations',
+    terminais: 'bus_terminals',
+    avisos: 'notices',
+    notice: 'notices',
+    ocorrencias: 'occurrences',
+    occurrence: 'occurrences',
+    notificacoes: 'notifications',
+    notification: 'notifications',
+    passagens: 'ticket_sales',
+    bilhetes: 'bilhetes_passagem',
+    manutencoes: 'maintenance',
+    vistorias: 'inspections',
+    cargos: 'role_configs',
+    rubricas: 'payroll_rubrics',
+    guiches: 'ticket_booths',
+    turnos: 'shifts',
+    ponto: 'time_tracking',
+    configuracoes: 'system_settings',
+    cartoes_vt: 'imp_cards'
+  };
+
+  let source: Record<string, any> = rawInput;
+  for (const wrapperKey of ['data', 'tables', 'backup', 'snapshot', 'records']) {
+    const candidate = rawInput[wrapperKey];
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      if (Object.values(candidate).some((v) => Array.isArray(v))) {
+        source = candidate;
+        break;
+      }
+    }
+  }
+
+  const out: Record<string, any[]> = {};
+  for (const [k, v] of Object.entries(source)) {
+    if (!Array.isArray(v)) continue;
+    const lowered = k.trim().toLowerCase();
+    const mapped = aliases[lowered] || lowered;
+    if (!SUPPORTED_RESTORE_TABLES.has(mapped)) continue;
+    if (!out[mapped]) out[mapped] = [];
+    out[mapped].push(...v);
+  }
+  return out;
+};
 
 export interface PendingAction {
   id: string;
@@ -102,13 +228,14 @@ export interface DbStatus {
   isSyncing: boolean;
   lastSyncAt: number | null;
   lastError: string | null;
+  provider?: string;
 }
 
 export const generateUUID = (): string => {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     try {
       return crypto.randomUUID();
-    } catch (e) {}
+    } catch {}
   }
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
@@ -127,14 +254,14 @@ export const getStoredSystemId = (): string | null => {
   try {
     if (typeof window !== 'undefined') {
       const explicit = safeLocalStorage.getItem('vialivre_system_id');
-      if (explicit && isValidUUID(explicit)) {
+      if (explicit && (isValidUUID(explicit) || explicit.length > 5)) {
         return explicit;
       }
       const u = safeLocalStorage.getItem('fluxo_session_user') || safeLocalStorage.getItem('@vialivre_user');
       if (u) {
         const parsed = JSON.parse(u);
-        if (parsed.system_id && isValidUUID(parsed.system_id)) {
-          return parsed.system_id;
+        if (parsed?.system_id) {
+          return String(parsed.system_id);
         }
       }
     }
@@ -144,11 +271,194 @@ export const getStoredSystemId = (): string | null => {
 
 export let currentSystemId: string | null = getStoredSystemId();
 
+const DEFAULT_FETCH_TIMEOUT_MS = 15000;
+
+export const safeJsonStringify = (data: unknown): string => {
+  const seen = new WeakSet<object>();
+  return JSON.stringify(data ?? {}, (_key, value) => {
+    if (typeof value === 'string') {
+      return value.replace(/\u0000/g, '');
+    }
+    if (typeof value === 'bigint') {
+      return value.toString();
+    }
+    if (typeof value === 'function' || typeof value === 'symbol') {
+      return undefined;
+    }
+    if (typeof value === 'number' && !Number.isFinite(value)) {
+      return null;
+    }
+    if (value instanceof Set) {
+      return Array.from(value);
+    }
+    if (value instanceof Map) {
+      return Object.fromEntries(value.entries());
+    }
+    if (value instanceof Error) {
+      return { name: value.name, message: value.message };
+    }
+    if (typeof HTMLElement !== 'undefined' && value instanceof HTMLElement) {
+      return undefined;
+    }
+    if (typeof Event !== 'undefined' && value instanceof Event) {
+      return undefined;
+    }
+    if (value !== null && typeof value === 'object') {
+      if (seen.has(value)) {
+        return undefined;
+      }
+      seen.add(value);
+    }
+    return value;
+  });
+};
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeoutMs?: number } = {}
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, signal: externalSignal, ...fetchInit } = options;
+  const controller = new AbortController();
+  let timedOut = false;
+
+  const onExternalAbort = () => controller.abort();
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      controller.abort();
+    } else {
+      externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    }
+  }
+
+  const timerId = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...fetchInit,
+      signal: controller.signal
+    });
+  } catch (err: any) {
+    if (timedOut || err?.name === 'AbortError' || err?.name === 'TimeoutError') {
+      const timeoutErr = new Error(`Timeout de conexão após ${timeoutMs}ms ao acessar ${url}`);
+      timeoutErr.name = 'TimeoutError';
+      throw timeoutErr;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timerId);
+    if (externalSignal) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+}
+
+const isRetryableHttpStatus = (status: number, errText: string): boolean => {
+  if (status === 408 || status === 425 || status === 429 || status === 502 || status === 503 || status === 504) {
+    return true;
+  }
+  if (status >= 500) {
+    const lower = (errText || '').toLowerCase();
+    return (
+      lower.includes('too many clients') ||
+      lower.includes('remaining connection slots') ||
+      lower.includes('timeout') ||
+      lower.includes('timed out') ||
+      lower.includes('terminat') ||
+      lower.includes('connection') ||
+      lower.includes('econnreset') ||
+      lower.includes('etimedout') ||
+      lower.includes('57014') ||
+      lower.includes('53300')
+    );
+  }
+  return false;
+};
+
+const isRetryableNetworkException = (err: any, externalSignal?: AbortSignal): boolean => {
+  if (externalSignal?.aborted && err?.name === 'AbortError') {
+    return false;
+  }
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return false;
+  }
+  const name = String(err?.name || '').toLowerCase();
+  const msg = String(err?.message || '').toLowerCase();
+  return (
+    name === 'timeouterror' ||
+    name === 'aborterror' ||
+    name === 'typeerror' ||
+    msg.includes('failed to fetch') ||
+    msg.includes('network') ||
+    msg.includes('load failed') ||
+    msg.includes('timeout') ||
+    msg.includes('timed out') ||
+    msg.includes('connection reset') ||
+    msg.includes('connection refused')
+  );
+};
+
+export async function fetchWithRetry(
+  url: string,
+  options: RequestInit & { timeoutMs?: number; retries?: number; baseDelayMs?: number } = {}
+): Promise<Response> {
+  const { retries = 2, baseDelayMs = 250, signal: externalSignal, ...rest } = options;
+  let lastError: any;
+
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    if (externalSignal?.aborted) {
+      throw new DOMException('Request aborted', 'AbortError');
+    }
+
+    try {
+      const res = await fetchWithTimeout(url, { ...rest, signal: externalSignal });
+      if (res.ok) {
+        return res;
+      }
+
+      const errText = await res.clone().text().catch(() => '');
+      if (attempt < retries && isRetryableHttpStatus(res.status, errText)) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      return res;
+    } catch (err: any) {
+      lastError = err;
+      if (attempt < retries && isRetryableNetworkException(err, externalSignal)) {
+        const delay = baseDelayMs * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError;
+}
+
+function buildHeaders(extra?: Record<string, string>, overrideSystemId?: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/json',
+    'Content-Type': 'application/json',
+    ...(extra || {})
+  };
+  const sysId = overrideSystemId ?? currentSystemId ?? getStoredSystemId();
+  if (sysId) {
+    headers['x-system-id'] = String(sysId);
+  }
+  return headers;
+}
+
 export const fetchRootAdminSystemId = async (user?: Partial<User> | null): Promise<string> => {
   try {
-    const isUserAdmin = (user?.role || '').toUpperCase() === 'ADMIN' || user?.is_full_admin === true || (user?.job_title || '').toUpperCase().includes('ADMINISTRADOR');
+    const isUserAdmin =
+      (user?.role || '').toUpperCase() === 'ADMIN' ||
+      user?.is_full_admin === true ||
+      (user?.job_title || '').toUpperCase().includes('ADMINISTRADOR');
 
-    // 1. Se o próprio usuário for Administrador e possuir system_id UUID válido, define e retorna imediatamente
     if (isUserAdmin && user?.system_id && isValidUUID(user.system_id)) {
       currentSystemId = user.system_id;
       if (typeof window !== 'undefined') {
@@ -157,7 +467,6 @@ export const fetchRootAdminSystemId = async (user?: Partial<User> | null): Promi
       return user.system_id;
     }
 
-    // 2. Se o colaborador logado já tiver system_id UUID válido em seu cadastro de usuário
     if (user?.system_id && isValidUUID(user.system_id)) {
       currentSystemId = user.system_id;
       if (typeof window !== 'undefined') {
@@ -166,70 +475,28 @@ export const fetchRootAdminSystemId = async (user?: Partial<User> | null): Promi
       return user.system_id;
     }
 
-    // 3. Busca o Administrador Raiz da mesma unidade organizacional do colaborador na tabela public.users
-    if (user?.unidade) {
-      const { data: unitAdmins, error: unitErr } = await supabase
-        .from('users')
-        .select('id, system_id, role, is_full_admin, created_at')
-        .eq('unidade', user.unidade)
-        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-        .not('system_id', 'is', null)
-        .order('created_at', { ascending: true })
-        .limit(1);
+    const res = await fetchWithRetry('/api/auth/resolve-system-id', {
+      method: 'POST',
+      headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' },
+      body: safeJsonStringify(user || {}),
+      timeoutMs: 8000,
+      retries: 2
+    });
 
-      if (!unitErr && unitAdmins && unitAdmins.length > 0 && unitAdmins[0].system_id) {
-        const found = unitAdmins[0].system_id;
-        currentSystemId = found;
+    if (res.ok) {
+      const data = await res.json();
+      if (data?.system_id) {
+        currentSystemId = data.system_id;
         if (typeof window !== 'undefined') {
-          safeLocalStorage.setItem('vialivre_system_id', found);
+          safeLocalStorage.setItem('vialivre_system_id', data.system_id);
         }
-        return found;
+        return data.system_id;
       }
-    }
-
-    // 4. Busca o Administrador Raiz pela empresa vinculada (company_id)
-    if (user?.company_id) {
-      const { data: compAdmins, error: compErr } = await supabase
-        .from('users')
-        .select('id, system_id, role, is_full_admin, created_at')
-        .eq('company_id', user.company_id)
-        .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-        .not('system_id', 'is', null)
-        .order('created_at', { ascending: true })
-        .limit(1);
-
-      if (!compErr && compAdmins && compAdmins.length > 0 && compAdmins[0].system_id) {
-        const found = compAdmins[0].system_id;
-        currentSystemId = found;
-        if (typeof window !== 'undefined') {
-          safeLocalStorage.setItem('vialivre_system_id', found);
-        }
-        return found;
-      }
-    }
-
-    // 5. Busca o Administrador Raiz geral primário na tabela public.users
-    const { data: rootAdmins, error: rootErr } = await supabase
-      .from('users')
-      .select('id, system_id, role, is_full_admin, created_at')
-      .or('role.ilike.%ADMIN%,is_full_admin.eq.true')
-      .not('system_id', 'is', null)
-      .order('created_at', { ascending: true })
-      .limit(1);
-
-    if (!rootErr && rootAdmins && rootAdmins.length > 0 && rootAdmins[0].system_id) {
-      const rootSysId = rootAdmins[0].system_id;
-      currentSystemId = rootSysId;
-      if (typeof window !== 'undefined') {
-        safeLocalStorage.setItem('vialivre_system_id', rootSysId);
-      }
-      return rootSysId;
     }
   } catch (err) {
-    console.error('[AUTH] Erro ao buscar system_id do Administrador Raiz na tabela users do Supabase:', err);
+    console.warn('[AUTH] Erro ao resolver system_id via backend Aiven PostgreSQL:', err);
   }
 
-  // Fallback seguro para o ID da organização padrão do sistema
   const fallback = DEFAULT_SYSTEM_UUID;
   currentSystemId = fallback;
   if (typeof window !== 'undefined') {
@@ -246,22 +513,22 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'complemento', 'phone', 'ie', 'system_id', 'nome_fantasia', 'razao_social', 'logo_url'
   ]),
   routes: new Set([
-    'id', 'created_at', 'active', 'company_id', 'origin', 'destination', 'price', 'letreiro_principal',
+    'id', 'created_at', 'active', 'company_id', 'name', 'origin', 'destination', 'price', 'letreiro_principal',
     'route_number', 'schedule', 'sections', 'status', 'stops', 'via1', 'via2', 'via3', 'prefixo_linha',
-    'lightdot_code', 'via_1', 'tarifa_integral', 'route_type', 'service_number', 'service_type',
-    'prefix_code', 'duration_minutes', 'letreiro_principal_modo', 'letreiro_principal_texto',
+    'lightdot_code', 'via_1', 'via_2', 'via_3', 'tarifa_integral', 'route_type', 'service_number', 'service_type',
+    'prefix_code', 'duration_minutes', 'distance_km', 'letreiro_principal_modo', 'letreiro_principal_texto',
     'letreiro_secundario_modo', 'letreiro_secundario_texto', 'via1_modo', 'via1_texto', 'via2_modo',
     'via2_texto', 'via3_modo', 'via3_texto', 'boarding_fee', 'toll', 'origin_lat', 'origin_lng',
     'destination_lat', 'destination_lng', 'origin_cep', 'destination_cep', 'origin_number',
     'destination_number', 'origin_city', 'destination_city', 'origin_neighborhood',
     'destination_neighborhood', 'departure_point', 'arrival_point', 'fees', 'line_prefix',
     'display_main_color', 'display_main_mode', 'display_main_speed', 'via1_mode', 'via2_mode',
-    'via3_mode', 'letreiro_principal_cor', 'letreiro_principal_velocidade', 'system_id', 'payment_type',
-    'full_fare', 'municipality_id', 'line_code', 'schedule_weekdays', 'schedule_saturdays',
+    'via3_mode', 'letreiro_cor', 'letreiro_principal_cor', 'letreiro_principal_velocidade', 'system_id',
+    'payment_type', 'full_fare', 'municipality_id', 'line_code', 'schedule_weekdays', 'schedule_saturdays',
     'schedule_sundays', 'estimated_travel_time_text', 'payment_methods_accepted', 'service_class',
     'origin_station_id', 'origin_station_platform', 'destination_station_id',
     'destination_station_platform', 'via1_cor', 'via2_cor', 'via3_cor', 'exibir_codigo_letreiro',
-    'created_by', 'updated_by', 'is_active'
+    'empresa_autuante', 'empresa_autuante_id', 'created_by', 'updated_by', 'is_active'
   ]),
   users: new Set([
     'id', 'full_name', 'email', 'created_at', 'active', 'admission_date', 'job_title', 'registration_id',
@@ -299,7 +566,9 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'is_accessible', 'prefix', 'status', 'vehicle_type', 'empresa', 'cidade_atuacao', 'last_inspection',
     'year_fab', 'chassi', 'is_operational', 'capacity', 'brand', 'vehicle_class', 'year', 'color',
     'system_id', 'skin_id', 'nome_da_empresa', 'current_turnstile_count', 'image_url', 'cep',
-    'address_street', 'address_neighborhood', 'address_city', 'address_state', 'address_number', 'inspection_status'
+    'address_street', 'address_neighborhood', 'address_city', 'address_state', 'address_number',
+    'inspection_status', 'route_id', 'default_route_id', 'conductor_id', 'conductor_name',
+    'default_conductor_id', 'default_conductor_name', 'driver_id', 'driver_name', 'has_conductor'
   ]),
   trips: new Set([
     'id', 'route_id', 'vehicle_id', 'driver_id', 'departure_time', 'status', 'created_at', 'active',
@@ -310,13 +579,19 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'inspector_id', 'direção', 'direction', 'replacement_bus_number', 'occurrence_type', 'occurrence_note',
     'passenger_count', 'notas', 'actual_departure', 'actual_arrival', 'delay_minutes', 'system_id',
     'scheduled_start', 'sections_data', 'trip_type', 'occurrences_count', 'origin_terminal',
-    'destination_terminal', 'conductor_id', 'conductor_name', 'ignore_company_filter', 'odometer_start',
-    'odometer_end', 'fuel_level_end', 'tickets_sold', 'electronic_payments', 'selectedTimes', 'checklist_ok',
-    'fuel_level', 'initial_turnstile', 'cash_total', 'card_total', 'vt_total', 'final_turnstile', 'initial_odometer'
+    'destination_terminal', 'conductor_id', 'conductor_name', 'has_conductor', 'ignore_company_filter',
+    'odometer_start', 'odometer_end', 'fuel_level_end', 'tickets_sold', 'electronic_payments', 'selectedTimes',
+    'checklist_ok', 'fuel_level', 'initial_turnstile', 'cash_total', 'card_total', 'vt_total',
+    'final_turnstile', 'initial_odometer', 'schedule_id', 'arrival_time_planned', 'updated_at'
+  ]),
+  schedules: new Set([
+    'id', 'system_id', 'route_id', 'vehicle_id', 'driver_id', 'driver_name', 'conductor_id', 'conductor_name',
+    'fiscal_id', 'fiscal_name', 'bus_number', 'trip_date', 'departure_time', 'arrival_time', 'direction',
+    'trip_type', 'status', 'metadata', 'created_at'
   ]),
   itineraries: new Set([
     'id', 'via_1', 'via_2', 'via_3', 'nome_itinerario', 'full_fare', 'stops_list', 'sections_data',
-    'schedule_week', 'schedule_sat', 'schedule_sun', 'system_id'
+    'schedule_week', 'schedule_sat', 'schedule_sun', 'system_id', 'created_at'
   ]),
   imp_cards: new Set([
     'id', 'type', 'card_number', 'balance', 'name', 'surname', 'cpf', 'rg', 'birth_date', 'email', 'phone',
@@ -335,7 +610,15 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'aliquota_icms', 'valor_icms', 'qr_code_base64', 'plataforma', 'servico_tipo', 'icms_valor', 'relationship',
     'responsible_name', 'responsible_birth', 'price_base', 'price_toll', 'price_boarding_fee', 'price_fees',
     'discount_value', 'vehicle_model', 'vehicle_prefix', 'system_id', 'departure_time', 'direction', 'is_presale',
-    'route_id', 'trip_date', 'booth_data', 'booth_id', 'section_origin', 'section_destination'
+    'route_id', 'trip_date', 'booth_data', 'booth_id', 'section_origin', 'section_destination', 'status'
+  ]),
+  bilhetes_passagem: new Set([
+    'id', 'trip_id', 'driver_id', 'section_name', 'payment_method', 'amount', 'passengers_count', 'created_at',
+    'passenger_name', 'passenger_document', 'passenger_cpf', 'passenger_rg', 'passenger_phone', 'passenger_email',
+    'seat_number', 'total_price', 'company_data', 'chave_acesso', 'protocolo_autorizacao', 'serie_documento',
+    'numero_documento', 'qr_code_url', 'qr_code_base64', 'pdf_url', 'price_base', 'price_toll',
+    'price_boarding_fee', 'price_fees', 'discount_value', 'system_id', 'departure_time', 'direction',
+    'route_id', 'trip_date', 'booth_data', 'booth_id', 'section_origin', 'section_destination', 'status'
   ]),
   occurrences: new Set([
     'id', 'trip_id', 'vehicle_id', 'driver_id', 'occurrence_type', 'description', 'severity', 'status',
@@ -348,11 +631,11 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
   ]),
   notices: new Set([
     'id', 'createdAt', 'title', 'content', 'is_active', 'user_id', 'protocol', 'category', 'company_id',
-    'created_at', 'target_role', 'target_audience', 'system_id'
+    'created_at', 'created_by', 'attachment_info', 'target_role', 'target_audience', 'system_id'
   ]),
   notifications: new Set([
     'id', 'created_at', 'user_id', 'title', 'message', 'read', 'type', 'is_read', 'priority', 'category',
-    'system_id', 'target_role'
+    'system_id', 'target_role', 'metadata'
   ]),
   maintenance: new Set([
     'id', 'vehicle_id', 'description', 'maintenance_date', 'next_inspection', 'status', 'created_at',
@@ -369,7 +652,7 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
   ]),
   role_configs: new Set([
     'id', 'name', 'permissions', 'base_salary', 'standard_shift', 'access_driver_guide', 'access_sales',
-    'access_maintenance', 'access_global_management', 'system_id', 'base_role', 'can_access_checkin', 'can_access_diary'
+    'access_maintenance', 'access_global_management', 'access_monitoring', 'system_id', 'base_role', 'can_access_checkin', 'can_access_diary'
   ]),
   skins: new Set([
     'id', 'system_id', 'vehicle_id', 'name', 'image_url', 'version', 'created_at', 'bus_model', 'company_id', 'skin_name', 'file_url'
@@ -385,20 +668,23 @@ export const KNOWN_TABLE_COLUMNS: Partial<Record<TableName, Set<string>>> = {
     'is_active', 'active', 'status'
   ]),
   time_tracking: new Set([
-    'id', 'user_id', 'date', 'clock_in', 'break_start', 'break_end', 'clock_out', 'gps_location', 'created_at',
-    'total_daily_hours', 'system_id'
+    'id', 'user_id', 'date', 'clock_in', 'break_start', 'break_end', 'clock_out', 'gps_location', 'notes',
+    'created_at', 'total_daily_hours', 'system_id'
   ]),
   drivers: new Set([
     'id', 'full_name', 'cpf', 'cnh_number', 'cnh_category', 'cnh_expiration', 'phone', 'status', 'created_at', 'system_id'
   ]),
   inspections: new Set([
     'id', 'created_at', 'vehicle_id', 'inspector_name', 'items_checked', 'status', 'notes', 'agency', 'checklist', 'date', 'inspector_id', 'location', 'type', 'photo_url', 'system_id'
+  ]),
+  routes_logs: new Set([
+    'id', 'system_id', 'route_id', 'trip_id', 'user_id', 'action', 'description', 'details', 'created_at'
   ])
 };
 
 export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   if (!obj || typeof obj !== 'object') return {};
-  
+
   const cleaned: Record<string, any> = {};
   for (const [key, v] of Object.entries(obj)) {
     if (key.startsWith('_')) continue;
@@ -411,14 +697,13 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     }
 
     if (table === 'trips' && key === 'passengers' && typeof v === 'object' && v !== null) {
-      cleaned[key] = JSON.stringify(v);
+      cleaned[key] = safeJsonStringify(v);
       continue;
     }
 
     cleaned[key] = v;
   }
-  
-  // Aliases e Mapeamento de Colunas por Tabela
+
   if (table === 'companies') {
     if (obj.city && !cleaned.cidade) cleaned.cidade = obj.city;
     if (obj.city && !cleaned.address_city) cleaned.address_city = obj.city;
@@ -448,18 +733,18 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (!cleaned.tarifa_integral && cleaned.price) cleaned.tarifa_integral = Number(cleaned.price);
     if (cleaned.active === undefined) cleaned.active = true;
 
-    // Sincronizar Cor do Painel Digital (LED / Letreiro) nas colunas reais do Supabase
+    // Preserva todas as colunas de letreiro no Aiven PostgreSQL
     const chosenColor = obj.letreiro_cor || obj.display_main_color || obj.letreiro_principal_cor || '#ffaa00';
+    cleaned.letreiro_cor = chosenColor;
     cleaned.display_main_color = chosenColor;
     cleaned.letreiro_principal_cor = chosenColor;
-    delete cleaned.letreiro_cor;
+    cleaned.via1_cor = obj.via1_cor || chosenColor;
+    cleaned.via2_cor = obj.via2_cor || chosenColor;
+    cleaned.via3_cor = obj.via3_cor || chosenColor;
 
     const autuanteName = obj.empresa_autuante || '';
     const autuanteId = obj.empresa_autuante_id || '';
-    delete cleaned.empresa_autuante;
-    delete cleaned.empresa_autuante_id;
 
-    // Garantir que sections contenha APENAS seções reais criadas pelo usuário (não gerar seções automáticas)
     let cleanSections: any[] = [];
     if (Array.isArray(cleaned.sections)) {
       cleanSections = cleaned.sections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
@@ -472,7 +757,6 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
       } catch {}
     }
 
-    // Preserva com segurança metadados da rota dentro do JSON de seções
     cleanSections.push({
       __route_meta__: true,
       letreiro_cor: chosenColor,
@@ -490,7 +774,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (!cleaned.cnh_category) cleaned.cnh_category = cleaned.tipo_cnh || 'D';
     if (!cleaned.cnh_expiration) cleaned.cnh_expiration = cleaned.validade_cnh || '2029-12-31';
     if (!cleaned.status) cleaned.status = 'Ativo';
-    delete cleaned.active; // Coluna não existe no PostgreSQL na tabela drivers
+    delete cleaned.active;
     delete cleaned.name;
     delete cleaned.email;
     delete cleaned.photo_url;
@@ -498,6 +782,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
 
   if (table === 'vehicles') {
     if (!cleaned.plate) cleaned.plate = 'ABC-' + Math.floor(1000 + Math.random() * 9000);
+    if (!cleaned.prefix) cleaned.prefix = cleaned.plate || '0000';
     if (!cleaned.model) cleaned.model = 'Ônibus Executivo';
     if (!cleaned.chassis) cleaned.chassis = cleaned.chassi || ('9BW' + Math.random().toString(36).substring(2, 9).toUpperCase() + '0001');
     if (!cleaned.status) cleaned.status = 'Ativo';
@@ -524,12 +809,9 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
     if (!cleaned.name) cleaned.name = 'Terminal Rodoviário';
     if (cleaned.active === undefined) cleaned.active = true;
     if (cleaned.is_active === undefined) cleaned.is_active = true;
-    delete cleaned.created_by;
   }
 
   if (table === 'shifts') {
-    if (!isUpdate) delete cleaned.id;
-    else if (typeof cleaned.id === 'string' && isNaN(Number(cleaned.id))) delete cleaned.id;
     if (!cleaned.date) cleaned.date = new Date().toISOString().substring(0, 10);
     if (!cleaned.start_time) cleaned.start_time = '08:00';
     if (!cleaned.end_time) cleaned.end_time = '16:00';
@@ -543,13 +825,9 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
   }
 
   if (table === 'system_settings') {
-    if (typeof cleaned.id === 'string' && isNaN(Number(cleaned.id))) {
-      delete cleaned.id;
-    }
     if (!cleaned.key) {
       cleaned.key = obj.key || 'config_default';
     }
-    // Encapsula propriedades adicionais de configuração institucional e VT dentro da coluna value (JSON)
     const extraSettings: Record<string, any> = {};
     for (const [k, val] of Object.entries(obj)) {
       if (!KNOWN_TABLE_COLUMNS.system_settings?.has(k)) {
@@ -562,7 +840,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
         if (typeof cleaned.value === 'string') existingVal = JSON.parse(cleaned.value);
         else if (typeof cleaned.value === 'object' && cleaned.value !== null) existingVal = cleaned.value;
       } catch {}
-      cleaned.value = JSON.stringify({ ...existingVal, ...extraSettings });
+      cleaned.value = safeJsonStringify({ ...existingVal, ...extraSettings });
     }
   }
 
@@ -588,42 +866,27 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
       cleaned.right_logo_url = String(obj.internal_code);
     }
     if (Object.keys(metaObj).length > 0) {
-      cleaned.ai_art_url = JSON.stringify(metaObj);
+      cleaned.ai_art_url = safeJsonStringify(metaObj);
     }
   }
 
-  if (table === 'time_tracking' as any) {
-    delete cleaned.total_daily_hours;
-  }
-  
   if (table === 'users') {
-    delete cleaned.pis;
-    delete cleaned.occurrences;
     if (cleaned.login_acesso && !cleaned.login) cleaned.login = cleaned.login_acesso;
     if (cleaned.login_acesso && !cleaned.username) cleaned.username = cleaned.login_acesso;
     if (cleaned.login_acesso && !cleaned.login_usuario) cleaned.login_usuario = cleaned.login_acesso;
-    if (cleaned.senha_acesso && !cleaned.senha) cleaned.senha = cleaned.senha_acesso;
-    if (cleaned.senha_acesso && !cleaned.password) cleaned.password = cleaned.senha_acesso;
-    if (cleaned.senha_acesso && !cleaned.login_senha) cleaned.login_senha = cleaned.senha_acesso;
-    if (cleaned.full_name && !cleaned.name) cleaned.name = cleaned.full_name.split(' ')[0];
+    if (cleaned.full_name && !cleaned.name) cleaned.name = String(cleaned.full_name).split(' ')[0];
     if (cleaned.name && !cleaned.full_name) cleaned.full_name = cleaned.name;
-    if (!cleaned.email) cleaned.email = `${cleaned.login || 'usuario'}_${Date.now()}@vialivre.com.br`;
-    if (cleaned.is_active === undefined) cleaned.is_active = true;
-    if (cleaned.active === undefined) cleaned.active = true;
-    if (!cleaned.status) cleaned.status = 'active';
+    if (!isUpdate && !cleaned.email) cleaned.email = `${cleaned.login || 'usuario'}_${Date.now()}@vialivre.com.br`;
+    if (cleaned.is_active === undefined && !isUpdate) cleaned.is_active = true;
+    if (cleaned.active === undefined && !isUpdate) cleaned.active = true;
+    if (!cleaned.status && !isUpdate) cleaned.status = 'active';
   }
 
-  if (table === 'notifications') {
-    delete cleaned.metadata;
-  }
-
-  // Garantia do system_id exclusivo ou da organização (INSERT automático)
   const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
   if (!cleaned.system_id || cleaned.system_id === 'sys-vialivre-default' || cleaned.system_id === 'default-sys' || cleaned.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb') {
     cleaned.system_id = activeSys;
   }
 
-  // Filtra estritamente as colunas conhecidas para a tabela no PostgreSQL, evitando erro de schema cache
   const allowed = KNOWN_TABLE_COLUMNS[table];
   if (allowed) {
     for (const k of Object.keys(cleaned)) {
@@ -632,7 +895,7 @@ export const cleanPayload = (table: TableName, obj: any, isUpdate = false) => {
       }
     }
   }
-  
+
   return cleaned;
 };
 
@@ -641,24 +904,25 @@ export const isNetworkError = (error: any): boolean => {
     return true;
   }
   if (!error) return false;
-  
-  if (error.code && typeof error.code === 'string' && (error.code.length === 5 || error.code.startsWith('PGRST'))) {
-    return false;
-  }
-  
-  const msg = (typeof error === 'string' ? error : (error.message || error.details || error.hint || '')).toLowerCase();
+
+  const msg = (typeof error === 'string' ? error : (error.message || error.error || error.details || '')).toLowerCase();
   const name = (error.name || '').toLowerCase();
-  
+
   return (
     name === 'aborterror' ||
+    name === 'timeouterror' ||
     msg.includes('failed to fetch') ||
     msg.includes('network') ||
     msg.includes('net::err') ||
     msg.includes('connection refused') ||
     msg.includes('timeout') ||
     msg.includes('timed out') ||
+    msg.includes('aborted') ||
+    msg.includes('esgotado') ||
     msg.includes('offline') ||
-    msg.includes('load failed')
+    msg.includes('load failed') ||
+    msg.includes('http 503') ||
+    msg.includes('não configurado')
   );
 };
 
@@ -672,14 +936,13 @@ export const PUBLIC_PASSENGER_TABLES: TableName[] = [
   'cities'
 ];
 
-// Helper para gerenciar exclusões locais
 const getDeletedIds = (table: TableName): Set<string> => {
   try {
     const raw = safeLocalStorage.getItem(`vialivre_deleted_${table}`);
     if (!raw) return new Set<string>();
     const parsed = JSON.parse(raw);
     return new Set<string>(Array.isArray(parsed) ? parsed : []);
-  } catch (e) {
+  } catch {
     return new Set<string>();
   }
 };
@@ -689,9 +952,7 @@ const addDeletedId = (table: TableName, id: string): void => {
     const set = getDeletedIds(table);
     set.add(id);
     safeLocalStorage.setItem(`vialivre_deleted_${table}`, JSON.stringify(Array.from(set)));
-  } catch (e) {
-    console.warn(`[DB_DELETED_SAVE_ERROR] Erro ao gravar exclusão de ${table}:`, e);
-  }
+  } catch {}
 };
 
 const removeDeletedId = (table: TableName, id: string): void => {
@@ -701,10 +962,9 @@ const removeDeletedId = (table: TableName, id: string): void => {
       set.delete(id);
       safeLocalStorage.setItem(`vialivre_deleted_${table}`, JSON.stringify(Array.from(set)));
     }
-  } catch (e) {}
+  } catch {}
 };
 
-// Cache local com suporte a multitenancy (somente espelho do Supabase)
 const getLocalData = <T>(table: TableName): T[] => {
   const deleted = getDeletedIds(table);
   const isPublicPassenger = PUBLIC_PASSENGER_TABLES.includes(table);
@@ -715,9 +975,7 @@ const getLocalData = <T>(table: TableName): T[] => {
     const raw = safeLocalStorage.getItem(`vialivre_db_${table}`);
     if (raw !== null) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        rawList = parsed;
-      }
+      if (Array.isArray(parsed)) rawList = parsed;
     }
     if ((table === 'bus_stations' || table === 'bus_terminals') && rawList.length === 0) {
       const bsRaw = safeLocalStorage.getItem('vialivre_bus_stations');
@@ -730,21 +988,17 @@ const getLocalData = <T>(table: TableName): T[] => {
     if (rawList.length > 0) {
       return rawList.filter((x: any) => {
         if (!x || !x.id || deleted.has(x.id)) return false;
-        // Tabelas públicas de passageiros são livres para consulta
         if (isPublicPassenger || table === 'activation_keys' || !activeSysId) {
           return true;
         }
-        // Se usuário autenticado está consultando tabelas isoladas, filtra pelo system_id
-        if (!x.system_id) return true; // Legados ou dados globais
+        if (!x.system_id) return true;
         if (activeSysId === DEFAULT_SYSTEM_UUID) {
           return x.system_id === DEFAULT_SYSTEM_UUID || x.system_id === 'sys-vialivre-default';
         }
         return x.system_id === activeSysId;
       }) as T[];
     }
-  } catch (e) {
-    console.warn(`[DB_LOCAL_READ_ERROR] Erro ao ler cache local de ${table}:`, e);
-  }
+  } catch {}
 
   return [];
 };
@@ -755,48 +1009,9 @@ const setLocalData = <T>(table: TableName, data: T[]): void => {
     if (table === 'bus_stations' || table === 'bus_terminals') {
       safeLocalStorage.setItem('vialivre_bus_stations', JSON.stringify(data));
     }
-  } catch (e) {
-    console.warn(`[DB_LOCAL_SAVE_ERROR] Erro ao salvar cache local de ${table}:`, e);
-  }
+  } catch {}
 };
 
-// Nuvem Supabase Storage para persistência de dados transparente e imune a recursão RLS
-const CLOUD_STORAGE_BUCKET = 'photos';
-const CLOUD_STORAGE_PREFIX = 'vialivre_cloud_db';
-
-export const isRlsRecursionError = (err: any): boolean => {
-  if (!err) return false;
-  if (err.code === '42P17') return true;
-  const msg = (typeof err === 'string' ? err : (err.message || err.details || err.hint || '')).toLowerCase();
-  return msg.includes('infinite recursion') || msg.includes('recursion detected');
-};
-
-export const syncTableToCloudStorage = async (table: TableName, data: any[]): Promise<void> => {
-  try {
-    const jsonStr = JSON.stringify(data);
-    const blob = new Blob([jsonStr], { type: 'application/json' });
-    await supabase.storage.from(CLOUD_STORAGE_BUCKET).upload(`${CLOUD_STORAGE_PREFIX}/${table}.json`, blob, {
-      upsert: true,
-      contentType: 'application/json'
-    });
-  } catch (err) {
-    // Non-blocking background cloud mirror
-  }
-};
-
-export const fetchTableFromCloudStorage = async <T>(table: TableName): Promise<T[] | null> => {
-  try {
-    const { data, error } = await supabase.storage.from(CLOUD_STORAGE_BUCKET).download(`${CLOUD_STORAGE_PREFIX}/${table}.json`);
-    if (error || !data) return null;
-    const text = await data.text();
-    const parsed = JSON.parse(text);
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-};
-
-// Gerenciamento de Fila de Sincronização
 const SYNC_QUEUE_KEY = 'vialivre_sync_queue';
 
 const getSyncQueue = (): PendingAction[] => {
@@ -805,8 +1020,7 @@ const getSyncQueue = (): PendingAction[] => {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return Array.isArray(parsed) ? parsed : [];
-  } catch (e) {
-    console.error('Erro ao ler fila de sincronização:', e);
+  } catch {
     return [];
   }
 };
@@ -815,9 +1029,7 @@ const saveSyncQueue = (queue: PendingAction[]): void => {
   try {
     safeLocalStorage.setItem(SYNC_QUEUE_KEY, JSON.stringify(queue));
     notifyStatusChange();
-  } catch (e) {
-    console.error('Erro ao salvar fila de sincronização:', e);
-  }
+  } catch {}
 };
 
 const addToSyncQueue = (item: Omit<PendingAction, 'id' | 'timestamp'>): PendingAction => {
@@ -827,8 +1039,8 @@ const addToSyncQueue = (item: Omit<PendingAction, 'id' | 'timestamp'>): PendingA
     id: `sync-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     timestamp: Date.now()
   };
-  
-  const existingIdx = queue.findIndex(q => q.table === item.table && q.recordId === item.recordId);
+
+  const existingIdx = queue.findIndex((q) => q.table === item.table && q.recordId === item.recordId);
   if (existingIdx !== -1) {
     if (item.action === 'delete') {
       if (queue[existingIdx].action === 'create') {
@@ -853,11 +1065,12 @@ const addToSyncQueue = (item: Omit<PendingAction, 'id' | 'timestamp'>): PendingA
 };
 
 let dbStatus: DbStatus = {
-  isOffline: !isSupabaseConfigured,
+  isOffline: false,
   pendingSyncCount: getSyncQueue().length,
   isSyncing: false,
   lastSyncAt: null,
-  lastError: !isSupabaseConfigured ? 'Banco de dados em nuvem não configurado' : null
+  lastError: null,
+  provider: 'Aiven PostgreSQL'
 };
 
 const statusListeners = new Set<(status: DbStatus) => void>();
@@ -870,12 +1083,10 @@ const dispatchSystemToast = (message: string, type: 'success' | 'info' | 'warnin
 
 const notifyStatusChange = () => {
   dbStatus.pendingSyncCount = getSyncQueue().length;
-  statusListeners.forEach(cb => {
+  statusListeners.forEach((cb) => {
     try {
       cb({ ...dbStatus });
-    } catch (e) {
-      console.warn('Erro em listener de status do banco:', e);
-    }
+    } catch {}
   });
 
   if (typeof window !== 'undefined') {
@@ -891,37 +1102,36 @@ const updateStatus = (updates: Partial<DbStatus>) => {
       changed = true;
     }
   });
-
   if (changed) {
     notifyStatusChange();
   }
 };
 
-// Monitoramento de Conexão Online/Offline e Sincronização Periódica
 if (typeof window !== 'undefined') {
+  initSSE();
+
   const triggerAutoSync = async () => {
     db.checkConnection().then(async (isOnline) => {
       if (isOnline) {
         const result = await db.syncPendingActions();
         window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
         if (result.syncedCount > 0) {
-          dispatchSystemToast(`Sincronizado: ${result.syncedCount} itens salvos na nuvem`, 'success');
+          dispatchSystemToast(`Sincronizado: ${result.syncedCount} itens salvos no Aiven PostgreSQL`, 'success');
         }
       }
     });
   };
 
   window.addEventListener('online', () => {
-    dispatchSystemToast('Rede reconectada. Sincronizando...', 'info');
+    dispatchSystemToast('Rede reconectada. Sincronizando com Aiven PostgreSQL...', 'info');
     triggerAutoSync();
   });
 
   window.addEventListener('offline', () => {
     updateStatus({ isOffline: true, lastError: 'Sem conexão com a internet' });
-    dispatchSystemToast('Sem conexão com a internet', 'warning');
+    dispatchSystemToast('Modo offline ativo (cache local)', 'warning');
   });
 
-  // Sincronizar ao focar na janela (ex: quando o usuário volta pro computador ou alterna abas)
   window.addEventListener('focus', () => {
     triggerAutoSync();
   });
@@ -932,12 +1142,76 @@ if (typeof window !== 'undefined') {
     }
   });
 
-  // Intervalo suave em segundo plano para manter dados sincronizados entre múltiplos dispositivos
   setInterval(() => {
     if (!dbStatus.isSyncing) {
       db.syncPendingActions();
     }
   }, 25000);
+}
+
+function enrichRow<T>(table: TableName, item: any): T {
+  if (!item || typeof item !== 'object') return item;
+
+  if (table === 'system_settings' && item?.value) {
+    try {
+      const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
+      if (parsed && typeof parsed === 'object') {
+        return { ...item, ...parsed } as T;
+      }
+    } catch {}
+  }
+
+  if (table === 'imp_cards') {
+    let meta: any = null;
+    if (item?.ai_art_url && typeof item.ai_art_url === 'string') {
+      if (item.ai_art_url.startsWith('{')) {
+        try {
+          meta = JSON.parse(item.ai_art_url);
+        } catch {}
+      } else if (item.ai_art_url.startsWith('abbr:')) {
+        meta = { abbreviation: item.ai_art_url.replace('abbr:', '') };
+      }
+    }
+    return {
+      ...item,
+      company_id: meta?.company_id || item.card_logo_left_url || item.company_id || '',
+      company_name: meta?.company_name || item.card_logo_right_url || item.company_name || '',
+      company_logo: meta?.company_logo || item.left_logo_url || item.company_logo || '',
+      internal_code: meta?.internal_code || item.right_logo_url || item.internal_code || '',
+      abbreviation: meta?.abbreviation || item.abbreviation || ''
+    } as T;
+  }
+
+  if (table === 'routes') {
+    const rawSections = Array.isArray(item?.sections) ? item.sections : [];
+    const realSections = rawSections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
+    const meta = rawSections.find((s: any) => s && s.__route_meta__);
+    const routeColor = item.letreiro_cor || item.display_main_color || item.letreiro_principal_cor || meta?.letreiro_cor || '#ffaa00';
+    return {
+      ...item,
+      sections: realSections,
+      letreiro_cor: routeColor,
+      display_main_color: routeColor,
+      letreiro_principal_cor: routeColor,
+      via1_cor: item.via1_cor || routeColor,
+      via2_cor: item.via2_cor || routeColor,
+      via3_cor: item.via3_cor || routeColor,
+      empresa_autuante: item.empresa_autuante || meta?.empresa_autuante || '',
+      empresa_autuante_id: item.empresa_autuante_id || meta?.empresa_autuante_id || ''
+    } as T;
+  }
+
+  if (table === 'companies') {
+    return {
+      ...item,
+      city: item.city || item.cidade || item.address_city,
+      state: item.state || item.uf || item.address_state,
+      trade_name: item.trade_name || item.nome_fantasia,
+      corporate_name: item.corporate_name || item.razao_social
+    } as T;
+  }
+
+  return item as T;
 }
 
 export const db = {
@@ -953,12 +1227,13 @@ export const db = {
   getSystemId: () => currentSystemId,
 
   getIsolatedTables: (): TableName[] => [
-    'routes', 'trips', 'users', 'companies', 'vehicles', 'occurrences', 
-    'notices', 'ticket_sales', 'maintenance', 'driver_logs', 'conductor_logs',
-    'dispatcher_logs', 'ticketing_config', 'payroll_rubrics', 'payroll',
-    'role_configs', 'notifications', 'shifts', 'daily_schedules', 'time_tracking', 
-    'system_settings', 'imp_cards', 'imp_card_recharges', 'user_occurrences', 
-    'traffic_violations', 'user_fines', 'job_applications', 'job_vacancies', 
+    'routes', 'trips', 'users', 'companies', 'vehicles', 'occurrences',
+    'notices', 'ticket_sales', 'bilhetes_passagem', 'schedules', 'maintenance',
+    'driver_logs', 'conductor_logs', 'dispatcher_logs', 'routes_logs',
+    'ticketing_config', 'payroll_rubrics', 'payroll', 'role_configs',
+    'notifications', 'shifts', 'daily_schedules', 'time_tracking',
+    'system_settings', 'imp_cards', 'imp_card_recharges', 'user_occurrences',
+    'traffic_violations', 'user_fines', 'job_applications', 'job_vacancies',
     'skins', 'trips_audit', 'subscriptions', 'ticket_booths', 'bus_stations',
     'bus_terminals', 'itineraries'
   ],
@@ -977,27 +1252,34 @@ export const db = {
   },
 
   checkConnection: async (): Promise<boolean> => {
-    if (!isSupabaseConfigured) return false;
-
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 5000);
-      const { error } = await supabase.from('companies').select('id').limit(1).abortSignal(controller.signal);
-      clearTimeout(timeoutId);
+      const res = await fetchWithRetry('/api/health', {
+        headers: { 'Accept': 'application/json' },
+        timeoutMs: 5000,
+        retries: 1
+      });
 
-      if (error && isNetworkError(error)) {
-        updateStatus({ isOffline: true, lastError: error.message });
+      if (!res.ok) {
+        updateStatus({ isOffline: true, lastError: `Servidor respondeu HTTP ${res.status}` });
         return false;
       }
-      updateStatus({ isOffline: false, lastError: null });
+
+      const health = await res.json();
+      const connected = Boolean(health?.database?.connected);
+      if (!connected) {
+        updateStatus({
+          isOffline: true,
+          lastError: health?.database?.error || 'DATABASE_URL não configurada no servidor',
+          provider: 'Aiven PostgreSQL'
+        });
+        return false;
+      }
+
+      updateStatus({ isOffline: false, lastError: null, provider: 'Aiven PostgreSQL' });
       return true;
     } catch (e: any) {
-      if (isNetworkError(e)) {
-        updateStatus({ isOffline: true, lastError: 'Sem conexão com a internet' });
-        return false;
-      }
-      updateStatus({ isOffline: false, lastError: null });
-      return true;
+      updateStatus({ isOffline: true, lastError: e?.message || 'Sem conexão com o servidor backend' });
+      return false;
     }
   },
 
@@ -1013,15 +1295,32 @@ export const db = {
     for (const item of queue) {
       try {
         if (item.action === 'create' || item.action === 'update') {
-          const payload = cleanPayload(item.table, item.payload, true);
-          const { error } = await supabase.from(item.table).upsert(payload);
-          if (error && isNetworkError(error)) throw error;
+          const payload = cleanPayload(item.table, item.payload, item.action === 'update');
+          const res = await fetchWithRetry(`/api/db/${item.table}`, {
+            method: 'POST',
+            headers: buildHeaders(undefined, payload.system_id),
+            body: safeJsonStringify(payload),
+            timeoutMs: 15000,
+            retries: 2
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(`HTTP ${res.status}: ${msg}`);
+          }
         } else if (item.action === 'delete') {
-          const { error } = await supabase.from(item.table).delete().eq('id', item.recordId);
-          if (error && isNetworkError(error)) throw error;
+          const res = await fetchWithRetry(`/api/db/${item.table}/${encodeURIComponent(item.recordId)}`, {
+            method: 'DELETE',
+            headers: buildHeaders(),
+            timeoutMs: 15000,
+            retries: 2
+          });
+          if (!res.ok) {
+            const msg = await res.text();
+            throw new Error(`HTTP ${res.status}: ${msg}`);
+          }
         }
 
-        const idx = remainingQueue.findIndex(q => q.id === item.id);
+        const idx = remainingQueue.findIndex((q) => q.id === item.id);
         if (idx !== -1) remainingQueue.splice(idx, 1);
         syncedCount++;
       } catch (err: any) {
@@ -1031,7 +1330,7 @@ export const db = {
           updateStatus({ isSyncing: false });
           return { success: false, syncedCount };
         } else {
-          const idx = remainingQueue.findIndex(q => q.id === item.id);
+          const idx = remainingQueue.findIndex((q) => q.id === item.id);
           if (idx !== -1) remainingQueue.splice(idx, 1);
         }
       }
@@ -1042,146 +1341,107 @@ export const db = {
     return { success: true, syncedCount };
   },
 
-  // BUSCA UNIVERSAL NA NUVEM (Com Isolamento por Chave/Tenant e Janela do Passageiro Aberta)
-  fetchAll: async <T>(table: TableName, options?: { bypassSystemId?: boolean; filterSystemId?: string }): Promise<T[]> => {
-    try {
-      let query = supabase.from(table).select('*');
-      
+  fetchAll: (() => {
+    const inFlightFetches = new Map<string, Promise<any[]>>();
+    let activeFetches = 0;
+    const waitQueue: Array<() => void> = [];
+    const MAX_CONCURRENT_FETCHES = 4;
+
+    const acquireSlot = async () => {
+      if (activeFetches < MAX_CONCURRENT_FETCHES) {
+        activeFetches++;
+        return;
+      }
+      await new Promise<void>((resolve) => waitQueue.push(resolve));
+      activeFetches++;
+    };
+
+    const releaseSlot = () => {
+      activeFetches = Math.max(0, activeFetches - 1);
+      const next = waitQueue.shift();
+      if (next) next();
+    };
+
+    return async <T>(table: TableName, options?: { bypassSystemId?: boolean; filterSystemId?: string }): Promise<T[]> => {
       const isPublicPassenger = PUBLIC_PASSENGER_TABLES.includes(table);
       const activeSysId = options?.filterSystemId || currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
 
-      // Regra 2: Janela do Passageiro (Acesso Aberto)
-      // As tabelas de rotas (routes), itinerários (itineraries), paragens (bus_stations) e cidades (cities)
-      // devem permanecer totalmente acessíveis e públicas para consulta livre por parte dos passageiros.
+      const params = new URLSearchParams();
+      let headerSysId: string | null = activeSysId;
+
       if (options?.bypassSystemId || (isPublicPassenger && !currentSystemId && !options?.filterSystemId)) {
-        // Consulta aberta irrestrita
+        params.set('bypass_system_id', 'true');
+        headerSysId = null;
       } else if (table === 'activation_keys' && options?.bypassSystemId) {
-        // Chaves de ativação podem ser consultadas globalmente para validação
+        params.set('bypass_system_id', 'true');
+        headerSysId = null;
       } else if (table === 'users' && !currentSystemId && !options?.filterSystemId) {
-        // Tela de login inicial buscando credenciais
-      } else if (activeSysId && !options?.bypassSystemId) {
-        if (isPublicPassenger || table === 'companies' || table === 'system_settings') {
-          // No painel interno de gestão, operador consulta sua rede + rotas/cidades gerais
-          query = query.or(`system_id.eq.${activeSysId},system_id.is.null`);
-        } else {
-          // Regra 1: Isolamento estrito por system_id da organização
-          query = query.or(`system_id.eq.${activeSysId},system_id.is.null`);
-        }
+        params.set('bypass_system_id', 'true');
+        headerSysId = null;
       } else if (!activeSysId && !isPublicPassenger && table !== 'users' && table !== 'companies' && table !== 'system_settings') {
-        // Visitante não autenticado não deve ver dados corporativos privados
         return [];
       }
 
-      const { data, error } = await query;
-
-      if (error) {
-        if (isNetworkError(error)) {
-          updateStatus({ isOffline: true, lastError: error.message });
-        }
-        
-        // Se a consulta no PostgreSQL do Supabase falhar, recupera imediatamente da nuvem do Supabase Storage
-        const cloudData = await fetchTableFromCloudStorage<T>(table);
-        if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
-          setLocalData(table, cloudData);
-          updateStatus({ isOffline: false, lastError: null });
-          return cloudData;
-        }
-
-        return getLocalData<T>(table);
+      const url = `/api/db/${table}${params.toString() ? `?${params.toString()}` : ''}`;
+      const cacheKey = `${url}::${headerSysId || 'public'}`;
+      const existingPromise = inFlightFetches.get(cacheKey);
+      if (existingPromise) {
+        return existingPromise as Promise<T[]>;
       }
 
-      updateStatus({ isOffline: false, lastError: null });
-      if (data && Array.isArray(data)) {
-        const enriched = data.map((item: any) => {
-          if (table === 'system_settings' && item?.value) {
-            try {
-              const parsed = typeof item.value === 'string' ? JSON.parse(item.value) : item.value;
-              if (parsed && typeof parsed === 'object') {
-                return { ...item, ...parsed };
-              }
-            } catch {}
+      const fetchPromise = (async () => {
+        await acquireSlot();
+        try {
+          const res = await fetchWithRetry(url, {
+            headers: headerSysId ? { 'Accept': 'application/json', 'x-system-id': headerSysId } : { 'Accept': 'application/json' },
+            timeoutMs: 15000,
+            retries: 3
+          });
+
+          if (!res.ok) {
+            const errText = await res.text();
+            throw new Error(`HTTP ${res.status}: ${errText}`);
           }
-          if (table === 'imp_cards') {
-            let meta: any = null;
-            if (item?.ai_art_url && typeof item.ai_art_url === 'string') {
-              if (item.ai_art_url.startsWith('{')) {
-                try {
-                  meta = JSON.parse(item.ai_art_url);
-                } catch {}
-              } else if (item.ai_art_url.startsWith('abbr:')) {
-                meta = { abbreviation: item.ai_art_url.replace('abbr:', '') };
+
+          const data = await res.json();
+          updateStatus({ isOffline: false, lastError: null });
+
+          if (Array.isArray(data)) {
+            let enriched = data.map((row) => enrichRow<T>(table, row));
+
+            if (enriched.length === 0 && table === 'system_settings') {
+              const globalRes = await fetchWithRetry('/api/db/system_settings?bypass_system_id=true&limit=1', {
+                headers: { 'Accept': 'application/json' },
+                timeoutMs: 10000,
+                retries: 2
+              });
+              if (globalRes.ok) {
+                const globalData = await globalRes.json();
+                if (Array.isArray(globalData) && globalData.length > 0) {
+                  enriched = [enrichRow<T>('system_settings', globalData[0])];
+                }
               }
             }
-            return {
-              ...item,
-              company_id: meta?.company_id || item.card_logo_left_url || item.company_id || '',
-              company_name: meta?.company_name || item.card_logo_right_url || item.company_name || '',
-              company_logo: meta?.company_logo || item.left_logo_url || item.company_logo || '',
-              internal_code: meta?.internal_code || item.right_logo_url || item.internal_code || '',
-              abbreviation: meta?.abbreviation || item.abbreviation || ''
-            };
-          }
-          if (table === 'routes') {
-            const rawSections = Array.isArray(item?.sections) ? item.sections : [];
-            const realSections = rawSections.filter((s: any) => s && !s.__route_meta__ && (s.name || s.origin || s.destination));
-            const meta = rawSections.find((s: any) => s && s.__route_meta__);
-            const routeColor = item.display_main_color || item.letreiro_principal_cor || item.letreiro_cor || meta?.letreiro_cor || '#ffaa00';
-            return {
-              ...item,
-              sections: realSections,
-              letreiro_cor: routeColor,
-              display_main_color: routeColor,
-              letreiro_principal_cor: routeColor,
-              empresa_autuante: item.empresa_autuante || meta?.empresa_autuante || '',
-              empresa_autuante_id: item.empresa_autuante_id || meta?.empresa_autuante_id || ''
-            };
-          }
-          if (table === 'companies') {
-            return {
-              ...item,
-              city: item.city || item.cidade || item.address_city,
-              state: item.state || item.uf || item.address_state,
-              trade_name: item.trade_name || item.nome_fantasia,
-              corporate_name: item.corporate_name || item.razao_social
-            };
-          }
-          return item;
-        });
 
-        // Se system_settings não retornou com filtro específico, tenta recuperar configuração global do Supabase
-        if (enriched.length === 0 && table === 'system_settings') {
-          const { data: globalSettings } = await supabase.from('system_settings').select('*').limit(1);
-          if (globalSettings && globalSettings.length > 0) {
-            const raw = globalSettings[0];
-            let parsedVal: any = {};
-            try {
-              if (raw.value) parsedVal = typeof raw.value === 'string' ? JSON.parse(raw.value) : raw.value;
-            } catch {}
-            const fallbackItem = [{ ...raw, ...parsedVal }] as T[];
-            setLocalData(table, fallbackItem);
-            return fallbackItem;
+            setLocalData(table, enriched);
+            return enriched;
           }
+          return [];
+        } catch (e: any) {
+          if (isNetworkError(e)) {
+            updateStatus({ isOffline: true, lastError: e?.message || 'Backend Aiven indisponível, usando cache local' });
+          }
+          return getLocalData<T>(table);
+        } finally {
+          releaseSlot();
+          inFlightFetches.delete(cacheKey);
         }
+      })();
 
-        // Persistência local atua estritamente como espelho do banco de dados em nuvem
-        setLocalData(table, enriched);
-        return enriched as T[];
-      }
-
-      return [];
-    } catch (e: any) {
-      if (isNetworkError(e)) {
-        updateStatus({ isOffline: true, lastError: 'Sem conexão com a internet' });
-        return getLocalData<T>(table);
-      }
-      const cloudData = await fetchTableFromCloudStorage<T>(table).catch(() => null);
-      if (cloudData && Array.isArray(cloudData) && cloudData.length > 0) {
-        setLocalData(table, cloudData);
-        return cloudData;
-      }
-      return getLocalData<T>(table);
-    }
-  },
+      inFlightFetches.set(cacheKey, fetchPromise);
+      return fetchPromise;
+    };
+  })(),
 
   fetchAllGlobal: async <T>(table: TableName): Promise<T[]> => {
     return db.fetchAll<T>(table, { bypassSystemId: true });
@@ -1190,7 +1450,7 @@ export const db = {
   clearLocalCache: () => {
     try {
       if (typeof window !== 'undefined') {
-        Object.keys(localStorage).forEach(key => {
+        Object.keys(localStorage).forEach((key) => {
           if (key.startsWith('vialivre_db_') || key.startsWith('vialivre_deleted_')) {
             localStorage.removeItem(key);
           }
@@ -1199,28 +1459,28 @@ export const db = {
     } catch {}
   },
 
-  // CRIAÇÃO DIRETA NA NUVEM COM SUPORTE A RECURSÃO RLS
   create: async <T extends { id?: string; system_id?: string }>(table: TableName, item: Partial<T>): Promise<T | null> => {
     const payload = cleanPayload(table, item, false);
-    
-    // Geração de ID seguro: shifts e role_configs utilizam identificador gerado pelo banco
-    if (table === 'role_configs' || table === 'shifts') {
-      delete payload.id;
-    } else if (table === 'system_settings') {
+
+    if (table === 'system_settings') {
       try {
-        const { data: existingSettings } = await supabase.from('system_settings').select('id').limit(1);
-        if (existingSettings && existingSettings.length > 0) {
-          const targetId = existingSettings[0].id;
-          return await db.update('system_settings', { ...item, id: targetId } as any) as T;
+        const res = await fetchWithRetry('/api/db/system_settings?limit=1', {
+          headers: buildHeaders(),
+          timeoutMs: 10000
+        });
+        if (res.ok) {
+          const existing = await res.json();
+          if (Array.isArray(existing) && existing.length > 0 && existing[0]?.id) {
+            return (await db.update('system_settings', { ...item, id: existing[0].id } as any)) as T;
+          }
         }
-      } catch (checkErr) {
-        console.warn('[system_settings check error]', checkErr);
-      }
-    } else if (!payload.id || !isValidUUID(payload.id)) {
+      } catch {}
+    }
+
+    if (!payload.id || String(payload.id).trim() === '') {
       payload.id = generateUUID();
     }
-    
-    // Vinculação obrigatória ao system_id ativo da organização do Administrador Raiz
+
     const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
     if (!payload.system_id || payload.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb' || payload.system_id === 'sys-vialivre-default' || payload.system_id === 'default-sys') {
       payload.system_id = activeSys;
@@ -1231,261 +1491,141 @@ export const db = {
     }
 
     try {
-      let currentPayload = { ...payload };
-      let finalItem: any = null;
-      let lastError: any = null;
+      const res = await fetchWithRetry(`/api/db/${table}`, {
+        method: 'POST',
+        headers: buildHeaders(undefined, payload.system_id),
+        body: safeJsonStringify(payload),
+        timeoutMs: 15000
+      });
 
-      for (let attempt = 1; attempt <= 4; attempt++) {
-        try {
-          const { data, error } = await supabase.from(table).insert(currentPayload).select();
-          if (!error && data && data.length > 0) {
-            finalItem = data[0];
-            break;
-          }
-
-          lastError = error;
-          if (!error) break;
-
-          // Se erro de chave duplicada (23505), atualiza o registro existente
-          if (error.code === '23505' && currentPayload.id) {
-            const { data: uData, error: uErr } = await supabase.from(table).update(currentPayload).eq('id', currentPayload.id).select();
-            if (!uErr && uData && uData.length > 0) {
-              finalItem = uData[0];
-              break;
-            }
-          }
-
-          // 1. Coluna não existe no cache de schema do PostgreSQL
-          const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i) ||
-                           (error.message || '').match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
-                           (error.message || '').match(/column "([^"]+)" does not exist/i) ||
-                           (error.message || '').match(/column ([a-zA-Z0-9_]+) does not exist/i);
-          if (colMatch && colMatch[1]) {
-            console.warn(`[SUPABASE_AUTO_HEAL] Removendo coluna desconhecida '${colMatch[1]}' na tabela ${table}`);
-            delete currentPayload[colMatch[1]];
-            continue;
-          }
-
-          // 2. Violação de restrição not-null
-          const nullMatch = (error.message || '').match(/null value in column \"([^\"]+)\"/i);
-          if (nullMatch && nullMatch[1]) {
-            const missingCol = nullMatch[1];
-            console.warn(`[SUPABASE_AUTO_HEAL] Preenchendo valor padrão para coluna obrigatória '${missingCol}' na tabela ${table}`);
-            if (missingCol === 'chassis') currentPayload[missingCol] = '9BW' + Math.random().toString(36).substring(2, 10).toUpperCase() + '0001';
-            else if (missingCol === 'cnh_number') currentPayload[missingCol] = '00000000000';
-            else if (missingCol === 'cnh_category') currentPayload[missingCol] = 'D';
-            else if (missingCol === 'cnh_expiration') currentPayload[missingCol] = '2029-12-31';
-            else if (missingCol === 'cpf') currentPayload[missingCol] = '00000000000';
-            else if (missingCol === 'departure_time') currentPayload[missingCol] = '08:00';
-            else if (missingCol === 'name' || missingCol === 'full_name') currentPayload[missingCol] = 'Registro';
-            else if (missingCol === 'state') currentPayload[missingCol] = 'SP';
-            else if (missingCol === 'date') currentPayload[missingCol] = new Date().toISOString().substring(0, 10);
-            else currentPayload[missingCol] = 'Padrao';
-            continue;
-          }
-
-          break;
-        } catch (attemptErr: any) {
-          lastError = attemptErr;
-          break;
-        }
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
       }
 
-      if (!finalItem && lastError) {
-        console.error(`[SUPABASE_INSERT_ERROR] Erro ao cadastrar na tabela '${table}' no Supabase:`, {
-          code: lastError.code,
-          message: lastError.message,
-          details: lastError.details,
-          hint: lastError.hint,
-          payload: currentPayload
-        });
+      const saved = await res.json();
+      const savedResult = enrichRow<T>(table, saved || payload);
 
-        // Alerta visual no console e toast para diagnóstico imediato
-        dispatchSystemToast(`Erro ao salvar no banco de dados (${table}): ${lastError.message || lastError.code || 'Falha de permissão RLS'}`, 'error');
-
-        // Se for erro de rede offline, salva no cache local e fila
-        if (isNetworkError(lastError)) {
-          const localList = getLocalData<any>(table);
-          const updatedList = [currentPayload, ...localList.filter((x: any) => x.id !== currentPayload.id)];
-          setLocalData(table, updatedList);
-          await syncTableToCloudStorage(table, updatedList);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: currentPayload } }));
-          }
-          return currentPayload as T;
-        }
-
-        // Falha real do Supabase: lança o erro para impedir que o sistema finja ter persistido na nuvem
-        throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao gravar no Supabase'}`);
-      }
-
-      let savedResult = finalItem || payload;
-      if (table === 'system_settings') {
-        let unpacked: any = {};
-        try {
-          if (savedResult?.value) {
-            unpacked = typeof savedResult.value === 'string' ? JSON.parse(savedResult.value) : savedResult.value;
-          }
-        } catch {}
-        savedResult = { ...item, ...savedResult, ...(unpacked || {}) };
-      }
       const localList = getLocalData<any>(table);
       const updatedList = [savedResult, ...localList.filter((x: any) => x.id !== (savedResult as any).id)];
       setLocalData(table, updatedList);
-      syncTableToCloudStorage(table, updatedList).catch(() => {});
-      
+      updateStatus({ isOffline: false, lastError: null });
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: savedResult } }));
       }
-      
-      return savedResult as T;
-    } catch (e: any) {
-      console.error(`[SUPABASE_CREATE_EXCEPTION] Falha ao cadastrar na tabela ${table}:`, e);
-      if (!isNetworkError(e)) {
-        throw e;
-      }
-      const localList = getLocalData<any>(table);
-      const updatedList = [payload, ...localList.filter((x: any) => x.id !== payload.id)];
-      setLocalData(table, updatedList);
-      await syncTableToCloudStorage(table, updatedList);
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: payload } }));
+      return savedResult;
+    } catch (e: any) {
+      console.warn(`[POSTGRES_CREATE_FALLBACK] Falha ao gravar em '${table}' no Aiven PostgreSQL:`, e?.message || e);
+
+      if (isNetworkError(e)) {
+        addToSyncQueue({ table, action: 'create', payload, recordId: String(payload.id) });
+        const localList = getLocalData<any>(table);
+        const updatedList = [payload, ...localList.filter((x: any) => x.id !== payload.id)];
+        setLocalData(table, updatedList);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'create', item: payload } }));
+        }
+        return payload as T;
       }
-      return payload as T;
+
+      if (table === 'notifications') {
+        const localList = getLocalData<any>(table);
+        const updatedList = [payload, ...localList.filter((x: any) => x.id !== payload.id)];
+        setLocalData(table, updatedList);
+        return payload as T;
+      }
+
+      dispatchSystemToast(`Erro ao salvar no PostgreSQL (${table}): ${e?.message || 'Falha na gravação'}`, 'error');
+      throw e;
     }
   },
 
-  // ATUALIZAÇÃO DIRETA NA NUVEM
   update: async <T extends { id: string; system_id?: string }>(table: TableName, item: T): Promise<T | null> => {
     const payload = cleanPayload(table, item, true);
-    
+
     if (item.id) {
       removeDeletedId(table, item.id);
     }
 
-    // Vinculação ao system_id se não presente
     const activeSys = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
     if (!payload.system_id || payload.system_id === '43e370b2-2c60-cf5f-7886-e111e8213ffb' || payload.system_id === 'sys-vialivre-default') {
       payload.system_id = activeSys;
     }
 
-    // EXCLUSÃO AUTOMÁTICA DA CHAVE ANTIGA AO TROCAR A CHAVE DE ACESSO DE UM ADMINISTRADOR
+    // Exclusão automática da chave antiga ao trocar a chave de acesso de um administrador
     if (table === 'users' && (payload.activation_key || (item as any).activation_key)) {
       try {
         const newKey = String(payload.activation_key || (item as any).activation_key || '').trim();
-        const { data: existingUser } = await supabase.from('users').select('activation_key, role, is_full_admin').eq('id', item.id).maybeSingle();
-        if (existingUser && existingUser.activation_key) {
-          const oldKey = String(existingUser.activation_key).trim();
-          if (oldKey && oldKey.toUpperCase() !== newKey.toUpperCase()) {
-            console.log(`[ADMIN_KEY_CHANGE] Detectada troca de chave de acesso do administrador: '${oldKey}' -> '${newKey}'. Excluindo chave antiga automaticamente...`);
-            await db.deleteActivationKeyByCode(oldKey);
+        const existingRes = await fetchWithRetry(`/api/db/users?id=${encodeURIComponent(item.id)}&bypass_system_id=true`, {
+          headers: buildHeaders(),
+          timeoutMs: 10000
+        });
+        if (existingRes.ok) {
+          const rows = await existingRes.json();
+          const existingUser = Array.isArray(rows) ? rows[0] : null;
+          if (existingUser?.activation_key) {
+            const oldKey = String(existingUser.activation_key).trim();
+            if (oldKey && oldKey.toUpperCase() !== newKey.toUpperCase()) {
+              await db.deleteActivationKeyByCode(oldKey);
+            }
           }
         }
-      } catch (keyEx) {
-        console.warn('[ADMIN_KEY_CHANGE_WARN] Falha ao verificar/excluir chave antiga:', keyEx);
-      }
+      } catch {}
     }
 
     try {
-      let currentPayload = { ...payload };
-      let finalItem: any = null;
-      let lastError: any = null;
+      const res = await fetchWithRetry(`/api/db/${table}/${encodeURIComponent(item.id)}`, {
+        method: 'PUT',
+        headers: buildHeaders(undefined, payload.system_id),
+        body: safeJsonStringify(payload),
+        timeoutMs: 15000
+      });
 
-      for (let attempt = 1; attempt <= 3; attempt++) {
-        const { data, error } = await supabase.from(table).update(currentPayload).eq('id', item.id).select();
-        if (!error && data && data.length > 0) {
-          finalItem = data[0];
-          break;
-        }
-
-        lastError = error;
-        if (!error) break;
-
-        const colMatch = (error.message || '').match(/Could not find the '([^']+)' column/i) ||
-                         (error.message || '').match(/column "([^"]+)" of relation "[^"]+" does not exist/i) ||
-                         (error.message || '').match(/column "([^"]+)" does not exist/i) ||
-                         (error.message || '').match(/column ([a-zA-Z0-9_]+) does not exist/i);
-        if (colMatch && colMatch[1]) {
-          console.warn(`[SUPABASE_AUTO_HEAL_UPDATE] Removendo coluna '${colMatch[1]}' na tabela ${table}`);
-          delete currentPayload[colMatch[1]];
-          continue;
-        }
-        break;
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
       }
 
-      if (!finalItem && lastError) {
-        console.error(`[SUPABASE_UPDATE_ERROR] Erro ao atualizar na tabela '${table}' no Supabase:`, {
-          code: lastError.code,
-          message: lastError.message,
-          details: lastError.details,
-          hint: lastError.hint,
-          payload: currentPayload
-        });
+      const updated = await res.json();
+      const updatedItem = enrichRow<T>(table, updated || { ...item, ...payload });
 
-        dispatchSystemToast(`Erro ao atualizar no banco (${table}): ${lastError.message || lastError.code || 'Falha RLS'}`, 'error');
-
-        if (isNetworkError(lastError)) {
-          const localList = getLocalData<any>(table);
-          const idx = localList.findIndex((x: any) => x.id === item.id);
-          if (idx !== -1) localList[idx] = { ...localList[idx], ...payload };
-          else localList.push(payload);
-          setLocalData(table, localList);
-          await syncTableToCloudStorage(table, localList);
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: payload } }));
-          }
-          return item;
-        }
-
-        throw new Error(`[Supabase ${table}] ${lastError.message || 'Falha ao atualizar no Supabase'}`);
-      }
-
-      let updatedItem = (finalItem || payload || item) as T;
-      if (table === 'system_settings') {
-        let unpacked: any = {};
-        try {
-          if ((updatedItem as any)?.value) {
-            unpacked = typeof (updatedItem as any).value === 'string' ? JSON.parse((updatedItem as any).value) : (updatedItem as any).value;
-          }
-        } catch {}
-        updatedItem = { ...item, ...updatedItem, ...(unpacked || {}) } as T;
-      }
       const localList = getLocalData<any>(table);
       const idx = localList.findIndex((x: any) => x.id === item.id);
       if (idx !== -1) localList[idx] = updatedItem;
       else localList.push(updatedItem);
       setLocalData(table, localList);
-      syncTableToCloudStorage(table, localList).catch(() => {});
+      updateStatus({ isOffline: false, lastError: null });
 
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: updatedItem } }));
       }
 
-      return updatedItem as T;
+      return updatedItem;
     } catch (e: any) {
-      console.error(`[SUPABASE_UPDATE_EXCEPTION] Falha ao atualizar na tabela ${table}:`, e);
-      if (!isNetworkError(e)) {
-        throw e;
-      }
-      const localList = getLocalData<any>(table);
-      const idx = localList.findIndex((x: any) => x.id === item.id);
-      if (idx !== -1) localList[idx] = { ...localList[idx], ...payload };
-      else localList.push(payload);
-      setLocalData(table, localList);
-      await syncTableToCloudStorage(table, localList);
+      console.warn(`[POSTGRES_UPDATE_FALLBACK] Falha ao atualizar em '${table}' no Aiven PostgreSQL:`, e?.message || e);
 
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: payload } }));
+      if (isNetworkError(e)) {
+        addToSyncQueue({ table, action: 'update', payload, recordId: item.id });
+        const localList = getLocalData<any>(table);
+        const idx = localList.findIndex((x: any) => x.id === item.id);
+        if (idx !== -1) localList[idx] = { ...localList[idx], ...payload };
+        else localList.push(payload);
+        setLocalData(table, localList);
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'update', item: payload } }));
+        }
+        return item;
       }
-      return item;
+
+      dispatchSystemToast(`Erro ao atualizar no PostgreSQL (${table}): ${e?.message || 'Falha na atualização'}`, 'error');
+      throw e;
     }
   },
 
-  // EXCLUSÃO DIRETA NA NUVEM
   delete: async (table: TableName, id: string): Promise<boolean> => {
     if (!id || typeof id !== 'string' || (id as any).nativeEvent || (id as any).target) {
-      console.error(`db.delete called with invalid id for table ${table}:`, id);
       return false;
     }
 
@@ -1494,28 +1634,27 @@ export const db = {
     const localList = getLocalData<any>(table);
     const updatedList = localList.filter((x: any) => x && x.id !== id);
     setLocalData(table, updatedList);
-    syncTableToCloudStorage(table, updatedList).catch(() => {});
 
     try {
-      const { error } = await supabase.from(table).delete().eq('id', id);
-      if (error) {
-        console.error(`[SUPABASE_DELETE_ERROR] Erro ao excluir na tabela ${table} no Supabase:`, {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          id
-        });
-        if (!isNetworkError(error)) {
-          dispatchSystemToast(`Erro ao excluir na tabela ${table}: ${error.message || error.code}`, 'error');
-        }
+      const res = await fetchWithRetry(`/api/db/${table}/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: buildHeaders(),
+        timeoutMs: 15000
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`HTTP ${res.status}: ${errText}`);
       }
-      
+
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'delete', id } }));
       }
       return true;
     } catch (e: any) {
-      console.error(`[SUPABASE_DELETE_EXCEPTION] Erro ao excluir na tabela ${table}:`, e);
+      if (isNetworkError(e)) {
+        addToSyncQueue({ table, action: 'delete', recordId: id });
+      }
       if (typeof window !== 'undefined') {
         window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { table, action: 'delete', id } }));
       }
@@ -1530,9 +1669,13 @@ export const db = {
         if (item && item.id) addDeletedId(table, item.id);
       });
       setLocalData(table, []);
-      await supabase.from(table).delete().neq('id', '00000000-0000-0000-0000-000000000000');
+      await fetchWithRetry(`/api/db/${table}`, {
+        method: 'DELETE',
+        headers: buildHeaders(),
+        timeoutMs: 15000
+      });
       return true;
-    } catch (error) {
+    } catch {
       setLocalData(table, []);
       return true;
     }
@@ -1550,48 +1693,11 @@ export const db = {
           if (data && data.table) {
             onEvent(data.table, data);
           }
-        } catch (err) {
-          // ignore parse errors on keepalive ping
-        }
+        } catch {}
       };
-      sse.onerror = () => {
-        // EventSource will automatically attempt reconnection
-      };
+      sse.onerror = () => {};
     } catch (e) {
-      console.warn('[Realtime] Failed to connect SSE:', e);
-    }
-
-    // Direct Supabase Realtime Subscription
-    let supabaseChannel: any = null;
-    try {
-      supabaseChannel = supabase
-        .channel('vialivre-realtime-all')
-        .on('postgres_changes', { event: '*', schema: 'public' }, (payload: any) => {
-          if (payload && payload.table) {
-            onEvent(payload.table, payload);
-          }
-        })
-        .subscribe();
-    } catch (e) {
-      console.warn('[Realtime] Failed to subscribe to Supabase channel:', e);
-    }
-
-    // Mobile Synchronization Broadcast Channel for ViaLivre Mobile
-    let mobileBroadcastChannel: any = null;
-    try {
-      mobileBroadcastChannel = supabase
-        .channel('vialivre-mobile-sync')
-        .on('broadcast', { event: 'vialivre_mobile_event' }, (payload: any) => {
-          if (payload?.payload?.table) {
-            onEvent(payload.payload.table, payload.payload);
-          }
-          if (typeof window !== 'undefined') {
-            window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
-          }
-        })
-        .subscribe();
-    } catch (e) {
-      console.warn('[Realtime] Falha ao assinar canal mobile broadcast:', e);
+      console.warn('[Realtime] Falha ao conectar SSE:', e);
     }
 
     const localDataHandler = (e: any) => {
@@ -1610,55 +1716,68 @@ export const db = {
     return {
       unsubscribe: () => {
         if (sse) sse.close();
-        if (supabaseChannel) {
-          try { supabase.removeChannel(supabaseChannel); } catch {}
-        }
-        if (mobileBroadcastChannel) {
-          try { supabase.removeChannel(mobileBroadcastChannel); } catch {}
-        }
         window.removeEventListener('vialivre-data-changed', localDataHandler);
       }
     };
   },
 
-  subscribeTable: (table: TableName, onEvent: (payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void): { unsubscribe: () => void } => {
+  subscribeTable: (
+    table: TableName,
+    onEvent: (payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void
+  ): { unsubscribe: () => void } => {
     try {
       const channelId = `rt-${table}-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-      const channel = supabase
+      const channel = postgresClient
         .channel(channelId)
         .on('postgres_changes', { event: '*', schema: 'public', table }, (p: any) => {
           onEvent({
-            eventType: p.eventType as any,
+            eventType: (p.eventType || 'UPDATE') as any,
             new: p.new,
             old: p.old
           });
         })
         .subscribe();
+
+      const localHandler = (e: any) => {
+        const detail = e.detail;
+        if (detail?.table === table) {
+          onEvent({
+            eventType: detail.action === 'create' ? 'INSERT' : detail.action === 'update' ? 'UPDATE' : 'DELETE',
+            new: detail.item,
+            old: detail.item || { id: detail.id }
+          });
+        }
+      };
+      if (typeof window !== 'undefined') {
+        window.addEventListener('vialivre-data-changed', localHandler);
+      }
+
       return {
         unsubscribe: () => {
-          try {
-            supabase.removeChannel(channel);
-          } catch (e) {
-            channel.unsubscribe();
+          postgresClient.removeChannel(channel);
+          if (typeof window !== 'undefined') {
+            window.removeEventListener('vialivre-data-changed', localHandler);
           }
         }
       };
-    } catch (e) {
-      console.warn(`Erro ao assinar Realtime para ${table}:`, e);
+    } catch {
       return { unsubscribe: () => {} };
     }
   },
 
-  subscribeTables: (tables: TableName[], onEvent: (table: TableName, payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void): { unsubscribe: () => void } => {
-    const subs = tables.map(tbl => db.subscribeTable(tbl, (p) => onEvent(tbl, p)));
+  subscribeTables: (
+    tables: TableName[],
+    onEvent: (table: TableName, payload: { eventType: 'INSERT' | 'UPDATE' | 'DELETE'; new: any; old: any }) => void
+  ): { unsubscribe: () => void } => {
+    const subs = tables.map((tbl) => db.subscribeTable(tbl, (p) => onEvent(tbl, p)));
     return {
       unsubscribe: () => {
-        subs.forEach(s => s.unsubscribe());
+        subs.forEach((s) => s.unsubscribe());
       }
     };
   },
 
-  // MÉTODOS DE CONSULTA (Compatibilidade Direta e Aliases getAll...)
+  // MÉTODOS DE CONSULTA
   getUsers: () => db.fetchAll<User>('users'),
   getAllUsers: () => db.fetchAll<User>('users', { bypassSystemId: true }),
 
@@ -1676,6 +1795,9 @@ export const db = {
   getTrips: () => db.fetchAll<Trip>('trips'),
   getAllTrips: () => db.fetchAll<Trip>('trips'),
 
+  getSchedules: () => db.fetchAll<any>('schedules'),
+  getAllSchedules: () => db.fetchAll<any>('schedules'),
+
   getCompanies: () => db.fetchAll<Company>('companies'),
   getAllCompanies: () => db.fetchAll<Company>('companies'),
 
@@ -1691,6 +1813,8 @@ export const db = {
   getSales: () => db.fetchAll<TicketSale>('ticket_sales'),
   getAllSales: () => db.fetchAll<TicketSale>('ticket_sales'),
 
+  getBilhetesPassagem: () => db.fetchAll<TicketSale>('bilhetes_passagem'),
+
   getInspections: () => db.fetchAll<Inspection>('inspections'),
   getAllInspections: () => db.fetchAll<Inspection>('inspections'),
 
@@ -1704,6 +1828,7 @@ export const db = {
   getShifts: () => db.fetchAll<Shift>('shifts'),
   getOccurrences: () => db.fetchAll<any>('user_occurrences'),
   getDriverLogs: () => db.fetchAll<any>('driver_logs'),
+  getRoutesLogs: () => db.fetchAll<any>('routes_logs'),
   getSystemSettings: () => db.fetchAll<SystemSettings>('system_settings'),
   getImpCards: () => db.fetchAll<any>('imp_cards'),
   getImpCardRecharges: () => db.fetchAll<any>('imp_card_recharges'),
@@ -1726,27 +1851,22 @@ export const db = {
 
   getActivationKeys: () => db.fetchAll<any>('activation_keys'),
   getAllActivationKeys: () => db.fetchAll<any>('activation_keys'),
+
   deleteActivationKeyByCode: async (keyCode: string): Promise<boolean> => {
     if (!keyCode || typeof keyCode !== 'string') return false;
     const cleanKey = keyCode.trim();
     if (!cleanKey) return false;
     try {
-      console.log(`[DATABASE] Excluindo chave antiga de ativação: ${cleanKey}`);
-      const { error } = await supabase
-        .from('activation_keys')
-        .delete()
-        .ilike('key_code', cleanKey);
-      
-      if (error) {
-        console.error('[SUPABASE_DELETE_KEY_ERROR] Erro ao excluir chave antiga no Supabase:', {
-          code: error.code,
-          message: error.message,
-          details: error.details,
-          keyCode: cleanKey
-        });
-      } else {
-        console.log(`[SUPABASE] Chave antiga '${cleanKey}' excluída com sucesso do banco de dados.`);
-      }
+      const qp = new URLSearchParams({
+        field: 'key_code',
+        value: cleanKey,
+        case_insensitive: 'true'
+      });
+      await fetchWithRetry(`/api/db/activation_keys?${qp.toString()}`, {
+        method: 'DELETE',
+        headers: buildHeaders(),
+        timeoutMs: 10000
+      });
 
       const localKeys = getLocalData<any>('activation_keys');
       const filtered = localKeys.filter((k: any) => (k.key_code || '').trim().toUpperCase() !== cleanKey.toUpperCase());
@@ -1763,27 +1883,35 @@ export const db = {
   },
 
   getTimeTracking: () => db.fetchAll<TimeEntry>('time_tracking'),
+
   getTimeEntries: async (userId?: string): Promise<TimeEntry[]> => {
     try {
-      let query = supabase.from('time_tracking').select('*');
-      if (userId) query = query.eq('user_id', userId);
-      const { data, error } = await query;
-      if (!error && data) {
-        setLocalData('time_tracking', data);
-        // Sincronizar cache seguro no IndexedDB
-        pontoIndexedDB.cacheTimeEntries(data as TimeEntry[]).catch(() => {});
-        return data as TimeEntry[];
+      const qp = new URLSearchParams();
+      if (userId) qp.set('user_id', userId);
+      const url = `/api/db/time_tracking${qp.toString() ? `?${qp.toString()}` : ''}`;
+      const res = await fetchWithRetry(url, {
+        headers: buildHeaders(),
+        timeoutMs: 15000
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setLocalData('time_tracking', data);
+          pontoIndexedDB.cacheTimeEntries(data as TimeEntry[]).catch(() => {});
+          return data as TimeEntry[];
+        }
       }
     } catch (err) {
       console.warn('Falha na busca de ponto remoto:', err);
     }
-    // Tenta IndexedDB primeiro, depois localStorage
+
     try {
       const idbEntries = await pontoIndexedDB.getCachedTimeEntries(userId);
       if (idbEntries.length > 0) return idbEntries;
     } catch {}
+
     const local = getLocalData<TimeEntry>('time_tracking');
-    return userId ? local.filter(e => (e as any).user_id === userId) : local;
+    return userId ? local.filter((e) => (e as any).user_id === userId) : local;
   },
 
   saveTimeEntry: async (entry: Partial<TimeEntry>): Promise<TimeEntry | null> => {
@@ -1792,100 +1920,212 @@ export const db = {
 
   getUserProfile: async (userId: string): Promise<User | null> => {
     try {
-      const { data, error } = await supabase.from('users').select('*').or(`id.eq.${userId},email.eq.${userId}`).maybeSingle();
-      if (!error && data) return data as User;
+      const res = await fetchWithRetry(`/api/db/users?bypass_system_id=true&or=${encodeURIComponent(`id.eq.${userId},email.eq.${userId}`)}`, {
+        headers: buildHeaders(),
+        timeoutMs: 10000
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) return data[0] as User;
+      }
     } catch (e) {
-      console.warn('Erro ao carregar perfil do Supabase:', e);
+      console.warn('Erro ao carregar perfil no Aiven PostgreSQL:', e);
     }
     const localUsers = getLocalData<User>('users');
-    return localUsers.find(u => u.id === userId || (u as any).email === userId) || null;
+    return localUsers.find((u) => u.id === userId || (u as any).email === userId) || null;
   },
 
   updateUserProfile: async (userData: Partial<User> & { id: string }): Promise<User | null> => {
     return db.update<User>('users', userData as User);
   },
 
-  // SINCRONIZAÇÃO COM O PROJETO VIALIVRE MOBILE
+  // SINCRONIZAÇÃO COM O PROJETO VIALIVRE MOBILE (VIA EXPRESS API + AIVEN POSTGRESQL)
   getMobileSyncConfig: () => {
-    let resolvedUrl = SAFE_DEFAULT_SB_URL;
-    let resolvedKey = SAFE_DEFAULT_SB_KEY;
-    try {
-      if (typeof getCleanSupabaseConfig === 'function') {
-        const conf = getCleanSupabaseConfig();
-        if (conf?.supabaseUrl) resolvedUrl = conf.supabaseUrl;
-        if (conf?.supabaseAnonKey) resolvedKey = conf.supabaseAnonKey;
-      } else if (typeof SUPABASE_URL !== 'undefined' && SUPABASE_URL) {
-        resolvedUrl = SUPABASE_URL;
-        resolvedKey = SUPABASE_ANON_KEY;
-      }
-    } catch (e) {
-      console.warn('[MobileSync] Fallback para credenciais padrão:', e);
-    }
-    const activeSysId = currentSystemId || getStoredSystemId() || 'sys-vialivre-default';
+    const activeSysId = currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
+    const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
     return {
       appName: 'ViaLivre Gestão & Mobile Gateway',
       mobileAppTarget: 'ViaLivre Mobile',
-      version: '1.5.0',
-      supabaseUrl: resolvedUrl,
-      supabaseAnonKey: resolvedKey,
+      version: '2.0.0',
+      databaseProvider: 'Aiven PostgreSQL (pg)',
       systemId: activeSysId,
-      apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      apiBaseUrl: origin,
+      eventsStreamUrl: `${origin}/api/events`,
       realtimeChannels: [
-        'public:trips',
-        'public:routes',
-        'public:bus_stations',
-        'public:notices',
-        'public:imp_cards',
-        'public:imp_card_recharges',
-        'public:tickets',
-        'public:daily_logs',
-        'public:occurrences'
+        'trips',
+        'schedules',
+        'routes',
+        'bus_stations',
+        'notices',
+        'imp_cards',
+        'imp_card_recharges',
+        'ticket_sales',
+        'bilhetes_passagem',
+        'driver_logs',
+        'occurrences'
       ],
       publicPassengerTables: PUBLIC_PASSENGER_TABLES,
       timestamp: Date.now()
     };
   },
 
-  syncWithMobile: async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
-    try {
-      // 1. Sincroniza fila de pendências offline com Supabase
-      const localResult = await db.syncPendingActions();
+  restoreBackup: async (
+    rawBackup: Record<string, any[]>,
+    targetSystemId?: string | null,
+    onProgress?: (info: { currentTable: string; completed: number; total: number; percent: number }) => void
+  ): Promise<{
+    success: boolean;
+    targetSystemId: string;
+    tablesProcessed: number;
+    tablesRestored: number;
+    recordsRestored: number;
+    failedCount: number;
+    tableStats: Record<string, { restored: number; failed: number }>;
+    errors: Array<{ table: string; id?: string; message: string }>;
+  }> => {
+    const resolvedSysId =
+      targetSystemId &&
+      targetSystemId !== 'sys-vialivre-default' &&
+      targetSystemId !== 'default-sys'
+        ? String(targetSystemId)
+        : currentSystemId || getStoredSystemId() || DEFAULT_SYSTEM_UUID;
 
-      // 2. Dispara broadcast em tempo real para dispositivos ViaLivre Mobile conectados
-      try {
-        const syncChannel = supabase.channel('vialivre-mobile-sync');
-        await syncChannel.subscribe();
-        await syncChannel.send({
-          type: 'broadcast',
-          event: 'vialivre_mobile_event',
-          payload: {
-            type: 'SYNC_TRIGGER',
-            origin: 'vialivre_gestao',
-            system_id: currentSystemId || getStoredSystemId(),
-            timestamp: Date.now()
-          }
+    db.setSystemId(resolvedSysId);
+    db.clearLocalCache();
+
+    const tablesMap = extractNormalizedBackupTables(rawBackup);
+    const nonEmptyEntries = Object.entries(tablesMap).filter(([, rows]) => Array.isArray(rows) && rows.length > 0);
+    if (nonEmptyEntries.length === 0) {
+      throw new Error('Nenhuma tabela com registros válidos localizada no arquivo de backup.');
+    }
+
+    const prioritySet = ALL_BACKUP_TABLES;
+    const orderedKeys = [
+      ...prioritySet.filter((t) => tablesMap[t] && tablesMap[t].length > 0),
+      ...nonEmptyEntries.map(([k]) => k).filter((k) => !prioritySet.includes(k as TableName))
+    ];
+
+    let tablesRestored = 0;
+    let recordsRestored = 0;
+    let failedCount = 0;
+    const tableStats: Record<string, { restored: number; failed: number }> = {};
+    const errors: Array<{ table: string; id?: string; message: string }> = [];
+
+    for (let i = 0; i < orderedKeys.length; i++) {
+      const table = orderedKeys[i];
+      const rows = tablesMap[table] || [];
+
+      if (onProgress) {
+        onProgress({
+          currentTable: table,
+          completed: i,
+          total: orderedKeys.length,
+          percent: Math.round((i / orderedKeys.length) * 100)
         });
-        setTimeout(() => {
-          try { supabase.removeChannel(syncChannel); } catch {}
-        }, 1200);
-      } catch (e) {
-        console.warn('[Mobile Sync] Broadcast para ViaLivre Mobile:', e);
       }
 
-      // 3. Atualiza timestamps locais e dispara recarregamento de interface
+      // Envia em lotes por tabela para atualizar o progresso em tempo real sem sobrecarregar o servidor
+      const CHUNK_SIZE = 150;
+      let tblRestored = 0;
+      let tblFailed = 0;
+
+      for (let offset = 0; offset < rows.length; offset += CHUNK_SIZE) {
+        const chunk = rows.slice(offset, offset + CHUNK_SIZE);
+        const res = await fetchWithRetry('/api/backup/restore', {
+          method: 'POST',
+          headers: buildHeaders(undefined, resolvedSysId),
+          body: safeJsonStringify({
+            targetSystemId: resolvedSysId,
+            backup: { [table]: chunk }
+          }),
+          timeoutMs: 45000,
+          retries: 2
+        });
+
+        const resData = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(resData?.error || `Erro HTTP ${res.status} ao restaurar tabela ${table}`);
+        }
+
+        tblRestored += Number(resData?.recordsRestored || 0);
+        tblFailed += Number(resData?.failedCount || 0);
+        if (Array.isArray(resData?.errors)) {
+          for (const e of resData.errors) {
+            if (errors.length < 30) errors.push(e);
+          }
+        }
+      }
+
+      tableStats[table] = { restored: tblRestored, failed: tblFailed };
+      recordsRestored += tblRestored;
+      failedCount += tblFailed;
+      if (tblRestored > 0) {
+        tablesRestored++;
+      }
+
+      if (onProgress) {
+        onProgress({
+          currentTable: table,
+          completed: i + 1,
+          total: orderedKeys.length,
+          percent: Math.round(((i + 1) / orderedKeys.length) * 100)
+        });
+      }
+    }
+
+    db.clearLocalCache();
+    updateStatus({ isOffline: false, lastError: null, lastSyncAt: Date.now() });
+
+    return {
+      success: recordsRestored > 0,
+      targetSystemId: resolvedSysId,
+      tablesProcessed: orderedKeys.length,
+      tablesRestored,
+      recordsRestored,
+      failedCount,
+      tableStats,
+      errors
+    };
+  },
+
+  syncWithMobile: async (): Promise<{ success: boolean; syncedCount: number; message: string }> => {
+    try {
+      const localResult = await db.syncPendingActions();
+
+      try {
+        await fetchWithRetry('/api/events/broadcast', {
+          method: 'POST',
+          headers: buildHeaders(),
+          body: safeJsonStringify({
+            table: 'mobile_sync',
+            eventType: 'UPDATE',
+            payload: {
+              type: 'SYNC_TRIGGER',
+              origin: 'vialivre_gestao',
+              system_id: currentSystemId || getStoredSystemId(),
+              timestamp: Date.now()
+            }
+          }),
+          timeoutMs: 5000,
+          retries: 1
+        });
+      } catch {}
+
       if (typeof window !== 'undefined') {
         localStorage.setItem('fluxo_session_sync_timestamp', String(Date.now()));
         window.dispatchEvent(new CustomEvent('vialivre-sync-timestamp-updated'));
         window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
-        window.dispatchEvent(new CustomEvent('vialivre-mobile-sync-event', {
-          detail: { type: 'MANUAL_SYNC', timestamp: Date.now() }
-        }));
+        window.dispatchEvent(
+          new CustomEvent('vialivre-mobile-sync-event', {
+            detail: { type: 'MANUAL_SYNC', timestamp: Date.now() }
+          })
+        );
       }
 
       return {
         success: true,
         syncedCount: localResult.syncedCount,
-        message: 'Sincronização bidirecional com ViaLivre Mobile executada com sucesso!'
+        message: 'Sincronização bidirecional via Aiven PostgreSQL executada com sucesso!'
       };
     } catch (err: any) {
       return {

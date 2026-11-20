@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { Trip, BusRoute, User, Vehicle, TripStatus, TicketSale, UserFine, Company, Inspection } from '../types';
-import { Clock, User as UserIcon, Bus, ArrowRight, Pencil, Plus, X, Save, Trash2, Calendar, Search, CheckCircle2, DollarSign, Users, Loader2, ShieldCheck, Copy, AlertTriangle, List, ShieldAlert, UserCheck, PlayCircle, Ticket, Hash, Printer, Ban, FileText } from 'lucide-react';
+import { Clock, User as UserIcon, Bus, ArrowRight, Pencil, Plus, X, Save, Trash2, Calendar, Search, CheckCircle2, DollarSign, Users, Loader2, ShieldCheck, Copy, AlertTriangle, List, ShieldAlert, UserCheck, PlayCircle, Ticket, Hash, Printer, Ban, FileText, Info } from 'lucide-react';
 import { db, generateUUID } from '../services/database';
 
 interface TripScheduleProps {
@@ -283,14 +283,14 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
       }
 
       const fiscal = drivers.find(f => f.id === formData.fiscal_id) || availableFiscals.find(f => f.id === formData.fiscal_id);
-      const conductor = drivers.find(c => c.id === formData.conductor_id) || availableConductors.find(c => c.id === formData.conductor_id);
+      const conductor = formData.conductor_id ? (drivers.find(c => c.id === formData.conductor_id) || availableConductors.find(c => c.id === formData.conductor_id)) : null;
       const route = routes.find(r => r.id === formData.route_id);
       const route_type = route ? route.route_type : 'URBANO';
       const trip_type = route_type === 'URBANO' ? 'Urbano' : 'Rodoviário';
 
       const resolvedDriverName = driver?.full_name || driver?.name || formData.driver_name || (formData.driver_id ? 'Motorista' : 'Desconhecido');
       const resolvedFiscalName = fiscal?.full_name || fiscal?.name || formData.fiscal_name || (formData.fiscal_id ? 'Fiscal' : 'Não atribuído');
-      const resolvedConductorName = conductor?.full_name || conductor?.name || formData.conductor_name || (formData.conductor_id ? 'Cobrador' : 'Não atribuído');
+      const resolvedConductorName = conductor ? (conductor.full_name || conductor.name || formData.conductor_name || 'Cobrador') : undefined;
 
       setIsSaving(true);
       try {
@@ -1181,12 +1181,17 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                                       key={r.id} 
                                                       onClick={() => { 
                                                           const autoBus = associatedVehicle ? associatedVehicle.prefix : (formData.bus_number || '');
+                                                          const vehCobradorId = associatedVehicle?.conductor_id || (associatedVehicle as any)?.default_conductor_id;
+                                                          const vehCobrador = vehCobradorId ? (drivers.find(d => d.id === vehCobradorId) || availableConductors.find(d => d.id === vehCobradorId)) : null;
                                                           setFormData({
                                                               ...formData, 
                                                               route_id: r.id, 
                                                               route_search: '',
                                                               bus_number: autoBus,
-                                                              bus_search: ''
+                                                              bus_search: '',
+                                                              conductor_id: formData.conductor_id || vehCobradorId || '',
+                                                              conductor_name: formData.conductor_name || vehCobrador?.full_name || vehCobrador?.name || '',
+                                                              conductor_search: ''
                                                           }); 
                                                           setActiveDropdown(null); 
                                                       }} 
@@ -1264,15 +1269,31 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                           <div className="transition-colors">
                               <div className="flex items-center justify-between mb-2 ml-2">
                                   <label className="block text-[10px] font-black text-slate-400 uppercase transition-colors">Veículo *</label>
-                                  {formData.bus_number && formData.route_id && (() => {
-                                      const currentBus = vehicles.find(v => v.prefix === formData.bus_number);
-                                      const isLinked = currentBus && (currentBus.route_id === formData.route_id || (currentBus as any).default_route_id === formData.route_id);
-                                      return isLinked ? (
-                                          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
-                                              <CheckCircle2 size={10} /> Vinculado ao itinerário
-                                          </span>
-                                      ) : null;
-                                  })()}
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                      {formData.bus_number && (() => {
+                                          const currentBus = vehicles.find(v => v.prefix === formData.bus_number);
+                                          const busCobradorId = currentBus?.conductor_id || (currentBus as any)?.default_conductor_id;
+                                          const busCobrador = busCobradorId ? (drivers.find(d => d.id === busCobradorId) || availableConductors.find(d => d.id === busCobradorId)) : null;
+                                          return busCobrador ? (
+                                              <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-full border border-amber-200 dark:border-amber-800 flex items-center gap-1">
+                                                  <CheckCircle2 size={10} /> Cobrador no Veículo: {busCobrador.full_name || busCobrador.name}
+                                              </span>
+                                          ) : (
+                                              <span className="text-[9px] font-bold text-slate-500 dark:text-zinc-400 bg-slate-100 dark:bg-zinc-800 px-2 py-0.5 rounded-full border border-slate-200 dark:border-zinc-700 flex items-center gap-1">
+                                                  Veículo sem cobrador fixo
+                                              </span>
+                                          );
+                                      })()}
+                                      {formData.bus_number && formData.route_id && (() => {
+                                          const currentBus = vehicles.find(v => v.prefix === formData.bus_number);
+                                          const isLinked = currentBus && (currentBus.route_id === formData.route_id || (currentBus as any).default_route_id === formData.route_id);
+                                          return isLinked ? (
+                                              <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 flex items-center gap-1">
+                                                  <CheckCircle2 size={10} /> Vinculado ao itinerário
+                                              </span>
+                                          ) : null;
+                                      })()}
+                                  </div>
                               </div>
                               <div ref={busRef} className="relative">
                                   <input 
@@ -1301,7 +1322,19 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                               (v.prefix || '').includes(formData.bus_search.trim()) || 
                                               (v.plate || '').toUpperCase().includes(formData.bus_search.trim())
                                           ).map(v => (
-                                              <button key={v.id} onClick={() => { setFormData({...formData, bus_number: v.prefix, bus_search: ''}); setActiveDropdown(null); }} className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors flex items-center justify-between">
+                                              <button key={v.id} onClick={() => {
+                                                  const vehCobradorId = v.conductor_id || (v as any).default_conductor_id;
+                                                  const vehCobrador = vehCobradorId ? (drivers.find(d => d.id === vehCobradorId) || availableConductors.find(d => d.id === vehCobradorId)) : null;
+                                                  setFormData({
+                                                      ...formData, 
+                                                      bus_number: v.prefix, 
+                                                      bus_search: '',
+                                                      conductor_id: formData.conductor_id || vehCobradorId || '',
+                                                      conductor_name: formData.conductor_name || vehCobrador?.full_name || vehCobrador?.name || '',
+                                                      conductor_search: ''
+                                                  }); 
+                                                  setActiveDropdown(null); 
+                                              }} className="w-full px-6 py-4 text-left hover:bg-yellow-50 dark:hover:bg-yellow-900/10 border-b dark:border-zinc-800 last:border-0 transition-colors flex items-center justify-between">
                                                   <p className="text-xs font-black dark:text-white uppercase">#{v.prefix} - {v.plate}</p>
                                                   {formData.route_id && (v.route_id === formData.route_id || (v as any).default_route_id === formData.route_id) && (
                                                       <span className="text-[9px] font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800">
@@ -1435,6 +1468,17 @@ const TripSchedule: React.FC<TripScheduleProps> = ({
                                               </button>
                                           ))}
                                       </div>
+                                  )}
+                              </div>
+                              <div className="mt-2 ml-2 flex items-center gap-1.5 text-[9px] font-bold">
+                                  {!formData.conductor_id ? (
+                                      <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1 bg-amber-50 dark:bg-amber-950/30 px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-800/50">
+                                          <Info size={13} className="shrink-0" /> Campo Cobrador não preenchido: O Motorista Urbano escalado terá acesso automático à aba Cobrador na Central de Operações.
+                                      </span>
+                                  ) : (
+                                      <span className="text-emerald-600 dark:text-emerald-400 flex items-center gap-1 bg-emerald-50 dark:bg-emerald-950/30 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800/50">
+                                          <CheckCircle2 size={13} className="shrink-0" /> Cobrador designado para a viagem.
+                                      </span>
                                   )}
                               </div>
                           </div>

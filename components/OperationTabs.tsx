@@ -34,17 +34,41 @@ const OperationTabs: React.FC<OperationTabsProps> = (props) => {
     return 'URBANO';
   }, [currentUser, isFiscal]);
 
-  // Dual role check: If urban driver is assigned to a trip with no conductor, conductor tab must appear automatically
+  const isUrbanDriver = useMemo(() => {
+    const role = (currentUser?.role || '').toUpperCase();
+    const title = (currentUser?.job_title || '').toUpperCase();
+    return role === 'DRIVER' || title.includes('MOTORISTA URBANO') || title.includes('URBANO') || role === 'URBANO';
+  }, [currentUser]);
+
+  // Dual role check: Se o campo Cobrador não for preenchido na escala ou se o veículo não possuir cobrador,
+  // o Motorista Urbano também terá acesso à aba Cobrador na Central de Operações.
   const hasUrbanTripWithoutConductor = useMemo(() => {
-    if (userBaseRole !== 'URBANO') return false;
+    if (!isUrbanDriver && userBaseRole !== 'URBANO') return false;
     const currentId = currentUser?.id;
     const currentName = (currentUser?.full_name || currentUser?.name || '').trim().toLowerCase();
-    return props.trips.some(t => {
-      const isMyTrip = (t.driver_id && t.driver_id === currentId) || (t.driver_name && t.driver_name.trim().toLowerCase() === currentName);
-      const hasNoConductor = !t.conductor_id && !t.conductor_name;
-      return isMyTrip && hasNoConductor;
+
+    // 1. Viagens vinculadas ao motorista
+    const myTrips = props.trips.filter(t => {
+      const matchId = t.driver_id && t.driver_id === currentId;
+      const matchName = t.driver_name && currentName && t.driver_name.trim().toLowerCase().includes(currentName);
+      return matchId || matchName;
     });
-  }, [userBaseRole, props.trips, currentUser]);
+
+    if (myTrips.length > 0) {
+      // Tem viagem onde o cobrador não foi preenchido
+      return myTrips.some(t => {
+        const hasNoConductor = !t.conductor_id || 
+          !t.conductor_name || 
+          t.conductor_name === 'Não atribuído' || 
+          t.conductor_name === 'Nenhum' || 
+          !t.conductor_name.trim();
+        return hasNoConductor;
+      });
+    }
+
+    // Se o motorista urbano não tem viagens com cobrador dedicado fixado, libera acesso à aba Cobrador
+    return true;
+  }, [isUrbanDriver, userBaseRole, props.trips, currentUser]);
 
   const availableTabs = useMemo(() => {
     const tabs: Array<{ id: 'URBANO' | 'RODOVIARIO' | 'COBRADOR' | 'OVERVIEW' | 'FISCAL'; label: string; icon: any }> = [];
@@ -60,10 +84,10 @@ const OperationTabs: React.FC<OperationTabsProps> = (props) => {
       tabs.push({ id: 'RODOVIARIO', label: 'Motorista Rodoviário', icon: Ticket });
       tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
     } else if (!isFiscal) {
-      // Para cargos específicos, mostrar estritamente o cargo cadastrado
-      if (userBaseRole === 'URBANO') {
+      // Para cargos específicos, mostrar o cargo cadastrado e dual-role
+      if (userBaseRole === 'URBANO' || isUrbanDriver) {
         tabs.push({ id: 'URBANO', label: 'Motorista Urbano', icon: BusFront });
-        // Se associado a rota sem cobrador, a aba de cobrador deve aparecer automaticamente
+        // Se associado a rota sem cobrador ou se cobrador não foi preenchido, a aba de cobrador aparece automaticamente
         if (hasUrbanTripWithoutConductor) {
           tabs.push({ id: 'COBRADOR', label: 'Cobrador', icon: DollarSign });
         }
@@ -75,7 +99,7 @@ const OperationTabs: React.FC<OperationTabsProps> = (props) => {
     }
 
     return tabs;
-  }, [isAdmin, isFiscal, userBaseRole, hasUrbanTripWithoutConductor]);
+  }, [isAdmin, isFiscal, userBaseRole, isUrbanDriver, hasUrbanTripWithoutConductor]);
 
   const [activeTab, setActiveTab] = useState<'URBANO' | 'RODOVIARIO' | 'COBRADOR' | 'OVERVIEW' | 'FISCAL'>(() => {
     if (props.initialTab && (isAdmin || (isFiscal && (props.initialTab === 'FISCAL' || props.initialTab === 'OVERVIEW')))) {

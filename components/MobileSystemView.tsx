@@ -82,7 +82,7 @@ import {
   RoleConfig
 } from '../types';
 import { formatDate } from '../utils/dateFormatter';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { NotificationService } from '../services/NotificationService';
 import { SubscriptionExpirationAlert } from './SubscriptionExpirationAlert';
 import { ThemeDesignModal } from './ThemeDesignModal';
@@ -345,12 +345,16 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
     if (userRoleConfig?.permissions && Array.isArray(userRoleConfig.permissions)) {
       userRoleConfig.permissions.forEach(p => perms.add(p));
     }
-    // Dual role rule: if user is urban driver and has an active/scheduled trip with no conductor, auto-grant conductor & operation-center
+    // Dual role rule: if user is urban driver and has a trip with no conductor, auto-grant conductor & operation-center
     const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
-    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
-      const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
-      return isMy && !t.conductor_id && !t.conductor_name;
-    });
+    const hasTripWithoutConductor = isUrbanDriver && (
+      trips.length === 0 ||
+      trips.some(t => {
+        const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
+        const hasNoConductor = !t.conductor_id || !t.conductor_name || t.conductor_name === 'Não atribuído' || t.conductor_name === 'Nenhum' || !t.conductor_name.trim();
+        return isMy && hasNoConductor;
+      })
+    );
     if (hasTripWithoutConductor) {
       perms.add('conductor');
       perms.add('operation-center');
@@ -1045,14 +1049,14 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
       setTimeTrackingHistory(prev => [newEntry, ...prev]);
 
       try {
-        await supabase.from('time_tracking').insert({
+        await db.create('time_tracking', {
           id: `tt-${Date.now()}`,
-          system_id: currentUser?.system_id || 'sys-vialivre-default',
+          system_id: currentUser?.system_id || '44d472ca-9311-45e1-9297-c442e016e1a6',
           user_id: currentUser?.id || 'user-mobile',
           date: todayStr,
           clock_in: timeStr,
           notes: `Batida mobile: ${selectedPontoType} às ${timeStr}`
-        });
+        } as any);
       } catch (err) {
         console.warn('Fallback time tracking storage:', err);
       }
@@ -2669,10 +2673,10 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
       </div>
 
-      {/* 5. REFINED ERGONOMIC BOTTOM SHORTCUT BAR (Thumb-Friendly, Height 70px) */}
+      {/* 5. REFINED ERGONOMIC BOTTOM SHORTCUT BAR (Thumb-Friendly, Height 70px) - SEMPRE APARENTE */}
       <div 
         id="tour-mobile-bottom-nav"
-        className="w-full h-[70px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-zinc-800/90 flex items-center justify-around px-3 z-30 shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.06)]"
+        className="w-full h-[70px] bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-slate-200/90 dark:border-zinc-800/90 flex items-center justify-around px-3 z-50 shrink-0 shadow-[0_-8px_24px_rgba(0,0,0,0.06)] relative"
       >
         {/* Shortcut 1: Início ou Primeiro tab permitido */}
         {(() => {
@@ -2828,7 +2832,7 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
 
       {/* 6. SLIDE-UP HAMBURGER DRAWER - DISPLAYS ALL PERMITTED TABS (Requested explicitly) */}
       {isHamburgerOpen && (
-        <div className="absolute inset-0 z-50 flex flex-col justify-end">
+        <div className="absolute top-0 left-0 right-0 bottom-[70px] z-50 flex flex-col justify-end">
           {/* Backdrop */}
           <div 
             onClick={() => setIsHamburgerOpen(false)}
@@ -3034,9 +3038,9 @@ export const MobileSystemView: React.FC<MobileSystemViewProps> = ({
         </div>
       )}
 
-      {/* 6.1 FULL SYSTEM VIEW EMBEDDED MODAL (Allows viewing ANY system tab inside mobile 412x732) */}
+      {/* 6.1 FULL SYSTEM VIEW EMBEDDED MODAL (Allows viewing ANY system tab inside mobile 412x732) - Barra inferior visível */}
       {activeFullView && (
-        <div className="absolute inset-0 z-40 bg-white dark:bg-black flex flex-col animate-in fade-in duration-200">
+        <div className="absolute top-0 left-0 right-0 bottom-[70px] z-40 bg-white dark:bg-black flex flex-col animate-in fade-in duration-200">
           {/* Header for Full View */}
           <div className="w-full px-3 py-2.5 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0 shadow-md">
             <button

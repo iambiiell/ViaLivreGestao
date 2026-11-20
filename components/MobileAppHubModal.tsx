@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import QRCode from 'qrcode';
 import JSZip from 'jszip';
-import { db, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/database';
+import { db } from '../services/database';
 import TransportCard from './TransportCard';
 import { SystemSettings, Company } from '../types';
 
@@ -121,7 +121,7 @@ export const MobileAppHubModal: React.FC<MobileAppHubModalProps> = ({
     }
   };
 
-  // React Native / Expo Code Snippets preconfigured with this system's Supabase backend
+  // React Native / Expo Code Snippets preconfigured with this system's Aiven PostgreSQL API backend
   const expoPackageJson = useMemo(() => JSON.stringify({
     name: "vialivre-mobile",
     version: "1.0.0",
@@ -136,7 +136,6 @@ export const MobileAppHubModal: React.FC<MobileAppHubModalProps> = ({
       "expo-status-bar": "~2.0.0",
       "react": "18.3.1",
       "react-native": "0.76.5",
-      "@supabase/supabase-js": "^2.45.0",
       "lucide-react-native": "^0.475.0",
       "expo-location": "~18.0.4",
       "expo-camera": "~16.0.13",
@@ -200,14 +199,18 @@ export const MobileAppHubModal: React.FC<MobileAppHubModalProps> = ({
 
 import React, { useState, useEffect } from 'react';
 import { StyleSheet, Text, View, TouchableOpacity, ScrollView, SafeAreaView, StatusBar, Alert } from 'react-native';
-import { createClient } from '@supabase/supabase-js';
 
-// Conexão direta com a base do ViaLivre Gestão
-const SUPABASE_URL = '${SUPABASE_URL}';
-const SUPABASE_ANON_KEY = '${SUPABASE_ANON_KEY}';
+// Conexão direta com a API do ViaLivre Gestão (PostgreSQL Aiven)
+const API_BASE_URL = '${appOrigin}';
 const SYSTEM_ID = '${activeSystemId}';
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+async function fetchTable(table: string, query = '') {
+  const res = await fetch(\`\${API_BASE_URL}/api/db/\${table}\${query}\`, {
+    headers: { 'x-system-id': SYSTEM_ID }
+  });
+  if (!res.ok) throw new Error('Falha ao consultar ' + table);
+  return res.json();
+}
 
 export default function App() {
   const [tab, setTab] = useState<'linhas' | 'cartao' | 'ponto'>('linhas');
@@ -220,55 +223,36 @@ export default function App() {
 
   useEffect(() => {
     loadData();
-    
-    // Escuta atualizações em tempo real disparadas pelo painel ViaLivre Gestão
-    const channel = supabase
-      .channel('vialivre-mobile-sync')
-      .on('broadcast', { event: 'vialivre_mobile_event' }, () => {
-        loadData();
-      })
-      .subscribe();
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    // Sincronização periódica / em tempo real com a API ViaLivre Gestão
+    const interval = setInterval(loadData, 15000);
+    return () => clearInterval(interval);
   }, []);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      // 1. Leitura direta da tabela system_settings do Supabase
-      const { data: settingsData } = await supabase
-        .from('system_settings')
-        .select('*')
-        .limit(1);
-      if (settingsData && settingsData.length > 0) {
+      // 1. Leitura da tabela system_settings via API PostgreSQL
+      const settingsData = await fetchTable('system_settings');
+      if (Array.isArray(settingsData) && settingsData.length > 0) {
         setSystemSettings(settingsData[0]);
       }
 
       // 2. Empresas cadastradas
-      const { data: companiesData } = await supabase
-        .from('companies')
-        .select('*');
-      if (companiesData) setCompanies(companiesData);
+      const companiesData = await fetchTable('companies');
+      if (Array.isArray(companiesData)) setCompanies(companiesData);
 
       // 3. Linhas ativas
-      const { data: routesData } = await supabase
-        .from('routes')
-        .select('*')
-        .order('name');
-      if (routesData) setRoutes(routesData);
+      const routesData = await fetchTable('routes', '?order=name.asc');
+      if (Array.isArray(routesData)) setRoutes(routesData);
 
       // 4. Cartão de Vale Transporte do Usuário
-      const { data: cardsData } = await supabase
-        .from('imp_cards')
-        .select('*')
-        .limit(1);
-      if (cardsData && cardsData.length > 0) {
+      const cardsData = await fetchTable('imp_cards');
+      if (Array.isArray(cardsData) && cardsData.length > 0) {
         setUserCard(cardsData[0]);
       }
     } catch (e) {
-      console.warn('Erro ao carregar dados do Supabase:', e);
+      console.warn('Erro ao carregar dados da API ViaLivre:', e);
     } finally {
       setLoading(false);
     }
@@ -796,7 +780,7 @@ const styles = StyleSheet.create({
                 <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 flex flex-col items-center text-center">
                   <RefreshCw size={18} className="text-purple-500 mb-1" />
                   <span className="text-[11px] font-black uppercase">Tempo Real</span>
-                  <span className="text-[10px] text-slate-500">Supabase Realtime Sync</span>
+                  <span className="text-[10px] text-slate-500">PostgreSQL + SSE Sync</span>
                 </div>
               </div>
             </div>
@@ -811,7 +795,7 @@ const styles = StyleSheet.create({
                     Código Completo do Projeto ViaLivre Mobile (React Native + Expo)
                   </h4>
                   <p className="text-[11px] text-slate-500 dark:text-zinc-400">
-                    Aplicativo pré-configurado com Supabase, rotas, visualização de passagens e ponto do motorista.
+                    Aplicativo pré-configurado com API PostgreSQL Aiven, rotas, visualização de passagens e ponto do motorista.
                   </p>
                 </div>
 
@@ -848,7 +832,7 @@ const styles = StyleSheet.create({
                 <ol className="text-[11px] text-slate-600 dark:text-zinc-400 space-y-1 pl-4 list-decimal font-mono">
                   <li>npm install -g eas-cli expo-cli</li>
                   <li>npx create-expo-app vialivre-mobile --template blank-typescript</li>
-                  <li>npm install @supabase/supabase-js expo-location expo-camera</li>
+                  <li>npm install expo-location expo-camera</li>
                   <li>eas build -p android --profile preview (Gera APK direto para download)</li>
                 </ol>
               </div>

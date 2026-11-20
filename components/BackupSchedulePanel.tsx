@@ -17,7 +17,7 @@ import {
   ArrowRight,
   History
 } from 'lucide-react';
-import { db, TableName } from '../services/database';
+import { db, TableName, ALL_BACKUP_TABLES } from '../services/database';
 import { User } from '../types';
 import { MockNotificationService } from '../services/MockNotificationService';
 import { EmailService } from '../services/emailService';
@@ -211,15 +211,7 @@ export const BackupSchedulePanel: React.FC<BackupSchedulePanelProps> = ({
     );
 
     try {
-      const tables: TableName[] = [
-        'routes', 'trips', 'users', 'companies', 'vehicles', 'occurrences', 
-        'cities', 'notices', 'ticket_sales', 'maintenance', 'inspections', 
-        'ticketing_config', 'payroll_rubrics', 'role_configs', 'notifications', 
-        'shifts', 'time_tracking', 'driver_logs', 'system_settings', 'imp_cards', 
-        'imp_card_recharges', 'user_occurrences', 'traffic_violations', 'user_fines', 
-        'job_applications', 'job_vacancies', 'skins', 'trips_audit', 
-        'subscriptions', 'ticket_booths', 'bus_stations'
-      ];
+      const tables: TableName[] = ALL_BACKUP_TABLES;
 
       const backupData: Record<string, any[]> = {};
       let totalRecords = 0;

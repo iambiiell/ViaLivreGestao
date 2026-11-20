@@ -22,7 +22,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 import QRCode from 'qrcode';
-import { db, SUPABASE_URL, SUPABASE_ANON_KEY } from '../services/database';
+import { db } from '../services/database';
 
 interface MobileSyncModalProps {
   isOpen: boolean;
@@ -58,14 +58,15 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
     } catch (e) {
       console.warn('Erro ao obter config de sincronização móvel:', e);
     }
+    const fallbackOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
     return {
       appName: 'ViaLivre Gestão & Mobile Gateway',
       mobileAppTarget: 'ViaLivre Mobile',
       version: '1.5.0',
-      supabaseUrl: SUPABASE_URL,
-      supabaseAnonKey: SUPABASE_ANON_KEY,
+      databaseProvider: 'Aiven PostgreSQL (pg)',
+      eventsStreamUrl: `${fallbackOrigin}/api/events`,
       systemId: systemId || '44d472ca-9311-45e1-9297-c442e016e1a6',
-      apiBaseUrl: typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000',
+      apiBaseUrl: fallbackOrigin,
       realtimeChannels: [],
       publicPassengerTables: [],
       timestamp: Date.now()
@@ -73,6 +74,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
   }, [systemId]);
 
   const activeSystemId = systemId || syncConfig.systemId;
+  const apiBaseUrl = syncConfig.apiBaseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000');
+  const eventsStreamUrl = syncConfig.eventsStreamUrl || `${apiBaseUrl}/api/events`;
 
   // Pairing payload formatted for ViaLivre Mobile scanner
   const pairingPayload = useMemo(() => {
@@ -80,12 +83,12 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
       app: 'ViaLivre Mobile',
       version: '1.5.0',
       system_id: activeSystemId,
-      supabase_url: syncConfig.supabaseUrl,
-      supabase_anon_key: syncConfig.supabaseAnonKey,
-      api_base_url: syncConfig.apiBaseUrl,
+      database_provider: 'aiven-postgresql',
+      api_base_url: apiBaseUrl,
+      events_stream_url: eventsStreamUrl,
       timestamp: Date.now()
     }, null, 2);
-  }, [syncConfig, activeSystemId]);
+  }, [activeSystemId, apiBaseUrl, eventsStreamUrl]);
 
   // Generate QR Code
   useEffect(() => {
@@ -317,7 +320,7 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
 
                 <div className="flex items-center gap-2 text-[11px] text-emerald-600 dark:text-emerald-400 font-bold">
                   <CheckCircle2 size={16} />
-                  <span>Sincronização bidirecional em nuvem Supabase ativada</span>
+                  <span>Sincronização bidirecional via Aiven PostgreSQL ativada</span>
                 </div>
               </div>
             </div>
@@ -386,9 +389,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                   <button
                     onClick={() => {
                       const envStr = [
-                        `EXPO_PUBLIC_SUPABASE_URL=${syncConfig.supabaseUrl}`,
-                        `EXPO_PUBLIC_SUPABASE_ANON_KEY=${syncConfig.supabaseAnonKey}`,
-                        `EXPO_PUBLIC_API_URL=${syncConfig.apiBaseUrl}`,
+                        `EXPO_PUBLIC_API_URL=${apiBaseUrl}`,
+                        `EXPO_PUBLIC_EVENTS_URL=${eventsStreamUrl}`,
                         `EXPO_PUBLIC_SYSTEM_ID=${activeSystemId}`
                       ].join('\n');
                       handleCopy(envStr, 'env_file');
@@ -400,9 +402,8 @@ export const MobileSyncModal: React.FC<MobileSyncModalProps> = ({
                   </button>
                 </div>
                 <pre className="p-3 bg-slate-900 text-yellow-400 font-mono text-xs rounded-2xl overflow-x-auto border border-slate-800 select-all">
-{`EXPO_PUBLIC_SUPABASE_URL=${syncConfig.supabaseUrl}
-EXPO_PUBLIC_SUPABASE_ANON_KEY=${syncConfig.supabaseAnonKey}
-EXPO_PUBLIC_API_URL=${syncConfig.apiBaseUrl}
+{`EXPO_PUBLIC_API_URL=${apiBaseUrl}
+EXPO_PUBLIC_EVENTS_URL=${eventsStreamUrl}
 EXPO_PUBLIC_SYSTEM_ID=${activeSystemId}`}
                 </pre>
               </div>
@@ -442,22 +443,22 @@ EXPO_PUBLIC_SYSTEM_ID=${activeSystemId}`}
             <div className="space-y-3">
               <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-2xl border border-slate-200 dark:border-zinc-800 space-y-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Status do Banco Supabase:</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Status do Banco Aiven PostgreSQL:</span>
                   <span className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                     <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    Online & Conectado
+                    {liveServerStats?.databaseConnected === false ? 'Modo Offline / Cache Local' : 'Online & Conectado'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Serviço de Eventos SSE & Realtime:</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Serviço de Eventos SSE & Tempo Real:</span>
                   <span className="text-xs font-black uppercase text-emerald-600 dark:text-emerald-400">
-                    Ativo (Canal vialivre-mobile-sync)
+                    Ativo (Stream /api/events)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Provedor de Nuvem:</span>
+                  <span className="text-xs font-bold text-slate-600 dark:text-zinc-300">Gateway API Backend:</span>
                   <span className="text-xs font-mono text-slate-900 dark:text-white">
-                    {SUPABASE_URL.replace('https://', '')}
+                    {apiBaseUrl.replace(/^https?:\/\//, '')}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">

@@ -3,7 +3,7 @@ import { BusRoute, RouteStatus, Company, City, User, LedColor, RouteSection, Tic
 import { Plus, Navigation, Trash2, X, Pencil, Save, Clock, ListChecks, Type, Search, LayoutGrid, Palette, Zap, Binary, Hash, ArrowRight, BarChart3, Users, DollarSign, Activity, FileSpreadsheet, Crosshair, Minimize2, MapPin, Bus, Download, FolderArchive, Tag, Sparkles, Building2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { db } from '../services/database';
-import { supabase } from '../services/supabaseClient';
+import { postgresClient } from '../services/database';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
 import TimetableExportModal, { TimeLegendEntry } from './TimetableExportModal';
 import BatchTimetableExportModal from './BatchTimetableExportModal';
@@ -222,8 +222,8 @@ const RouteManager: React.FC<RouteManagerProps> = ({
     let sundayVolta: string[] = [];
 
     try {
-      // 1. Busca os horários da tabela 'timetables' do Supabase para a rota selecionada
-      const { data, error } = await supabase
+      // 1. Busca os horários da tabela 'timetables' no Aiven PostgreSQL para a rota selecionada
+      const { data, error } = await postgresClient
         .from('timetables')
         .select('*')
         .or(`route_id.eq.${route.id},route_id.eq.${route.prefixo_linha}`);

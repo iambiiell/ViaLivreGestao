@@ -24,7 +24,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { Trip, BusRoute, Vehicle, Company, User, TicketSale } from '../types';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import TripSelectionModal from './TripSelectionModal';
 
 interface FiscalPatioViewProps {
@@ -69,27 +69,20 @@ export const FiscalPatioView: React.FC<FiscalPatioViewProps> = ({
     loadTickets();
     const interval = setInterval(loadTickets, 10000);
 
-    const channel = supabase
-      ? supabase
-          .channel('fiscal-ticket-sales')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'ticket_sales' }, (payload: any) => {
-            if (payload.eventType === 'INSERT') {
-              const newSale = payload.new as TicketSale;
-              setTickets(prev => [newSale, ...prev]);
-            } else if (payload.eventType === 'UPDATE') {
-              const updated = payload.new as TicketSale;
-              setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
-            }
-          })
-          .subscribe()
-      : null;
+    const sub = db.subscribeTable('ticket_sales', (payload: any) => {
+      if (payload.eventType === 'INSERT' && payload.new) {
+        const newSale = payload.new as TicketSale;
+        setTickets(prev => prev.some(t => t.id === newSale.id) ? prev : [newSale, ...prev]);
+      } else if (payload.eventType === 'UPDATE' && payload.new) {
+        const updated = payload.new as TicketSale;
+        setTickets(prev => prev.map(t => t.id === updated.id ? updated : t));
+      }
+    });
 
     return () => {
       isMounted = false;
       clearInterval(interval);
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
-      }
+      sub.unsubscribe();
     };
   }, []);
 

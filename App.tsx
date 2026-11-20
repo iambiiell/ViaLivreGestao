@@ -53,7 +53,7 @@ import GuidedTourModal from './components/GuidedTourModal';
 import MobileDeviceSimulator from './components/MobileDeviceSimulator';
 import MobileSystemView from './components/MobileSystemView';
 import { ViewState, BusRoute, Trip, User, Company, Vehicle, IssueReport, City, Notice, ThemeMode, TicketSale, Inspection, TicketingConfig, RoleConfig, AppNotification, Shift, SystemSettings, UserFine, Subscription, Skin, TimeEntry, TicketBooth, BusStation } from './types';
-import { db, supabase, TableName } from './services/database';
+import { db, TableName, ALL_BACKUP_TABLES } from './services/database';
 import { EmailService } from './services/emailService';
 import { resolveThemeColors, applyThemeVariables, applyThemeMode } from './utils/themeHelper';
 
@@ -209,7 +209,7 @@ const ViewContent: React.FC<{
           onUpdateUser={u => handleAction('update', 'users', u)} 
           onDeleteUser={id => handleAction('delete', 'users', id)} 
         />;
-      case 'vehicles': return <VehicleManager {...commonProps} onAddVehicle={v => handleAction('create', 'vehicles', v)} onUpdateVehicle={v => handleAction('update', 'vehicles', v)} onDeleteVehicle={id => handleAction('delete', 'vehicles', id)} skins={skins} />;
+      case 'vehicles': return <VehicleManager {...commonProps} drivers={users} onAddVehicle={v => handleAction('create', 'vehicles', v)} onUpdateVehicle={v => handleAction('update', 'vehicles', v)} onDeleteVehicle={id => handleAction('delete', 'vehicles', id)} skins={skins} />;
       case 'observations': return <ObservationManager {...commonProps} initialOccurrenceId={notificationMetadata?.occurrenceId} onResolveReport={(id, metadata) => handleAction('update', 'occurrences', { id, status: 'Concluído', technician_report: metadata })} onDeleteReport={id => handleAction('delete', 'occurrences', id)} />;
       case 'cities': return <CityManager {...commonProps} onAddCity={c => handleAction('create', 'cities', c)} onUpdateCity={c => handleAction('update', 'cities', c)} onDeleteCity={id => handleAction('delete', 'cities', id)} />;
       case 'bus-stations': return <BusStationManager 
@@ -932,12 +932,16 @@ const App: React.FC = () => {
     if (user.permissions) user.permissions.forEach(p => perms.add(p));
     if (roleConf?.permissions) roleConf.permissions.forEach(p => perms.add(p));
 
-    // Dual role rule: if urban driver has active/scheduled trip with no conductor
+    // Dual role rule: if urban driver has trip with no conductor, auto-grant conductor & operation-center
     const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
-    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
-      const isMy = (t.driver_id && t.driver_id === user.id) || (t.driver_name && user.name && t.driver_name.toLowerCase().includes(user.name.toLowerCase()));
-      return isMy && !t.conductor_id && !t.conductor_name;
-    });
+    const hasTripWithoutConductor = isUrbanDriver && (
+      trips.length === 0 ||
+      trips.some(t => {
+        const isMy = (t.driver_id && t.driver_id === user.id) || (t.driver_name && user.name && t.driver_name.toLowerCase().includes(user.name.toLowerCase()));
+        const hasNoConductor = !t.conductor_id || !t.conductor_name || t.conductor_name === 'Não atribuído' || t.conductor_name === 'Nenhum' || !t.conductor_name.trim();
+        return isMy && hasNoConductor;
+      })
+    );
     if (hasTripWithoutConductor) {
       perms.add('conductor');
       perms.add('operation-center');
@@ -1598,15 +1602,7 @@ const App: React.FC = () => {
         "info"
       );
       
-      const tables: TableName[] = [
-        'routes', 'trips', 'users', 'companies', 'vehicles', 'occurrences', 
-        'cities', 'notices', 'ticket_sales', 'maintenance', 'inspections', 
-        'ticketing_config', 'payroll_rubrics', 'role_configs', 'notifications', 
-        'shifts', 'time_tracking', 'driver_logs', 'system_settings', 'imp_cards', 
-        'imp_card_recharges', 'user_occurrences', 'traffic_violations', 'user_fines', 
-        'job_applications', 'job_vacancies', 'skins', 'trips_audit', 
-        'subscriptions', 'ticket_booths', 'bus_stations'
-      ];
+      const tables: TableName[] = ALL_BACKUP_TABLES;
 
       const backupData: Record<string, any[]> = {};
       let totalRecords = 0;

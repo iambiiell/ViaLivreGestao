@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Vehicle, MaintenanceRecord, User } from '../types';
 import { Wrench, Plus, Save, X, DollarSign, Calendar, Info, Trash2, Loader2, Bus, Search, AlertTriangle, FileText, TrendingUp, Filter, Settings } from 'lucide-react';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 

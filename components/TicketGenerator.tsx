@@ -2,7 +2,7 @@
 import { jsPDF } from 'jspdf';
 import QRCode from 'qrcode';
 import { TicketSale, Trip, BusRoute, Company, Vehicle } from '../types';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 
 export const downloadTicket = async (saleId: string, originName?: string, destinationName?: string) => {
   try {
@@ -16,16 +16,15 @@ export const downloadTicket = async (saleId: string, originName?: string, destin
     }
 
     if (!sale) {
-      // Direct lookup from Supabase using saleId bypass to support Passenger Interface lookup when system_id is not set
-      const { data, error } = await supabase
-        .from('ticket_sales')
-        .select('*')
-        .eq('id', saleId)
-        .single();
-        
-      if (data) {
-        sale = data as TicketSale;
-      }
+      try {
+        const res = await fetch(`/api/db/ticket_sales?id=${encodeURIComponent(saleId)}&bypass_system_id=true`);
+        if (res.ok) {
+          const rows = await res.json();
+          if (Array.isArray(rows) && rows.length > 0) {
+            sale = rows[0] as TicketSale;
+          }
+        }
+      } catch {}
     }
 
     if (!sale) throw new Error("Venda não encontrada");

@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Bell, Info, AlertTriangle, CheckCircle2, Calendar, Trash2, Loader2, Inbox } from 'lucide-react';
 import { CommonLoader } from './CommonLoader';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { Notice, User } from '../types';
 import { formatDateTime } from '../utils/dateFormatter';
 
@@ -40,19 +40,12 @@ const NotificationsView: React.FC<NotificationsViewProps> = ({ currentUser }) =>
     try {
       setIsLoading(true);
       const userRole = currentUser?.role || 'PASSENGER';
-      
-      let query = supabase
-        .from('notices')
-        .select('*');
-      
-      if (currentUser?.role !== 'ADMIN') {
-        query = query.or(`target_role.eq.ALL,target_role.eq.${userRole}`);
-      }
+      const data = await db.fetchAll<Notice>('notices');
+      const filtered = (data || [])
+        .filter((n: any) => currentUser?.role === 'ADMIN' || !n.target_role || n.target_role === 'ALL' || n.target_role === userRole)
+        .sort((a: any, b: any) => new Date(b.created_at || b.createdAt || 0).getTime() - new Date(a.created_at || a.createdAt || 0).getTime());
 
-      const { data, error } = await query.order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setNotices(data || []);
+      setNotices(filtered);
     } catch (error) {
       console.error('Erro ao buscar notificações:', error);
     } finally {

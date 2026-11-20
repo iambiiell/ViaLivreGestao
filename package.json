@@ -37,8 +37,8 @@
   },
   "dependencies": {
     "@google/genai": "^1.37.0",
-    "@supabase/supabase-js": "^2.45.0",
     "@tailwindcss/vite": "^4.3.0",
+    "@types/nodemailer": "^8.0.2",
     "date-fns": "^4.1.0",
     "driver.js": "^1.8.0",
     "express": "^5.2.1",
@@ -48,6 +48,7 @@
     "jspdf": "^4.2.0",
     "jszip": "^3.10.1",
     "lucide-react": "^0.562.0",
+    "nodemailer": "^10.6.0",
     "pg": "^8.23.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.3",

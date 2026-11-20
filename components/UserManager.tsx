@@ -88,7 +88,7 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
     if (!formData.full_name?.trim()) newErrors.add('full_name');
     if (!formData.email?.trim()) newErrors.add('email');
     if (!formData.login_acesso?.trim()) newErrors.add('login_acesso');
-    if (!formData.senha_acesso?.trim()) newErrors.add('senha_acesso');
+    if (!editingId && !formData.senha_acesso?.trim()) newErrors.add('senha_acesso');
 
     if (newErrors.size > 0) {
         setErrors(newErrors);
@@ -310,14 +310,16 @@ const UserManager: React.FC<UserManagerProps> = ({ users = [], currentUser, role
                         <input className={inputClass('login_acesso')} value={formData.login_acesso || ''} onChange={e => setFormData({...formData, login_acesso: e.target.value})} placeholder="login" />
                     </div>
                     <div>
-                        <label className="block text-[9px] font-black text-black uppercase mb-1 ml-2">Senha *</label>
+                        <label className="block text-[9px] font-black text-black uppercase mb-1 ml-2">
+                          {editingId ? 'Nova Senha (opcional)' : 'Senha *'}
+                        </label>
                         <div className="relative">
                           <input 
                             type={showPassword ? "text" : "password"} 
                             className={inputClass('senha_acesso')} 
                             value={formData.senha_acesso || ''} 
                             onChange={e => setFormData({...formData, senha_acesso: e.target.value})} 
-                            placeholder="****" 
+                            placeholder={editingId ? "Manter senha atual" : "****"} 
                           />
                           <button 
                             type="button"

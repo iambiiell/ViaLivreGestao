@@ -4,7 +4,7 @@ import { BusRoute, Trip, User, TicketSale, Vehicle, Company, TicketingConfig, Pa
 import { Bus, MapPin, Calendar, Clock, DollarSign, X, Printer, QrCode, CreditCard, Wallet, Loader2, ArrowRight, Search, UserPlus, History, CheckCircle2, ChevronLeft, ChevronRight, Ticket, Tag, Users, Info, ShieldCheck, Edit3, Download, Disc, Mail, Home, ReceiptText, ShieldAlert, Scissors, ZoomIn, ZoomOut, Bell, Save } from 'lucide-react';
 import { cpfMask, phoneMask, cepMask, validateCPF } from '../utils/masks';
 import { fetchAddress } from '../services/cep';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import TicketVoucher from './TicketVoucher';
 import { downloadTicket as generateTicketPdf } from './TicketGenerator';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -83,36 +83,29 @@ const TicketAgentInterface: React.FC<TicketAgentInterfaceProps> = ({
     syncTrips();
     const interval = setInterval(syncTrips, 5000);
 
-    const channel = supabase
-      ? supabase
-          .channel('ticket-agent-trips-sync')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, (payload: any) => {
-            if (!isMounted) return;
-            if (payload.eventType === 'INSERT') {
-              const newTrip = payload.new as Trip;
-              setLocalTrips(prev => {
-                const exists = prev.some(t => t.id === newTrip.id);
-                return exists ? prev.map(t => t.id === newTrip.id ? newTrip : t) : [newTrip, ...prev];
-              });
-            } else if (payload.eventType === 'UPDATE') {
-              const updatedTrip = payload.new as Trip;
-              setLocalTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
-            } else if (payload.eventType === 'DELETE') {
-              const deletedId = payload.old?.id;
-              if (deletedId) {
-                setLocalTrips(prev => prev.filter(t => t.id !== deletedId));
-              }
-            }
-          })
-          .subscribe()
-      : null;
+    const sub = db.subscribeTable('trips', (payload: any) => {
+      if (!isMounted) return;
+      if (payload.eventType === 'INSERT' && payload.new) {
+        const newTrip = payload.new as Trip;
+        setLocalTrips(prev => {
+          const exists = prev.some(t => t.id === newTrip.id);
+          return exists ? prev.map(t => t.id === newTrip.id ? newTrip : t) : [newTrip, ...prev];
+        });
+      } else if (payload.eventType === 'UPDATE' && payload.new) {
+        const updatedTrip = payload.new as Trip;
+        setLocalTrips(prev => prev.map(t => t.id === updatedTrip.id ? updatedTrip : t));
+      } else if (payload.eventType === 'DELETE') {
+        const deletedId = payload.old?.id;
+        if (deletedId) {
+          setLocalTrips(prev => prev.filter(t => t.id !== deletedId));
+        }
+      }
+    });
 
     return () => {
       isMounted = false;
       clearInterval(interval);
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
-      }
+      sub.unsubscribe();
     };
   }, []);
 

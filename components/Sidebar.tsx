@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { LayoutDashboard, Map, Calendar, LogOut, UsersRound, Building2, ShieldCheck, Bus, ClipboardList, MapPin, UserCircle, X, Menu, Bell, Sun, Moon, BusFront, BarChart, Wrench, Ticket, ClipboardCheck, Settings2, Timer, Banknote, Briefcase, HelpCircle, Headphones, Sparkles, ShieldAlert, Key, CreditCard, PlayCircle, DollarSign, Activity, Palette, Wifi, WifiOff, Cloud, CloudOff, RefreshCw, CheckCircle2, Pipette, Check, Layers, ChevronRight, Search, ArrowRight, User as UserIcon, AlertCircle, Pencil, Bot, Smartphone, Lock } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ViewState, User, ThemeMode, RoleConfig, SystemSettings, BusRoute, Vehicle, Notice, Trip, ImpCard } from '../types';
-import { db, DbStatus, supabase } from '../services/database';
+import { db, DbStatus } from '../services/database';
 import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor, applyThemeVariables } from '../utils/themeHelper';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { OperationalAiAssistantModal } from './OperationalAiAssistantModal';
@@ -275,12 +275,16 @@ const Sidebar: React.FC<SidebarProps> = ({
       userRoleConfig.permissions.forEach(p => assignedPerms.add(p));
     }
 
-    // Dual role rule: if user is urban driver and has an active/scheduled trip with no conductor, auto-grant conductor & operation-center
+    // Dual role rule: if user is urban driver and has a trip with no conductor, auto-grant conductor & operation-center
     const isUrbanDriver = userRole === 'DRIVER' || userJob.includes('MOTORISTA URBANO') || userRole === 'URBANO' || userJob.includes('URBANO');
-    const hasTripWithoutConductor = isUrbanDriver && trips.some(t => {
-      const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
-      return isMy && !t.conductor_id && !t.conductor_name;
-    });
+    const hasTripWithoutConductor = isUrbanDriver && (
+      trips.length === 0 ||
+      trips.some(t => {
+        const isMy = (t.driver_id && t.driver_id === currentUser?.id) || (t.driver_name && currentUser?.name && t.driver_name.toLowerCase().includes(currentUser.name.toLowerCase()));
+        const hasNoConductor = !t.conductor_id || !t.conductor_name || t.conductor_name === 'Não atribuído' || t.conductor_name === 'Nenhum' || !t.conductor_name.trim();
+        return isMy && hasNoConductor;
+      })
+    );
     if (hasTripWithoutConductor) {
       assignedPerms.add('conductor');
       assignedPerms.add('operation-center');

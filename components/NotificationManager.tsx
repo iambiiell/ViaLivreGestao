@@ -2,7 +2,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Bell, Search, Filter, CheckCircle2, AlertTriangle, Info, Trash2, Clock, Settings, Plus, X, Save, Loader2, Edit3, Archive, FolderOpen, Download } from 'lucide-react';
 import { AppNotification, User, Trip, Vehicle, Route, OccurrenceReport, SystemSettings } from '../types';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { WebPushConfig } from './WebPushConfig';
 import { NotificationService } from '../services/NotificationService';
 import { EmailService } from '../services/emailService';

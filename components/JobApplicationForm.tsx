@@ -22,8 +22,7 @@ import {
   Plus,
   ArrowRight
 } from 'lucide-react';
-import { supabase } from '../services/supabaseClient';
-import { db } from '../services/database';
+import { db, postgresClient } from '../services/database';
 import { JobApplication, AppNotification, User as AppUser, JobVacancy } from '../types';
 import { cpfMask, phoneMask, currencyMask, cepMask } from '../utils/masks';
 import VacanciesView from './VacanciesView';
@@ -56,16 +55,12 @@ const JobApplicationForm: React.FC<JobApplicationFormProps> = ({ onSuccess, addT
   useEffect(() => {
     fetchVacancies();
     
-    // Subscribe to vacancy changes
-    const vacancyChannel = supabase
-      .channel('job-vacancies-public')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_vacancies' }, () => {
-        fetchVacancies();
-      })
-      .subscribe();
+    const sub = db.subscribeTable('job_vacancies', () => {
+      fetchVacancies();
+    });
 
     return () => {
-      supabase.removeChannel(vacancyChannel);
+      sub.unsubscribe();
     };
   }, []);
 
@@ -133,20 +128,15 @@ const JobApplicationForm: React.FC<JobApplicationFormProps> = ({ onSuccess, addT
       const systemId = currentUser?.system_id || vacancies.find(v => v.job_title === formData.desired_position)?.system_id || 'public';
       const fileName = `${systemId}/resume_${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await postgresClient.storage
         .from('resumes')
         .upload(fileName, file);
 
       if (uploadError) {
-        if (uploadError.message.includes('Bucket not found')) {
-          addToast('Erro: O bucket "resumes" não foi encontrado no sistema ViaLivre Gestão.', 'error');
-          setIsUploading(false);
-          return;
-        }
         throw uploadError;
       }
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = postgresClient.storage
         .from('resumes')
         .getPublicUrl(fileName);
 
@@ -182,20 +172,15 @@ const JobApplicationForm: React.FC<JobApplicationFormProps> = ({ onSuccess, addT
       const systemId = currentUser?.system_id || vacancies.find(v => v.job_title === formData.desired_position)?.system_id || 'public';
       const fileName = `${systemId}/photo_${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await postgresClient.storage
         .from('photos')
         .upload(fileName, file);
 
       if (uploadError) {
-        if (uploadError.message.includes('Bucket not found')) {
-          addToast('Erro: O bucket "photos" não foi encontrado no sistema ViaLivre Gestão.', 'error');
-          setIsUploadingPhoto(false);
-          return;
-        }
         throw uploadError;
       }
 
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = postgresClient.storage
         .from('photos')
         .getPublicUrl(fileName);
 
@@ -300,16 +285,18 @@ const JobApplicationForm: React.FC<JobApplicationFormProps> = ({ onSuccess, addT
 
       if (!data) throw new Error('Falha ao salvar candidatura');
 
-      // Real-time notification to RH
-      await supabase.channel('job-applications-changes').send({
-        type: 'broadcast',
-        event: 'new-application',
-        payload: { 
-          message: `Novo Candidato: ${formData.full_name} para a vaga de ${formData.desired_position}`,
-          candidate_name: formData.full_name,
-          position: formData.desired_position
-        }
-      });
+      // Real-time notification to RH via SSE broadcast
+      try {
+        await postgresClient.channel('job-applications-changes').send({
+          type: 'broadcast',
+          event: 'new-application',
+          payload: { 
+            message: `Novo Candidato: ${formData.full_name} para a vaga de ${formData.desired_position}`,
+            candidate_name: formData.full_name,
+            position: formData.desired_position
+          }
+        });
+      } catch {}
 
       // Also create a notification record in the database if the table exists
       try {

@@ -243,7 +243,14 @@ export class EmailService {
         is_read: false,
         created_at: new Date().toISOString()
       });
-    } catch (e) {}
+    } catch (e: any) {
+      const errStr = (e?.message || e?.details || e?.hint || String(e || '')).toLowerCase();
+      if (errStr.includes('exceed_egress_quota') || errStr.includes('quota')) {
+        console.warn('[SUPABASE_EGRESS_QUOTA] Cota do Supabase excedida ao registrar notificação de chave ativada (exceed_egress_quota). Prosseguindo graciosamente:', e);
+      } else {
+        console.warn('[NOTIFICATION_SAVE_WARN] Falha não-bloqueante ao registrar notificação no Supabase:', e);
+      }
+    }
 
     return dispatchRecord;
   }
@@ -296,7 +303,14 @@ export class EmailService {
         is_read: false,
         created_at: new Date().toISOString()
       });
-    } catch (e) {}
+    } catch (e: any) {
+      const errStr = (e?.message || e?.details || e?.hint || String(e || '')).toLowerCase();
+      if (errStr.includes('exceed_egress_quota') || errStr.includes('quota')) {
+        console.warn('[SUPABASE_EGRESS_QUOTA] Cota do Supabase excedida ao registrar notificação de expiração (exceed_egress_quota). Prosseguindo graciosamente:', e);
+      } else {
+        console.warn('[NOTIFICATION_SAVE_WARN] Falha não-bloqueante ao registrar notificação no Supabase:', e);
+      }
+    }
 
     return dispatchRecord;
   }
@@ -366,23 +380,73 @@ export class EmailService {
           sent_to_email: adminEmail
         }
       });
-    } catch (e) {}
+    } catch (e: any) {
+      const errStr = (e?.message || e?.details || e?.hint || String(e || '')).toLowerCase();
+      if (errStr.includes('exceed_egress_quota') || errStr.includes('quota')) {
+        console.warn('[SUPABASE_EGRESS_QUOTA] Cota do Supabase excedida ao registrar notificação de backup por e-mail (exceed_egress_quota). A rotina de backup prosseguiu normalmente sem interrupções.', e);
+      } else {
+        console.warn('[NOTIFICATION_SAVE_WARN] Falha não-bloqueante ao registrar notificação de backup no Supabase:', e);
+      }
+    }
 
     return dispatchRecord;
   }
 
   /**
-   * Save email record to history
+   * Save email record to history with strict quota protection and FIFO management
    */
   private static saveEmailLog(record: EmailDispatchRecord) {
     try {
+      // 1. Sanitiza o registro para o localStorage: NUNCA salva base64 pesado de anexos
+      const sanitizedRecord: EmailDispatchRecord = {
+        ...record,
+        attachmentDataUrl: (record.attachmentDataUrl && record.attachmentDataUrl.length > 300)
+          ? '[Anexo omitido do cache local para preservar memória]'
+          : record.attachmentDataUrl,
+        body: record.body && record.body.length > 2000
+          ? record.body.substring(0, 2000) + '... [Conteúdo truncado para cache]'
+          : record.body
+      };
+
       const existingStr = localStorage.getItem(STORAGE_EMAIL_LOG_KEY);
-      const list: EmailDispatchRecord[] = existingStr ? JSON.parse(existingStr) : [];
-      list.unshift(record);
-      localStorage.setItem(STORAGE_EMAIL_LOG_KEY, JSON.stringify(list.slice(0, 100)));
-      window.dispatchEvent(new CustomEvent('vialivre-email-dispatched', { detail: record }));
+      let list: EmailDispatchRecord[] = [];
+      try {
+        list = existingStr ? JSON.parse(existingStr) : [];
+        if (!Array.isArray(list)) list = [];
+      } catch {
+        list = [];
+      }
+
+      list.unshift(sanitizedRecord);
+
+      // 2. Política FIFO: Mantém limite de no máximo 40 itens
+      let trimmed = list.slice(0, 40);
+
+      // 3. Gravação resiliente com controle de QuotaExceededError
+      try {
+        localStorage.setItem(STORAGE_EMAIL_LOG_KEY, JSON.stringify(trimmed));
+      } catch (quotaErr) {
+        console.warn('[EMAIL_LOG_STORAGE_PROTECT] QuotaExceededError detectado no localStorage. Executando limpeza FIFO agressiva...');
+        // Tenta com 15 itens mais recentes e campos enxutos
+        trimmed = trimmed.slice(0, 15).map(item => ({
+          ...item,
+          body: (item.body || '').substring(0, 200),
+          attachmentDataUrl: undefined
+        }));
+        try {
+          localStorage.setItem(STORAGE_EMAIL_LOG_KEY, JSON.stringify(trimmed));
+        } catch (secondaryErr) {
+          // Em último caso, mantém apenas os 3 últimos registros
+          console.warn('[EMAIL_LOG_STORAGE_PROTECT] Redução de emergência para 3 itens mais recentes.');
+          try {
+            localStorage.setItem(STORAGE_EMAIL_LOG_KEY, JSON.stringify(trimmed.slice(0, 3)));
+          } catch {}
+        }
+      }
+
+      window.dispatchEvent(new CustomEvent('vialivre-email-dispatched', { detail: sanitizedRecord }));
     } catch (e) {
-      console.warn('Erro ao salvar log de e-mail:', e);
+      console.warn('Erro ao salvar log de e-mail no localStorage:', e);
     }
   }
 

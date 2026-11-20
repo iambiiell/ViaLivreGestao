@@ -413,6 +413,10 @@ export interface Vehicle {
   mileage?: number;
   route_id?: string;
   default_route_id?: string;
+  conductor_id?: string;
+  conductor_name?: string;
+  default_conductor_id?: string;
+  default_conductor_name?: string;
 }
 
 export interface DriverGuide {

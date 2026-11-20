@@ -6,7 +6,7 @@ import { cpfMask, cepMask, phoneMask } from '../utils/masks';
 import { fetchAddress } from '../services/cep';
 import TicketAgentInterface from './TicketAgentInterface';
 import JobApplicationForm from './JobApplicationForm';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { motion, AnimatePresence } from 'framer-motion';
 import TransportCard from './TransportCard';
 import { PRESET_THEME_COLORS, resolveThemeColors, isValidHexColor } from '../utils/themeHelper';
@@ -147,58 +147,38 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
     syncTrips();
     const interval = setInterval(syncTrips, 5000);
 
-    let channel: any = null;
-    try {
-      if (supabase) {
-        channel = supabase
-          .channel('passenger-trips-sync-live')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'trips' }, (payload: any) => {
-            if (!isMounted) return;
-            try {
-              if (payload?.eventType === 'INSERT') {
-                const newTrip = payload.new as Trip;
-                if (newTrip?.id) {
-                  setLocalTrips(prev => {
-                    const safePrev = Array.isArray(prev) ? prev : [];
-                    const exists = safePrev.some(t => t?.id === newTrip.id);
-                    return exists ? safePrev.map(t => t?.id === newTrip.id ? newTrip : t) : [newTrip, ...safePrev];
-                  });
-                }
-              } else if (payload?.eventType === 'UPDATE') {
-                const updatedTrip = payload.new as Trip;
-                if (updatedTrip?.id) {
-                  setLocalTrips(prev => {
-                    const safePrev = Array.isArray(prev) ? prev : [];
-                    return safePrev.map(t => t?.id === updatedTrip.id ? updatedTrip : t);
-                  });
-                }
-              } else if (payload?.eventType === 'DELETE') {
-                const deletedId = payload?.old?.id;
-                if (deletedId) {
-                  setLocalTrips(prev => {
-                    const safePrev = Array.isArray(prev) ? prev : [];
-                    return safePrev.filter(t => t?.id !== deletedId);
-                  });
-                }
-              }
-            } catch (innerErr) {
-              console.warn('Erro ao processar alteração em tempo real:', innerErr);
-            }
-          })
-          .subscribe();
-      }
-    } catch (subErr) {
-      console.warn('Erro ao inscrever no canal em tempo real do Supabase:', subErr);
-    }
+    const sub = db.subscribeTable('trips', (payload: any) => {
+      if (!isMounted) return;
+      try {
+        if (payload?.eventType === 'INSERT' && payload.new?.id) {
+          const newTrip = payload.new as Trip;
+          setLocalTrips(prev => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+            const exists = safePrev.some(t => t?.id === newTrip.id);
+            return exists ? safePrev.map(t => t?.id === newTrip.id ? newTrip : t) : [newTrip, ...safePrev];
+          });
+        } else if (payload?.eventType === 'UPDATE' && payload.new?.id) {
+          const updatedTrip = payload.new as Trip;
+          setLocalTrips(prev => {
+            const safePrev = Array.isArray(prev) ? prev : [];
+            return safePrev.map(t => t?.id === updatedTrip.id ? updatedTrip : t);
+          });
+        } else if (payload?.eventType === 'DELETE') {
+          const deletedId = payload?.old?.id;
+          if (deletedId) {
+            setLocalTrips(prev => {
+              const safePrev = Array.isArray(prev) ? prev : [];
+              return safePrev.filter(t => t?.id !== deletedId);
+            });
+          }
+        }
+      } catch {}
+    });
 
     return () => {
       isMounted = false;
       clearInterval(interval);
-      if (channel && supabase) {
-        try {
-          supabase.removeChannel(channel);
-        } catch {}
-      }
+      sub.unsubscribe();
     };
   }, []);
 
@@ -305,29 +285,16 @@ const PassengerInterfaceContent: React.FC<PassengerInterfaceProps> = ({
     // Periodic polling sync every 3.5 seconds
     const interval = setInterval(syncCardWithDatabase, 3500);
 
-    // Realtime Supabase subscription on imp_cards table
-    let channel: any = null;
-    if (supabase) {
-      try {
-        channel = supabase
-          .channel('public:imp_cards_passenger_sync')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'imp_cards' }, () => {
-            syncCardWithDatabase();
-          })
-          .subscribe();
-      } catch (e) {
-        // Fallback to polling interval
-      }
-    }
+    const sub = db.subscribeTable('imp_cards', () => {
+      syncCardWithDatabase();
+    });
 
     return () => {
       window.removeEventListener('vialivre-refresh-data', handleCustomSync);
       window.removeEventListener('vialivre-vt-card-updated', handleCustomSync);
       window.removeEventListener('focus', handleCustomSync);
       clearInterval(interval);
-      if (channel && supabase) {
-        supabase.removeChannel(channel);
-      }
+      sub.unsubscribe();
     };
   }, [loggedInCard?.cpf, loggedInCard?.id, loggedInBuyer?.cpf, loggedInBuyer?.id]);
 

@@ -25,7 +25,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { CommonLoader } from './CommonLoader';
 import { JobApplication, JobVacancy, Company, User } from '../types';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
 
 interface RecruitmentPanelProps {
@@ -65,27 +65,13 @@ const RecruitmentPanel: React.FC<RecruitmentPanelProps> = ({ addToast, initialAp
     fetchVacancies();
     fetchCompanies();
     
-    // Subscribe to real-time changes
-    const appChannel = supabase
-      .channel('job-applications-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_applications' }, () => {
-        fetchApplications();
-      })
-      .on('broadcast', { event: 'new-application' }, () => {
-        fetchApplications();
-      })
-      .subscribe();
-
-    const vacancyChannel = supabase
-      .channel('job-vacancies-changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'job_vacancies' }, () => {
-        fetchVacancies();
-      })
-      .subscribe();
+    const sub = db.subscribeTables(['job_applications', 'job_vacancies'], (table) => {
+      if (table === 'job_applications') fetchApplications();
+      if (table === 'job_vacancies') fetchVacancies();
+    });
 
     return () => {
-      supabase.removeChannel(appChannel);
-      supabase.removeChannel(vacancyChannel);
+      sub.unsubscribe();
     };
   }, []);
 
@@ -222,12 +208,8 @@ const RecruitmentPanel: React.FC<RecruitmentPanelProps> = ({ addToast, initialAp
   const handleUpdateStatus = async (id: string, newStatus: JobApplication['status']) => {
     setIsUpdatingStatus(true);
     try {
-      const { error } = await supabase
-        .from('job_applications')
-        .update({ status: newStatus })
-        .eq('id', id);
-
-      if (error) throw error;
+      const existingApp = applications.find(a => a.id === id);
+      await db.update('job_applications', { ...(existingApp || {}), id, status: newStatus } as JobApplication);
       
       setApplications(prev => prev.map(app => app.id === id ? { ...app, status: newStatus } : app));
       if (selectedApp?.id === id) {

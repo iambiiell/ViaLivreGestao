@@ -112,8 +112,13 @@ export class MockNotificationService {
           backup_status: 'SUCCESS'
         }
       });
-    } catch (e) {
-      console.error('Failed to register system AppNotification for backup', e);
+    } catch (e: any) {
+      const errStr = (e?.message || e?.details || e?.hint || String(e || '')).toLowerCase();
+      if (errStr.includes('exceed_egress_quota') || errStr.includes('quota')) {
+        console.warn('[SUPABASE_EGRESS_QUOTA] Cota do Supabase excedida ao registrar notificação de backup (exceed_egress_quota). A rotina de backup prosseguiu normalmente sem interrupções.', e);
+      } else {
+        console.warn('[NOTIF_REGISTER_WARN] Aviso não-bloqueante ao registrar notificação de backup no Supabase:', e);
+      }
     }
 
     return {
@@ -126,11 +131,23 @@ export class MockNotificationService {
   private static saveToHistory(record: MockNotificationRecord) {
     try {
       const historyStr = localStorage.getItem('vialivre_mock_notification_log') || '[]';
-      const history = JSON.parse(historyStr);
+      let history: MockNotificationRecord[] = [];
+      try {
+        history = JSON.parse(historyStr);
+      } catch {
+        history = [];
+      }
       history.unshift(record);
-      localStorage.setItem('vialivre_mock_notification_log', JSON.stringify(history.slice(0, 100)));
+      // Controle FIFO com limite de 50 registros para resguardar o localStorage
+      const trimmed = history.slice(0, 50);
+      try {
+        localStorage.setItem('vialivre_mock_notification_log', JSON.stringify(trimmed));
+      } catch (quotaErr) {
+        console.warn('[QUOTA_RECOVERY] Espaço de armazenamento reduzido. Aplicando limpeza FIFO emergencial em notificações simuladas.');
+        localStorage.setItem('vialivre_mock_notification_log', JSON.stringify(trimmed.slice(0, 15)));
+      }
     } catch (e) {
-      console.warn('Erro ao salvar histórico de notificações simuladas:', e);
+      console.warn('Erro ao salvar histórico de notificações simuladas no localStorage:', e);
     }
   }
 

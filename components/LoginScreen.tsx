@@ -33,7 +33,7 @@ import {
   HelpCircle,
   Lock
 } from 'lucide-react';
-import { db, isValidUUID, TableName } from '../services/database';
+import { db, isValidUUID } from '../services/database';
 import { cpfMask } from '../utils/masks';
 import { webAuthnService, StoredBiometricCredential } from '../services/webauthn';
 import { triggerHaptic } from '../utils/haptic';
@@ -177,11 +177,42 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
     setIsLoading(true);
     setErrorModal(null);
     try {
-        const users = await db.getAllUsers();
-        const userProfile = users.find(u => 
-            (u.login_acesso === cleanInput || u.cpf?.replace(/\D/g, '') === cleanInput.replace(/\D/g, '') || u.email === cleanInput) && 
+        let userProfile: User | null = null;
+        let authResOk = false;
+
+        try {
+          const authRes = await fetch('/api/auth/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ identifier: cleanInput, password })
+          });
+
+          if (authRes.status === 401) {
+            const errJson = await authRes.json().catch(() => ({}));
+            setIsLoading(false);
+            triggerHaptic('warning');
+            setErrorModal(errJson?.error || "Credenciais incorretas ou usuário não localizado.");
+            return;
+          }
+
+          if (authRes.ok) {
+            const data = await authRes.json();
+            if (data?.user) {
+              userProfile = data.user as User;
+              authResOk = true;
+            }
+          }
+        } catch (netErr) {
+          console.warn('[AUTH_LOGIN] Servidor indisponível, tentando cache local:', netErr);
+        }
+
+        if (!authResOk && !userProfile) {
+          const users = await db.getAllUsers();
+          userProfile = users.find(u =>
+            (u.login_acesso === cleanInput || u.cpf?.replace(/\D/g, '') === cleanInput.replace(/\D/g, '') || u.email === cleanInput) &&
             u.senha_acesso === password
-        );
+          ) || null;
+        }
 
         if (!userProfile) { 
             setIsLoading(false); 
@@ -208,7 +239,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
             localStorage.setItem('vialivre_system_id', rootSystemId);
           }
         } catch (authSysErr) {
-          console.error('[AUTH_LOGIN] Erro ao identificar system_id do Administrador Raiz no Supabase:', authSysErr);
+          console.error('[AUTH_LOGIN] Erro ao identificar system_id do Administrador Raiz:', authSysErr);
         }
 
         // If biometric is supported but not yet registered for this user, offer quick registration
@@ -270,13 +301,13 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
       try {
           const isMasterKey = keyCode === 'MASTER-2024-TEST-KEY';
 
-          // 1. Validação da Chave de Ativação no Supabase
+          // 1. Validação da Chave de Ativação no Aiven PostgreSQL
           let keys: ActivationKey[] = [];
           try {
-            keys = await db.getAllActivationKeys();
+            keys = await db.fetchAllGlobal<ActivationKey>('activation_keys');
           } catch (err: any) {
-            console.error('[CADASTRO_ADMIN] Erro ao validar chaves de ativação no Supabase:', err);
-            setErrorModal(`Erro ao consultar chaves no Supabase: ${err?.message || 'Falha de comunicação'}`);
+            console.error('[CADASTRO_ADMIN] Erro ao validar chaves de ativação no PostgreSQL:', err);
+            setErrorModal(`Erro ao consultar chaves no banco: ${err?.message || 'Falha de comunicação'}`);
             setIsLoading(false);
             return;
           }
@@ -321,8 +352,8 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
               const createdKey = await db.create('activation_keys', newKeyRecord);
               validKey = (createdKey || newKeyRecord) as any;
             } catch (createErr: any) {
-              console.error('[CADASTRO_ADMIN] Falha ao registrar nova chave no Supabase:', createErr);
-              setErrorModal(`Falha ao registrar chave no Supabase: ${createErr?.message || 'Erro de permissão'}`);
+              console.error('[CADASTRO_ADMIN] Falha ao registrar nova chave no PostgreSQL:', createErr);
+              setErrorModal(`Falha ao registrar chave no banco: ${createErr?.message || 'Erro de permissão'}`);
               setIsLoading(false);
               return;
             }
@@ -358,14 +389,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
           try {
             createdAdmin = (await db.create('users', newUser)) as User;
           } catch (createUserErr: any) {
-            console.error('[CADASTRO_ADMIN] Erro ao salvar novo Administrador na tabela public.users do Supabase:', createUserErr);
-            setErrorModal(`Erro ao gravar Administrador no Supabase: ${createUserErr?.message || 'Erro de permissão ou campos inválidos'}`);
+            console.error('[CADASTRO_ADMIN] Erro ao salvar novo Administrador na tabela public.users:', createUserErr);
+            setErrorModal(`Erro ao gravar Administrador no banco: ${createUserErr?.message || 'Erro de campos inválidos'}`);
             setIsLoading(false);
             return;
           }
 
           if (!createdAdmin) {
-            setErrorModal("Falha ao criar conta de Administrador no Supabase.");
+            setErrorModal("Falha ao criar conta de Administrador no PostgreSQL.");
             setIsLoading(false);
             return;
           }
@@ -419,7 +450,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                 registration_pattern: 'FLX-000'
               });
             } catch (settingsErr: any) {
-              console.error('[CADASTRO_ADMIN] Aviso ao inicializar system_settings no Supabase:', settingsErr);
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar system_settings:', settingsErr);
             }
 
             // Inicializa Empresa Principal
@@ -431,7 +462,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                 contact_email: regEmail.trim()
               });
             } catch (compErr: any) {
-              console.error('[CADASTRO_ADMIN] Aviso ao inicializar companies no Supabase:', compErr);
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar companies:', compErr);
             }
 
             // Inicializa Assinatura
@@ -445,7 +476,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
                 created_at: new Date().toISOString()
               });
             } catch (subErr: any) {
-              console.error('[CADASTRO_ADMIN] Aviso ao inicializar subscriptions no Supabase:', subErr);
+              console.error('[CADASTRO_ADMIN] Aviso ao inicializar subscriptions:', subErr);
             }
 
             // Disparo automático de e-mail para o Administrador Raiz informando ativação de novas chaves
@@ -491,27 +522,14 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
     try {
       const text = await firstAccessRestoreFile.text();
       const parsed = JSON.parse(text);
-      const tables = Object.keys(parsed);
-      const targetSysId = createdAdminUser.system_id || 'root-system';
+      const targetSysId = createdAdminUser.system_id || db.getSystemId() || undefined;
 
-      let processed = 0;
-      for (let i = 0; i < tables.length; i++) {
-        const table = tables[i] as TableName;
-        const records = parsed[table];
-        if (Array.isArray(records) && records.length > 0) {
-          const remapped = records.map((r: any) => ({
-            ...r,
-            system_id: targetSysId,
-            id: r.id || crypto.randomUUID()
-          }));
-          for (const item of remapped) {
-            try {
-              await db.create(table, item);
-            } catch {}
-          }
-        }
-        processed++;
-        setRestoreProgress(Math.round(10 + (processed / tables.length) * 85));
+      const result = await db.restoreBackup(parsed, targetSysId, (progress) => {
+        setRestoreProgress(Math.max(10, Math.round(10 + (progress.percent / 100) * 85)));
+      });
+
+      if (result.recordsRestored === 0) {
+        throw new Error(result.errors?.[0]?.message || 'Nenhum registro válido restaurado do arquivo de backup.');
       }
 
       setRestoreProgress(100);
@@ -522,7 +540,7 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
       }, 700);
     } catch (err: any) {
       console.error("Erro na restauração de primeiro acesso:", err);
-      setErrorModal("Arquivo de backup inválido ou incompatível.");
+      setErrorModal(err?.message || "Arquivo de backup inválido ou incompatível.");
       setIsRestoringFirstAccess(false);
     }
   };
@@ -538,13 +556,28 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
     setIsLoading(true);
     setErrorModal(null);
     try {
-      const users = await db.getAllUsers();
-      const cleanQ = query.replace(/\D/g, '');
-      const found = users.find(u => 
-        (u.email && u.email.toLowerCase() === query.toLowerCase()) ||
-        (u.login_acesso && u.login_acesso.toLowerCase() === query.toLowerCase()) ||
-        (cleanQ.length === 11 && u.cpf && u.cpf.replace(/\D/g, '') === cleanQ)
-      );
+      let found: User | null = null;
+      try {
+        const res = await fetch('/api/auth/lookup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ identifier: query })
+        });
+        if (res.ok) {
+          const json = await res.json();
+          if (json?.user) found = json.user as User;
+        }
+      } catch {}
+
+      if (!found) {
+        const users = await db.getAllUsers();
+        const cleanQ = query.replace(/\D/g, '');
+        found = users.find(u => 
+          (u.email && u.email.toLowerCase() === query.toLowerCase()) ||
+          (u.login_acesso && u.login_acesso.toLowerCase() === query.toLowerCase()) ||
+          (cleanQ.length === 11 && u.cpf && u.cpf.replace(/\D/g, '') === cleanQ)
+        ) || null;
+      }
 
       if (!found || !found.email) {
         setIsLoading(false);
@@ -586,10 +619,17 @@ const LoginScreen: React.FC<LoginScreenProps> = ({ onLogin, onRegister, onPassen
 
     setIsResettingPassword(true);
     try {
-      await db.update('users', {
-        id: forgotUser.id,
-        senha_acesso: newResetPass
+      const resetRes = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: forgotUser.id, newPassword: newResetPass })
       });
+      if (!resetRes.ok) {
+        await db.update('users', {
+          id: forgotUser.id,
+          senha_acesso: newResetPass
+        } as User);
+      }
       setIsResettingPassword(false);
       setShowResetPasswordModal(false);
       setNewResetPass('');

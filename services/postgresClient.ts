@@ -1,18 +1,31 @@
 /**
  * Client-Side PostgreSQL / Aiven Adapter
- * Connects to the Express backend API (/api/db/* and /api/events),
- * pointing directly to the public schema on the Aiven PostgreSQL database:
- * DATABASE_URL="postgres://avnadmin:AVNS__WOh3RqB6t8cYBLpx3M@vialivre-db-via-9450.f.aivencloud.com:12006/defaultdb?sslmode=require"
+ * Connects to the Express backend API (/api/db/*, /api/auth/*, /api/events),
+ * backed by PostgreSQL on Aiven via process.env.DATABASE_URL.
  */
 
 export const isPostgresConfigured = true;
-export const isSupabaseConfigured = true; // backward compatibility
+export const isSupabaseConfigured = true;
+
+function getActiveSystemIdHeader(): string | null {
+  try {
+    if (typeof window === 'undefined') return null;
+    const explicit = localStorage.getItem('vialivre_system_id');
+    if (explicit) return explicit;
+    const u = localStorage.getItem('fluxo_session_user') || localStorage.getItem('@vialivre_user');
+    if (u) {
+      const parsed = JSON.parse(u);
+      if (parsed?.system_id) return String(parsed.system_id);
+    }
+  } catch {}
+  return null;
+}
 
 // Global EventSource connection for Server-Sent Events (SSE)
 let sseSource: EventSource | null = null;
 const tableListeners = new Map<string, Set<(payload: any) => void>>();
 
-function initSSE() {
+export function initSSE() {
   if (typeof window === 'undefined') return;
   if (sseSource) return;
 
@@ -22,26 +35,21 @@ function initSSE() {
       try {
         const parsed = JSON.parse(event.data);
         if (parsed.table) {
-          const listeners = tableListeners.get(parsed.table.toLowerCase());
+          const listeners = tableListeners.get(String(parsed.table).toLowerCase());
           if (listeners) {
             listeners.forEach((cb) => cb(parsed));
           }
         }
-      } catch (err) {
-        console.warn('[SSE] Error processing event:', err);
-      }
+      } catch {}
     };
     sseSource.onerror = () => {
-      // Reconnection handled automatically by browser EventSource
+      // Automatic reconnection handled by browser EventSource
     };
   } catch (err) {
     console.warn('[SSE] EventSource unavailable:', err);
   }
 }
 
-/**
- * Fluent Query Builder for compatibility with existing Supabase-style calls
- */
 export class PostgresQueryBuilder {
   private tableName: string;
   private filters: Record<string, any> = {};
@@ -51,12 +59,15 @@ export class PostgresQueryBuilder {
   private payload: any = null;
   private targetId: string | null = null;
   private isSingle = false;
+  private limitCount: number | null = null;
+  private abortControllerSignal: AbortSignal | undefined = undefined;
+  private ilikeFilter: { column: string; value: string } | null = null;
 
   constructor(tableName: string) {
     this.tableName = tableName.toLowerCase();
   }
 
-  select(_fields: string = '*') {
+  select(_fields: string = '*', _options?: any) {
     if (!this.isMutation) {
       this.operation = 'select';
     }
@@ -66,14 +77,14 @@ export class PostgresQueryBuilder {
   insert(data: any) {
     this.operation = 'insert';
     this.isMutation = true;
-    this.payload = data;
+    this.payload = Array.isArray(data) ? data[0] : data;
     return this;
   }
 
   upsert(data: any) {
     this.operation = 'insert';
     this.isMutation = true;
-    this.payload = data;
+    this.payload = Array.isArray(data) ? data[0] : data;
     return this;
   }
 
@@ -98,8 +109,12 @@ export class PostgresQueryBuilder {
     return this;
   }
 
-  neq(column: string, value: any) {
-    // Stored for delete all or conditions
+  neq(_column: string, _value: any) {
+    return this;
+  }
+
+  ilike(column: string, value: string) {
+    this.ilikeFilter = { column, value };
     return this;
   }
 
@@ -109,7 +124,7 @@ export class PostgresQueryBuilder {
   }
 
   is(column: string, value: any) {
-    this.filters[column] = value;
+    this.filters[column] = value === null ? 'null' : value;
     return this;
   }
 
@@ -117,23 +132,25 @@ export class PostgresQueryBuilder {
     return this;
   }
 
-  gte(column: string, value: any) {
+  gte(_column: string, _value: any) {
     return this;
   }
 
-  lte(column: string, value: any) {
+  lte(_column: string, _value: any) {
     return this;
   }
 
-  in(column: string, values: any[]) {
+  in(_column: string, _values: any[]) {
     return this;
   }
 
-  limit(_n: number) {
+  limit(n: number) {
+    this.limitCount = n;
     return this;
   }
 
-  abortSignal(_signal?: AbortSignal) {
+  abortSignal(signal?: AbortSignal) {
+    this.abortControllerSignal = signal;
     return this;
   }
 
@@ -152,19 +169,102 @@ export class PostgresQueryBuilder {
   }
 
   async execute(): Promise<{ data: any; error: any }> {
+    const sysId = getActiveSystemIdHeader();
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json'
+    };
+    if (sysId) headers['x-system-id'] = sysId;
+
+    const safeSerialize = (data: unknown): string => {
+      const seen = new WeakSet<object>();
+      return JSON.stringify(data ?? {}, (_k, val) => {
+        if (typeof val === 'string') return val.replace(/\u0000/g, '');
+        if (typeof val === 'bigint') return val.toString();
+        if (typeof val === 'function' || typeof val === 'symbol') return undefined;
+        if (typeof val === 'number' && !Number.isFinite(val)) return null;
+        if (val instanceof Set) return Array.from(val);
+        if (val instanceof Map) return Object.fromEntries(val.entries());
+        if (val !== null && typeof val === 'object') {
+          if (seen.has(val)) return undefined;
+          seen.add(val);
+        }
+        return val;
+      });
+    };
+
+    const requestWithRetry = async (url: string, init: RequestInit = {}, retries = 2, timeoutMs = 15000): Promise<Response> => {
+      let lastErr: any;
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        if (this.abortControllerSignal?.aborted) {
+          throw new DOMException('Aborted', 'AbortError');
+        }
+        const controller = new AbortController();
+        let timedOut = false;
+        const onExtAbort = () => controller.abort();
+        this.abortControllerSignal?.addEventListener('abort', onExtAbort, { once: true });
+        const timer = setTimeout(() => {
+          timedOut = true;
+          controller.abort();
+        }, timeoutMs);
+
+        try {
+          const res = await fetch(url, { ...init, signal: controller.signal });
+          if (res.ok) return res;
+
+          const errText = await res.clone().text().catch(() => '');
+          const retryableHttp =
+            res.status === 408 ||
+            res.status === 425 ||
+            res.status === 429 ||
+            res.status === 502 ||
+            res.status === 503 ||
+            res.status === 504 ||
+            (res.status === 500 && /too many clients|remaining connection slots|timeout|terminat|connection|econnreset/i.test(errText));
+
+          if (retryableHttp && attempt < retries) {
+            await new Promise((r) => setTimeout(r, 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 120)));
+            continue;
+          }
+          return res;
+        } catch (err: any) {
+          lastErr = err;
+          const isExtAborted = Boolean(this.abortControllerSignal?.aborted && !timedOut);
+          const isTransient = !isExtAborted && (timedOut || err?.name === 'AbortError' || err?.name === 'TypeError' || /failed to fetch|network|timeout|load failed/i.test(err?.message || ''));
+          if (isTransient && attempt < retries) {
+            await new Promise((r) => setTimeout(r, 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 120)));
+            continue;
+          }
+          if (timedOut) {
+            const timeoutErr = new Error(`Timeout de conexão após ${timeoutMs}ms ao acessar ${url}`);
+            timeoutErr.name = 'TimeoutError';
+            throw timeoutErr;
+          }
+          throw err;
+        } finally {
+          clearTimeout(timer);
+          this.abortControllerSignal?.removeEventListener('abort', onExtAbort);
+        }
+      }
+      throw lastErr;
+    };
+
     try {
       if (this.operation === 'select') {
         const queryParams = new URLSearchParams();
         for (const [k, v] of Object.entries(this.filters)) {
-          if (v !== undefined && v !== null) {
+          if (v !== undefined) {
             queryParams.append(k, String(v));
           }
         }
         if (this.orCondition) {
           queryParams.append('or', this.orCondition);
         }
+        if (this.limitCount !== null) {
+          queryParams.append('limit', String(this.limitCount));
+        }
         const url = `/api/db/${this.tableName}${queryParams.toString() ? `?${queryParams.toString()}` : ''}`;
-        const res = await fetch(url);
+        const res = await requestWithRetry(url, { headers });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         }
@@ -176,10 +276,10 @@ export class PostgresQueryBuilder {
       }
 
       if (this.operation === 'insert') {
-        const res = await fetch(`/api/db/${this.tableName}`, {
+        const res = await requestWithRetry(`/api/db/${this.tableName}`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.payload)
+          headers,
+          body: safeSerialize(this.payload)
         });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${await res.text()}`);
@@ -191,11 +291,11 @@ export class PostgresQueryBuilder {
 
       if (this.operation === 'update') {
         const id = this.targetId || this.payload?.id;
-        if (!id) throw new Error('ID is required for update');
-        const res = await fetch(`/api/db/${this.tableName}/${encodeURIComponent(id)}`, {
+        if (!id) throw new Error('ID é obrigatório para atualização');
+        const res = await requestWithRetry(`/api/db/${this.tableName}/${encodeURIComponent(id)}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(this.payload)
+          headers,
+          body: safeSerialize(this.payload)
         });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${await res.text()}`);
@@ -206,9 +306,23 @@ export class PostgresQueryBuilder {
       }
 
       if (this.operation === 'delete') {
+        if (this.ilikeFilter) {
+          const qp = new URLSearchParams({
+            field: this.ilikeFilter.column,
+            value: this.ilikeFilter.value,
+            case_insensitive: 'true'
+          });
+          const res = await requestWithRetry(`/api/db/${this.tableName}?${qp.toString()}`, {
+            method: 'DELETE',
+            headers
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}: ${await res.text()}`);
+          return { data: null, error: null };
+        }
+
         const id = this.targetId;
         const url = id ? `/api/db/${this.tableName}/${encodeURIComponent(id)}` : `/api/db/${this.tableName}`;
-        const res = await fetch(url, { method: 'DELETE' });
+        const res = await requestWithRetry(url, { method: 'DELETE', headers });
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}: ${await res.text()}`);
         }
@@ -217,15 +331,12 @@ export class PostgresQueryBuilder {
 
       return { data: null, error: null };
     } catch (error: any) {
-      console.warn(`[PostgresClient] Error on ${this.tableName}:`, error);
+      console.warn(`[PostgresClient] Erro em ${this.tableName}:`, error?.message || error);
       return { data: null, error };
     }
   }
 }
 
-/**
- * Universal Postgres Client mirroring Supabase interface
- */
 export const postgresClient = {
   from(tableName: string) {
     return new PostgresQueryBuilder(tableName);
@@ -233,20 +344,18 @@ export const postgresClient = {
 
   channel(channelName: string) {
     initSSE();
-    let currentTable: string | null = null;
-    let onEventCallback: ((payload: any) => void) | null = null;
+    const attachedTables: Array<{ tbl: string; cb: (p: any) => void }> = [];
     const broadcastCleanups: Array<() => void> = [];
 
     return {
       on(type: string, filter: { event?: string; schema?: string; table?: string; filter?: string }, callback: (payload: any) => void) {
         if (filter?.table) {
           const tbl = String(filter.table).toLowerCase();
-          currentTable = tbl;
-          onEventCallback = callback;
           if (!tableListeners.has(tbl)) {
             tableListeners.set(tbl, new Set());
           }
           tableListeners.get(tbl)!.add(callback);
+          attachedTables.push({ tbl, cb: callback });
         } else if (type === 'broadcast') {
           const targetEvent = filter?.event;
           const handler = (e: any) => {
@@ -269,17 +378,23 @@ export const postgresClient = {
         return this;
       },
       async send(message: any) {
-        // Broadcast custom local event
         if (typeof window !== 'undefined') {
           window.dispatchEvent(new CustomEvent('vialivre-broadcast', { detail: { channel: channelName, message } }));
         }
+        try {
+          fetch('/api/events/broadcast', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table: channelName, eventType: 'UPDATE', payload: message })
+          }).catch(() => {});
+        } catch {}
         return 'ok';
       },
       unsubscribe() {
-        if (currentTable && onEventCallback && tableListeners.has(currentTable)) {
-          tableListeners.get(currentTable)!.delete(onEventCallback);
-        }
-        broadcastCleanups.forEach(cleanup => cleanup());
+        attachedTables.forEach(({ tbl, cb }) => {
+          tableListeners.get(tbl)?.delete(cb);
+        });
+        broadcastCleanups.forEach((cleanup) => cleanup());
       }
     };
   },
@@ -309,7 +424,7 @@ export const postgresClient = {
           (typeof localStorage !== 'undefined' && (localStorage.getItem('@vialivre_user') || localStorage.getItem('fluxo_session_user'))) || null;
         if (saved) {
           const user = JSON.parse(saved);
-          return { data: { session: { user, access_token: 'local-token' } }, error: null };
+          return { data: { session: { user, access_token: 'vialivre-session' } }, error: null };
         }
       } catch {}
       return { data: { session: null }, error: null };
@@ -338,7 +453,8 @@ export const postgresClient = {
   },
 
   storage: {
-    from(_bucketName: string) {
+    from(bucketName: string) {
+      const uploadedUrls = new Map<string, string>();
       return {
         async upload(fileName: string, file: File | Blob): Promise<{ data: any; error: any }> {
           try {
@@ -347,14 +463,21 @@ export const postgresClient = {
               reader.onload = async () => {
                 const dataUrl = reader.result as string;
                 try {
+                  const sysId = getActiveSystemIdHeader();
+                  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+                  if (sysId) headers['x-system-id'] = sysId;
+
                   const res = await fetch('/api/upload', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ dataUrl, fileName })
+                    headers,
+                    body: JSON.stringify({ dataUrl, fileName, bucket: bucketName })
                   });
                   const json = await res.json();
-                  resolve({ data: json, error: null });
-                } catch (err: any) {
+                  const finalUrl = json?.publicUrl || dataUrl;
+                  uploadedUrls.set(fileName, finalUrl);
+                  resolve({ data: { ...json, publicUrl: finalUrl }, error: null });
+                } catch {
+                  uploadedUrls.set(fileName, dataUrl);
                   resolve({ data: { publicUrl: dataUrl }, error: null });
                 }
               };
@@ -368,7 +491,7 @@ export const postgresClient = {
         getPublicUrl(fileName: string) {
           return {
             data: {
-              publicUrl: `/assets/${fileName}`
+              publicUrl: uploadedUrls.get(fileName) || `/assets/${fileName}`
             }
           };
         },

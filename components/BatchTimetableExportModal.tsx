@@ -21,7 +21,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { toPng } from 'html-to-image';
 import JSZip from 'jszip';
-import { supabase } from '../services/supabaseClient';
+import { postgresClient } from '../services/database';
 
 interface BatchTimetableExportModalProps {
   isOpen: boolean;
@@ -132,7 +132,7 @@ export const BatchTimetableExportModal: React.FC<BatchTimetableExportModalProps>
     let sundayVolta: string[] = [];
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await postgresClient
         .from('timetables')
         .select('*')
         .or(`route_id.eq.${route.id},route_id.eq.${route.prefixo_linha}`);

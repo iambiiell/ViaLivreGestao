@@ -14,13 +14,13 @@ import {
   RotateCcw,
   Sparkles
 } from 'lucide-react';
-import { db, TableName } from '../services/database';
+import { db, extractNormalizedBackupTables, DEFAULT_SYSTEM_UUID } from '../services/database';
 import { User } from '../types';
 
 interface RestorePanelProps {
   currentUser: User | null;
   addToast: (message: string, type?: 'success' | 'error' | 'warning' | 'info') => void;
-  onRestoreComplete?: () => void;
+  onRestoreComplete?: () => void | Promise<void>;
   isInitialAccessModal?: boolean;
 }
 
@@ -48,12 +48,17 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
     percent: number;
   }>({ currentTable: '', completed: 0, total: 0, percent: 0 });
   const [restoreSuccess, setRestoreSuccess] = useState<boolean>(false);
+  const [restoreSummary, setRestoreSummary] = useState<{
+    recordsRestored: number;
+    tablesRestored: number;
+    failedCount: number;
+  } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const handleFileSelected = (file: File) => {
-    if (!file.name.endsWith('.json')) {
+    if (!file.name.toLowerCase().endsWith('.json')) {
       addToast('O arquivo deve estar no formato .JSON de backup do ViaLivre.', 'warning');
       return;
     }
@@ -61,6 +66,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
     setIsParsing(true);
     setSelectedFile(file);
     setRestoreSuccess(false);
+    setRestoreSummary(null);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -72,9 +78,10 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
           throw new Error('Estrutura de dados de backup inválida.');
         }
 
-        const tableEntries = Object.entries(parsed).filter(([_, val]) => Array.isArray(val));
+        const normalizedTables = extractNormalizedBackupTables(parsed);
+        const tableEntries = Object.entries(normalizedTables).filter(([, val]) => Array.isArray(val) && val.length > 0);
         if (tableEntries.length === 0) {
-          throw new Error('Nenhuma tabela válida localizada no arquivo de backup.');
+          throw new Error('Nenhum registro válido de cadastro ou operação encontrado no backup.');
         }
 
         let totalRecords = 0;
@@ -89,7 +96,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
         const sizeKb = (file.size / 1024).toFixed(1);
         const approxSize = file.size > 1024 * 1024 ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : `${sizeKb} KB`;
 
-        setBackupContent(parsed);
+        setBackupContent(normalizedTables);
         setFileStats({
           fileName: file.name,
           fileSize: approxSize,
@@ -97,7 +104,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
           totalRecords,
           tables: tablesSummary.sort((a, b) => b.count - a.count)
         });
-        addToast(`Arquivo carregado: ${file.name} (${approxSize}, ${totalRecords} registros)`, 'info');
+        addToast(`Arquivo carregado: ${totalRecords} registros em ${tableEntries.length} tabelas.`, 'info');
       } catch (err: any) {
         console.error('Erro ao processar arquivo JSON:', err);
         addToast(err?.message || 'Arquivo de backup corrompido ou inválido.', 'error');
@@ -134,69 +141,46 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
 
     setIsRestoring(true);
     setRestoreSuccess(false);
-    addToast('Iniciando processo de restauração segura no Supabase...', 'info');
+    setRestoreSummary(null);
+    setRestoreProgress({ currentTable: 'preparando', completed: 0, total: fileStats.tablesCount, percent: 5 });
+    addToast('Restaurando cadastros e dados no Aiven PostgreSQL...', 'info');
 
-    const targetSystemId = currentUser?.system_id || db.getSystemId() || '44d472ca-9311-45e1-9297-c442e016e1a6';
-    const tableKeys = Object.keys(backupContent).filter(k => Array.isArray(backupContent[k]) && backupContent[k].length > 0);
-    const totalTables = tableKeys.length;
-
-    let tablesRestored = 0;
-    let recordsRestored = 0;
+    const targetSystemId = currentUser?.system_id || db.getSystemId() || DEFAULT_SYSTEM_UUID;
 
     try {
-      for (let i = 0; i < totalTables; i++) {
-        const table = tableKeys[i] as TableName;
-        const rows = backupContent[table];
+      const result = await db.restoreBackup(backupContent, targetSystemId, (progress) => {
+        setRestoreProgress(progress);
+      });
 
-        setRestoreProgress({
-          currentTable: table,
-          completed: i + 1,
-          total: totalTables,
-          percent: Math.round(((i + 1) / totalTables) * 100)
-        });
+      setRestoreSummary({
+        recordsRestored: result.recordsRestored,
+        tablesRestored: result.tablesRestored,
+        failedCount: result.failedCount
+      });
 
-        // Upsert rows in chunks to respect Supabase limits
-        const preparedRows = rows.map((row: any) => {
-          const item = { ...row };
-          // Ensure rows are linked to target organization system_id
-          if (targetSystemId && !item.system_id) {
-            item.system_id = targetSystemId;
-          }
-          return item;
-        });
-
-        // Insert or update via database service
-        for (const item of preparedRows) {
-          try {
-            await db.update(table, item);
-          } catch {
-            try {
-              await db.create(table, item);
-            } catch (innerErr) {
-              // Continue gracefully
-            }
-          }
-          recordsRestored++;
-        }
-
-        tablesRestored++;
+      if (result.recordsRestored === 0) {
+        const firstErr = result.errors?.[0]?.message || 'Nenhum registro pôde ser gravado no PostgreSQL.';
+        throw new Error(firstErr);
       }
 
       setRestoreSuccess(true);
-      addToast(
-        `Restauração concluída com sucesso! ${recordsRestored} registros restaurados em ${tablesRestored} tabelas.`,
-        'success'
-      );
-
-      // Trigger app refresh
-      window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
-      window.dispatchEvent(new CustomEvent('vialivre-data-changed', { detail: { action: 'restore', records: recordsRestored } }));
-
-      if (onRestoreComplete) {
-        setTimeout(() => {
-          onRestoreComplete();
-        }, 1200);
+      if (result.failedCount > 0) {
+        addToast(
+          `${result.recordsRestored} registros restaurados (${result.failedCount} com falha).`,
+          'warning'
+        );
+      } else {
+        addToast(
+          `Restauração concluída! ${result.recordsRestored} registros em ${result.tablesRestored} tabelas.`,
+          'success'
+        );
       }
+
+      // Recarrega todos os estados do App e componentes imediatamente a partir do PostgreSQL
+      if (onRestoreComplete) {
+        await Promise.resolve(onRestoreComplete()).catch(() => {});
+      }
+      window.dispatchEvent(new CustomEvent('vialivre-refresh-data', { detail: { action: 'restore', records: result.recordsRestored } }));
     } catch (err: any) {
       console.error('Erro durante restauração:', err);
       addToast(`Erro ao restaurar dados: ${err?.message || 'Falha de comunicação'}`, 'error');
@@ -225,7 +209,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-[10px] font-black uppercase px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-700 dark:text-zinc-300">
-              ID: {currentUser?.system_id || 'Padrão'}
+              ID: {currentUser?.system_id || db.getSystemId() || 'Padrão'}
             </span>
           </div>
         </div>
@@ -300,11 +284,13 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
                   setBackupContent(null);
                   setFileStats(null);
                   setRestoreSuccess(false);
+                  setRestoreSummary(null);
+                  if (fileInputRef.current) fileInputRef.current.value = '';
                 }}
                 disabled={isRestoring}
                 className="px-3 py-2 rounded-xl text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-zinc-400 hover:bg-slate-100 dark:hover:bg-zinc-800"
               >
-                Remover Arquivo
+                {restoreSuccess ? 'Selecionar Outro Arquivo' : 'Remover Arquivo'}
               </button>
               <button
                 type="button"
@@ -331,6 +317,22 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
               </button>
             </div>
           </div>
+
+          {restoreSuccess && restoreSummary && (
+            <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-500/30 flex items-center justify-between gap-3 text-xs font-bold text-emerald-700 dark:text-emerald-300">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 size={16} className="shrink-0" />
+                <span>
+                  {restoreSummary.recordsRestored} registros restaurados em {restoreSummary.tablesRestored} tabelas e sincronizados com a organização.
+                </span>
+              </div>
+              {restoreSummary.failedCount > 0 && (
+                <span className="text-amber-600 dark:text-amber-400 text-[11px]">
+                  {restoreSummary.failedCount} ignorado(s)
+                </span>
+              )}
+            </div>
+          )}
 
           {/* Progress Bar during Restoration */}
           {isRestoring && (
@@ -376,7 +378,7 @@ export const RestorePanel: React.FC<RestorePanelProps> = ({
             Restauração Protegida por Organização
           </p>
           <p className="text-[11px] leading-relaxed">
-            Os registros importados serão mapeados e integrados com segurança à chave de ativação atual da sua organização, garantindo isolamento multitenant no Supabase.
+            Os registros importados são remapeados e gravados com segurança para o identificador da sua organização atual no Aiven PostgreSQL, garantindo isolamento multi-tenant e atualização imediata em todos os cadastros.
           </p>
         </div>
       </div>

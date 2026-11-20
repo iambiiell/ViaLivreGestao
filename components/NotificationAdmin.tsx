@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Bell, Send, Trash2, Users, ShieldCheck, Loader2, Plus, X, Globe, Truck, Settings, AlertTriangle } from 'lucide-react';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { Notice, UserRole, User } from '../types';
 
 interface NotificationAdminProps {
@@ -58,22 +58,16 @@ const NotificationAdmin: React.FC<NotificationAdminProps> = ({ currentUser }) =>
 
     try {
       setIsSending(true);
-      const { data: noticeData, error: noticeError } = await supabase
-        .from('notices')
-        .insert([{
-          ...newNotice,
-          created_by: currentUser?.id || 'system',
-          system_id: currentUser?.system_id,
-          is_active: true
-        }])
-        .select()
-        .single();
-
-      if (noticeError) throw noticeError;
+      await db.create('notices', {
+        ...newNotice,
+        created_by: currentUser?.id || 'system',
+        system_id: currentUser?.system_id,
+        is_active: true
+      } as any);
 
       // Also create a system notification for the badge
-      await supabase.from('notifications').insert([{
-        user_id: null, // Global or role-based
+      await db.create('notifications', {
+        user_id: null,
         title: `Novo Aviso: ${newNotice.title}`,
         message: newNotice.content.substring(0, 100) + '...',
         type: newNotice.category === 'URGENTE' ? 'WARNING' : 'INFO',
@@ -82,7 +76,7 @@ const NotificationAdmin: React.FC<NotificationAdminProps> = ({ currentUser }) =>
         system_id: currentUser?.system_id,
         is_read: false,
         created_at: new Date().toISOString()
-      }]);
+      } as any);
 
       setNewNotice({ title: '', content: '', target_role: 'ALL', category: 'SISTEMA', attachment_info: '' });
       setIsModalOpen(false);

@@ -7,7 +7,7 @@ import {
   HelpCircle, AlertCircle, CalendarDays, History, Filter, Printer, Download,
   Database, Wifi, WifiOff
 } from 'lucide-react';
-import { db, supabase } from '../services/database';
+import { db } from '../services/database';
 import { NotificationService } from '../services/NotificationService';
 import { pontoIndexedDB } from '../services/pontoIndexedDB';
 
@@ -211,18 +211,10 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
 
-    // Assinatura Realtime Direta no Supabase para a tabela time_tracking
-    let channel: any = null;
-    try {
-      channel = supabase
-        .channel(`timetracking_live_${targetUserId || 'global'}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'time_tracking' }, () => {
-          loadEntries(true);
-        })
-        .subscribe();
-    } catch (e) {
-      console.warn('Erro ao assinar canal realtime de time_tracking:', e);
-    }
+    // Assinatura Realtime via SSE (Aiven PostgreSQL) para a tabela time_tracking
+    const sub = db.subscribeTable('time_tracking', () => {
+      loadEntries(true);
+    });
 
     return () => {
       window.removeEventListener('vialivre-timetracking-updated' as any, handleTimeTrackingUpdated);
@@ -231,9 +223,7 @@ const TimeTrackingManager: React.FC<TimeTrackingManagerProps> = ({ currentUser, 
       window.removeEventListener('focus', handleWindowFocus);
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
-      if (channel) {
-        supabase.removeChannel(channel);
-      }
+      sub.unsubscribe();
     };
   }, [targetUserId, loadEntries, addToast]);
 

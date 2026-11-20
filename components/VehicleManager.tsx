@@ -3,7 +3,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Vehicle, User, Company, City, Inspection, VehicleClass, TicketingConfig, Skin, MaintenanceRecord, BusRoute } from '../types';
 import { Plus, Pencil, Trash2, X, Save, Bus, Loader2, Building2, MapPin, Calendar, ClipboardCheck, Info, Copy, Search, CheckCircle2, AlertTriangle, Users, Palette, Wrench, Navigation, FileText, Download } from 'lucide-react';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { formatDate } from '../utils/dateFormatter';
 import { useConfirmDialog, ConfirmDialogModal } from './ConfirmDialog';
 import { VehiclePdfReportModal } from './VehiclePdfReportModal';
@@ -14,6 +14,7 @@ interface VehicleManagerProps {
   companies: Company[];
   cities: City[];
   routes?: BusRoute[];
+  drivers?: User[];
   inspections: Inspection[];
   ticketingConfig: TicketingConfig | null;
   skins: Skin[];
@@ -43,6 +44,7 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
   companies = [], 
   cities = [], 
   routes = [],
+  drivers = [],
   inspections = [],
   ticketingConfig,
   skins = [],
@@ -129,10 +131,20 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
     capacity: 44,
     skin_id: '',
     route_id: '',
-    default_route_id: ''
+    default_route_id: '',
+    conductor_id: '',
+    conductor_name: ''
   };
 
   const [formData, setFormData] = useState<any>(initialFormState);
+
+  const availableConductors = useMemo(() => {
+    return (drivers || []).filter((u: User) => {
+      const role = (u.role || '').toUpperCase();
+      const title = (u.job_title || '').toUpperCase();
+      return role.includes('COBRADOR') || title.includes('COBRADOR') || role === 'CONDUCTOR';
+    });
+  }, [drivers]);
 
   const filteredModalRoutes = useMemo(() => {
     return routes.filter(r => {
@@ -218,6 +230,8 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
       ...formData, 
       route_id: formData.route_id || null,
       default_route_id: formData.route_id || null,
+      conductor_id: formData.conductor_id || null,
+      conductor_name: formData.conductor_name || null,
       capacity,
       year_fab: formData.year_fab ? (Number(formData.year_fab) || null) : null
     };
@@ -258,7 +272,9 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
       plate: '',
       status: 'ATIVO',
       route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
-      default_route_id: vehicle.route_id || (vehicle as any).default_route_id || ''
+      default_route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
+      conductor_id: vehicle.conductor_id || (vehicle as any).default_conductor_id || '',
+      conductor_name: vehicle.conductor_name || (vehicle as any).default_conductor_name || ''
     });
     setIsModalOpen(true);
     addToast(`Dados duplicados. Prefixo atualizado para ${newPrefix}.`, "warning");
@@ -409,6 +425,14 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                         </span>
                       </p>
                     )}
+                    {(vehicle.conductor_name || (vehicle as any).default_conductor_name) && (
+                      <p className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
+                        <Users size={12} className="text-emerald-500 shrink-0"/>
+                        <span className="truncate">
+                          Cobrador Fixo: {vehicle.conductor_name || (vehicle as any).default_conductor_name}
+                        </span>
+                      </p>
+                    )}
                     <p className="flex items-center gap-2"><Wrench size={12} className="text-red-500"/> Gasto Manutenção: <span className="font-black text-red-600 dark:text-red-400 ml-auto">R$ {(maintenanceCosts[vehicle.id] || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</span></p>
                     <div className="flex items-center justify-between pt-2 border-t dark:border-zinc-800">
                         <span className="flex items-center gap-2"><ClipboardCheck size={12} className="text-emerald-500"/> Última Vistoria:</span>
@@ -435,7 +459,9 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                         setFormData({
                           ...vehicle,
                           route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
-                          default_route_id: vehicle.route_id || (vehicle as any).default_route_id || ''
+                          default_route_id: vehicle.route_id || (vehicle as any).default_route_id || '',
+                          conductor_id: vehicle.conductor_id || (vehicle as any).default_conductor_id || '',
+                          conductor_name: vehicle.conductor_name || (vehicle as any).default_conductor_name || ''
                         }); 
                         setEditingId(vehicle.id); 
                         setIsModalOpen(true); 
@@ -562,6 +588,36 @@ const VehicleManager: React.FC<VehicleManagerProps> = ({
                                 </option>
                             ))}
                         </select>
+                    </div>
+
+                    <div className="col-span-full">
+                        <label className="block text-[10px] font-black text-slate-400 uppercase mb-1 ml-2 flex items-center justify-between">
+                            <span>Cobrador Fixo / Vinculado ao Veículo (Opcional)</span>
+                            <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Identificação automática na Escala</span>
+                        </label>
+                        <select 
+                            className="w-full px-4 py-3 border-2 border-yellow-400 rounded-xl bg-slate-50 dark:bg-zinc-900 dark:text-zinc-100 font-bold" 
+                            value={formData.conductor_id || ''} 
+                            onChange={e => {
+                              const selId = e.target.value;
+                              const selConductor = availableConductors.find(c => c.id === selId);
+                              setFormData({
+                                ...formData,
+                                conductor_id: selId,
+                                conductor_name: selConductor?.name || ''
+                              });
+                            }}
+                        >
+                            <option value="">Sem cobrador fixo (Livre / Operação pelo Motorista se não escalado)</option>
+                            {availableConductors.map(c => (
+                                <option key={c.id} value={c.id}>
+                                    {c.name} {c.registration_id ? `(Matrícula: ${c.registration_id})` : ''}
+                                </option>
+                            ))}
+                        </select>
+                        <p className="mt-1 text-[9px] text-slate-500 dark:text-zinc-400 font-medium ml-2">
+                          Se preenchido, este cobrador será puxado automaticamente ao escalar este veículo. Se não for preenchido, o Motorista Urbano escalado terá acesso automático à aba Cobrador na Central de Operações.
+                        </p>
                     </div>
 
                     <div className="col-span-full">

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { User, Vehicle, BusRoute, IssueReport, AppNotification } from '../types';
 import { 
   LayoutDashboard, 
@@ -32,65 +32,76 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
   const loadDispatcherData = async () => {
     setIsLoading(true);
     try {
-      // Fetch pending logs
-      const { data: logs } = await supabase
-        .from('driver_logs')
-        .select(`
-          *, 
-          users!driver_id(full_name, id), 
-          vehicles!vehicle_id(prefix, plate, id)
-        `)
-        .eq('status', 'OPEN')
-        .is('dispatcher_id', null)
-        .order('created_at', { ascending: false });
-      setPendingLogs(logs || []);
+      const [allLogs, allTrips, allUsers, allVehicles, allRoutes, allOccurrences] = await Promise.all([
+        db.fetchAll<any>('driver_logs'),
+        db.fetchAll<any>('trips'),
+        db.fetchAll<User>('users'),
+        db.fetchAll<Vehicle>('vehicles'),
+        db.fetchAll<BusRoute>('routes'),
+        db.fetchAll<IssueReport>('occurrences')
+      ]);
 
-      // Fetch active trips
-      const { data: trips } = await supabase
-        .from('trips')
-        .select(`
-          *, 
-          routes(name, start_point, end_point, prefixo_linha), 
-          users(full_name), 
-          vehicles(prefix)
-        `)
-        .eq('status', 'IN_PROGRESS');
-      setActiveTrips(trips || []);
+      const usersMap = new Map<string, User>(allUsers.map(u => [u.id, u]));
+      const vehiclesMap = new Map<string, Vehicle>(allVehicles.map(v => [v.id, v]));
+      const routesMap = new Map<string, BusRoute>(allRoutes.map(r => [r.id, r]));
 
-      // Fetch upcoming trips for delay alerts
-      const { data: upcoming } = await supabase
-        .from('trips')
-        .select(`
-          *, 
-          routes(name, start_point, end_point, prefixo_linha), 
-          users(full_name)
-        `)
-        .eq('status', 'PENDING')
-        .eq('trip_date', new Date().toISOString().split('T')[0]);
-      
+      const pending = allLogs
+        .filter((l: any) => l.status === 'OPEN' && !l.dispatcher_id)
+        .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .map((l: any) => ({
+          ...l,
+          users: l.driver_id ? usersMap.get(l.driver_id) : undefined,
+          vehicles: l.vehicle_id ? vehiclesMap.get(l.vehicle_id) : undefined
+        }));
+      setPendingLogs(pending);
+
+      const enrichTrip = (t: any) => {
+        const route = t.route_id ? routesMap.get(t.route_id) : undefined;
+        return {
+          ...t,
+          routes: route
+            ? {
+                name: (route as any).name || route.letreiro_principal || `${route.origin} x ${route.destination}`,
+                start_point: route.origin,
+                end_point: route.destination,
+                prefixo_linha: route.prefixo_linha
+              }
+            : undefined,
+          users: t.driver_id ? usersMap.get(t.driver_id) : undefined,
+          vehicles: t.vehicle_id ? vehiclesMap.get(t.vehicle_id) : undefined
+        };
+      };
+
+      const active = allTrips
+        .filter((t: any) => t.status === 'IN_PROGRESS' || t.status === 'Em Curso')
+        .map(enrichTrip);
+      setActiveTrips(active);
+
+      const todayStr = new Date().toISOString().split('T')[0];
+      const upcoming = allTrips
+        .filter((t: any) => (t.status === 'PENDING' || t.status === 'Agendada' || t.status === 'agendado') && t.trip_date === todayStr)
+        .map(enrichTrip);
+
       const now = new Date();
       const currentMinutes = now.getHours() * 60 + now.getMinutes();
-      
-      const alerts = (upcoming || []).filter(t => {
-        const [h, m] = (t.departure_time || '00:00').split(':').map(Number);
-        const depMinutes = h * 60 + m;
-        return currentMinutes > depMinutes; // Already late
-      }).map(t => ({
-        ...t,
-        delay_minutes: currentMinutes - (Number(t.departure_time.split(':')[0]) * 60 + Number(t.departure_time.split(':')[1]))
-      }));
+
+      const alerts = upcoming
+        .filter((t: any) => {
+          const [h, m] = (t.departure_time || '00:00').split(':').map(Number);
+          const depMinutes = h * 60 + m;
+          return currentMinutes > depMinutes;
+        })
+        .map((t: any) => ({
+          ...t,
+          delay_minutes: currentMinutes - (Number((t.departure_time || '00:00').split(':')[0]) * 60 + Number((t.departure_time || '00:00').split(':')[1]))
+        }));
 
       setDelayAlerts(alerts);
 
-      // Fetch recent occurrences
-      const { data: occurrences } = await supabase
-        .from('occurrences')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(10);
-      
-      setRecentOccurrences(occurrences || []);
-
+      const sortedOccurrences = [...allOccurrences]
+        .sort((a: any, b: any) => new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime())
+        .slice(0, 10);
+      setRecentOccurrences(sortedOccurrences);
     } catch (error) {
       console.error("Erro ao carregar dados do despachante:", error);
       addToast("Erro ao carregar painel do despachante.", "error");
@@ -121,23 +132,23 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
   }, []);
 
   const handleReleaseVehicle = async (log: any, approved: boolean) => {
-    if (approved) {
+    const logId = typeof log === 'string' ? log : log?.id;
+    const driverId = typeof log === 'object' ? log?.driver_id : undefined;
+
+    if (approved && driverId) {
         // Safety Check: 11h Rest Period
         try {
-            const { data: lastTrips } = await supabase
-                .from('trips')
-                .select('*')
-                .eq('driver_id', log.driver_id)
-                .eq('finished', true)
-                .order('actual_end_time', { ascending: false })
-                .limit(1);
+            const allTrips = await db.fetchAll<any>('trips');
+            const lastTrips = allTrips
+              .filter((t: any) => t.driver_id === driverId && t.finished === true && t.actual_end_time)
+              .sort((a: any, b: any) => new Date(b.actual_end_time).getTime() - new Date(a.actual_end_time).getTime());
 
-            if (lastTrips && lastTrips.length > 0 && lastTrips[0].actual_end_time) {
+            if (lastTrips.length > 0 && lastTrips[0].actual_end_time) {
                 const lastEnd = new Date(lastTrips[0].actual_end_time).getTime();
                 const now = new Date().getTime();
                 const restHours = (now - lastEnd) / (1000 * 60 * 60);
 
-                if (restHours < 11) {
+                if (!isNaN(restHours) && restHours < 11) {
                     addToast(`ALERTA SEGURANÇA: Motorista em repouso insuficiente (${restHours.toFixed(1)}h/11h). Liberação negada.`, "error");
                     return;
                 }
@@ -148,27 +159,19 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
     }
 
     try {
-      const { error } = await supabase
-        .from('driver_logs')
-        .update({ 
-          status: approved ? 'OPEN' : 'CANCELLED',
-          dispatcher_id: currentUser?.id,
-          released_at: new Date().toISOString(),
-          vehicle_confirmed: approved
-        })
-        .eq('id', log.id);
-
-      if (error) throw error;
+      await db.update('driver_logs', {
+        id: logId,
+        status: approved ? 'OPEN' : 'CANCELLED',
+        dispatcher_id: currentUser?.id,
+        released_at: new Date().toISOString(),
+        vehicle_confirmed: approved
+      } as any);
 
       addToast(approved ? "Veículo liberado com sucesso!" : "Solicitação cancelada.", "success");
       window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
       loadDispatcherData();
-    } catch (error) {
-      if ((error as any).status === 429) {
-        addToast("Cota de API excedida. Tente novamente em instantes.", "warning");
-      } else {
-        addToast("Erro ao processar liberação.", "error");
-      }
+    } catch (error: any) {
+      addToast("Erro ao processar liberação.", "error");
     }
   };
 
@@ -179,25 +182,18 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
     if (!reason) return;
 
     try {
-      const { error } = await supabase
-        .from('trips')
-        .update({ 
-          replacement_bus_number: newPrefix,
-          occurrence_type: reason,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', trip.id);
+      await db.update('trips', {
+        id: trip.id,
+        replacement_bus_number: newPrefix,
+        occurrence_type: reason,
+        updated_at: new Date().toISOString()
+      } as any);
 
-      if (error) throw error;
       addToast("Veículo substituído com sucesso!", "success");
       window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
       loadDispatcherData();
     } catch (error) {
-      if ((error as any).status === 429) {
-        addToast("Cota de API excedida. Tente novamente em instantes.", "warning");
-      } else {
-        addToast("Erro ao substituir veículo.", "error");
-      }
+      addToast("Erro ao substituir veículo.", "error");
     }
   };
 
@@ -207,27 +203,20 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
     const gratuidade = parseInt(prompt("Quantidade de GRATUIDADES:", "0") || "0");
 
     try {
-      const { error } = await supabase
-        .from('trips')
-        .update({ 
-          status: 'Concluída',
-          finished: true,
-          actual_end_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-          passenger_count: { pagantes, vt, gratuidade },
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', trip.id);
+      await db.update('trips', {
+        id: trip.id,
+        status: 'Concluída',
+        finished: true,
+        actual_end_time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        passenger_count: { pagantes, vt, gratuidade },
+        updated_at: new Date().toISOString()
+      } as any);
 
-      if (error) throw error;
       addToast("Viagem encerrada com sucesso!", "success");
       window.dispatchEvent(new CustomEvent('vialivre-refresh-data'));
       loadDispatcherData();
     } catch (error) {
-      if ((error as any).status === 429) {
-        addToast("Cota de API excedida. Tente novamente em instantes.", "warning");
-      } else {
-        addToast("Erro ao encerrar viagem.", "error");
-      }
+      addToast("Erro ao encerrar viagem.", "error");
     }
   };
 
@@ -296,13 +285,13 @@ const DispatcherManager: React.FC<DispatcherManagerProps> = ({ currentUser, addT
                           </div>
                           <div className="flex md:flex-col gap-2 justify-center">
                             <button 
-                              onClick={() => handleReleaseVehicle(log.id, true)}
+                              onClick={() => handleReleaseVehicle(log, true)}
                               className="px-6 py-3 bg-emerald-500 text-white rounded-xl font-black uppercase text-[10px] shadow-lg hover:bg-emerald-600 transition-all flex items-center gap-2"
                             >
                               <Check size={16} /> Liberar
                             </button>
                             <button 
-                              onClick={() => handleReleaseVehicle(log.id, false)}
+                              onClick={() => handleReleaseVehicle(log, false)}
                               className="px-6 py-3 bg-slate-200 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 rounded-xl font-black uppercase text-[10px] hover:bg-red-500 hover:text-white transition-all flex items-center gap-2"
                             >
                               <X size={16} /> Recusar

@@ -2,7 +2,7 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { BusRoute, Trip, User, Vehicle, Company, TicketSale, TripStatus } from '../types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { supabase, db } from '../services/database';
+import { db } from '../services/database';
 import { 
   BusFront, 
   Clock, 
